@@ -71,7 +71,7 @@ Steps are records of their own rather than sub-records of their plan. That's wha
 
 ## 2. Anatomy of a record
 
-Every record is a markdown file that opens with a YAML header (between `---` lines). **The header holds everything a tool reads; the body holds what a person reads.** Tools never parse the body. They only fingerprint it (section 5).
+Every record is a markdown file that opens with a YAML header (between `---` lines). **The header holds everything a tool reads; the body holds what a person reads.** Tools never parse the body. They only fingerprint it (section 5). When a tool updates a header, it rewrites only the fields it owns (link lists and `revisions`) and leaves every other line exactly as written, comments and spacing included.
 
 A belief:
 
@@ -266,7 +266,7 @@ Pins, `via` links and re-check evidence all live in record files, never only in 
 
 ## 6. The index
 
-`index.db` is a SQLite database (a database kept in a single file, built into Python). It's rebuilt from `graph/` whenever a query finds files newer than the last build. A full rebuild of a few thousand records takes about a second, so there's no incremental update to get wrong.
+`index.db` is a SQLite database (a database kept in a single file). `mason` is written in Go and includes SQLite through a pure-Go driver, so it stays one binary with nothing else to install. The index is rebuilt from `graph/` whenever a query finds files newer than the last build. A full rebuild of 5,000 records took about a third of a second in a test, so there's no incremental update to get wrong.
 
 ```mermaid
 erDiagram

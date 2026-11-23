@@ -93,12 +93,12 @@ The index answers three kinds of question: walking links ("everything that relie
 
 | Engine | Kind | Status (late 2026) | Verdict |
 |---|---|---|---|
-| **SQLite** | Embedded relational database | Maintained for decades; ships with Python | **Chosen** (a leaning). Recursive queries walk links; FTS5 (its full-text search) finds records from words; `sqlite-vec` adds search by meaning later |
+| **SQLite** | Embedded relational database | Maintained for decades; built into most languages, and embeddable in Go without a C compiler | **Chosen** (a leaning). Recursive queries walk links; FTS5 (its full-text search) finds records from words; `sqlite-vec` adds search by meaning later |
 | DuckDB | Embedded analytics database | Maintained | Passed. An extra dependency; its strength is large-scale analytics; its graph-query extension is still research-stage |
 | Kùzu | Embedded graph database (Cypher queries) | Archived October 2025; forks LadybugDB and RyuGraph continue | Passed. The abandonment is exactly the risk files-as-truth guards against |
 | CozoDB | Embedded graph database (Datalog queries) | Last release v0.7; little recent activity | Passed. A new query language with an uncertain future |
 | Oxigraph | Embedded RDF store (W3C's subject–predicate–object format, SPARQL queries) | Maintained | Passed for the index; a good fit for a later export to the W3C provenance standard |
-| Plain Python, no database | In-memory | n/a | Passed. Every agent question becomes a script |
+| Plain code, no database | In-memory | n/a | Passed. Every agent question becomes a script |
 | Neo4j, Memgraph, FalkorDB, Apache AGE, TerminusDB | Database servers | Various | Ruled out: each needs a running server |
 
 The index stores every record in one `nodes` table and every link in one `edges` table, instead of a table per record type. A new type or link is then new rows, not a schema change, which fits part 1's "grow by addition".
