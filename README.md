@@ -23,16 +23,24 @@ The files are the source of truth. They're readable in an editor, reviewable in 
 | [2. The landscape](docs/context-graph/02-landscape.md) | How others solve the same problems, and what we borrowed |
 | [3. The implementation](docs/context-graph/03-implementation.md) | Files, schemas, pins and fingerprints, the index, and the `mason` command |
 
-## Install (development)
+## Install
 
-Needs [uv](https://docs.astral.sh/uv/).
+Needs [Go](https://go.dev/dl/) 1.21 or later; the toolchain named in `go.mod` (Go 1.27) is fetched automatically.
 
 ```sh
-uv tool install --editable .
+go install github.com/andycondon/loremason/cmd/mason@latest
 mason --version
 ```
 
-Run the tests with `uv run pytest`.
+`go install` puts `mason` in `$(go env GOPATH)/bin` (usually `~/go/bin`), which needs to be on your `PATH`.
+
+## Development
+
+```sh
+go test ./...                # run the tests
+go run ./cmd/mason --version # run without installing
+go install ./cmd/mason       # install from a clone
+```
 
 ## Licence
 
