@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andycondon/loremason/schema/question.json",
+  "title": "question",
+  "description": "Something to settle, with its options.",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "created",
+    "question"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "title": {
+      "$ref": "common.json#/$defs/line"
+    },
+    "question": {
+      "$ref": "common.json#/$defs/text"
+    },
+    "options": {
+      "description": "a list of options",
+      "type": "array",
+      "items": {
+        "description": "a map with id, title",
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/local_id"
+          },
+          "title": {
+            "$ref": "common.json#/$defs/line"
+          },
+          "for": {
+            "$ref": "common.json#/$defs/links"
+          },
+          "against": {
+            "$ref": "common.json#/$defs/links"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "part_of": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "questions": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "mentions": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "created": {
+      "$ref": "common.json#/$defs/date"
+    },
+    "aliases": {
+      "$ref": "common.json#/$defs/aliases"
+    },
+    "revisions": {
+      "description": "a list of revisions",
+      "type": "array",
+      "items": {
+        "description": "a map with rev",
+        "type": "object",
+        "required": [
+          "rev"
+        ],
+        "properties": {
+          "rev": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "date": {
+            "$ref": "common.json#/$defs/date"
+          },
+          "fp": {
+            "$ref": "common.json#/$defs/fingerprint"
+          },
+          "change": {
+            "$ref": "common.json#/$defs/change"
+          },
+          "question": {
+            "$ref": "common.json#/$defs/text"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "extra": {
+      "$ref": "common.json#/$defs/extra"
+    }
+  },
+  "additionalProperties": false
+}

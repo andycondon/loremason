@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andycondon/loremason/schema/initiative.json",
+  "title": "initiative",
+  "description": "One planning effort.",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "created",
+    "slug",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "title": {
+      "$ref": "common.json#/$defs/line"
+    },
+    "slug": {
+      "description": "a kebab-case name such as search-redesign",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "status": {
+      "enum": [
+        "active",
+        "paused",
+        "done"
+      ]
+    },
+    "purpose": {
+      "type": "string"
+    },
+    "goals": {
+      "description": "a list of goals",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/text"
+      }
+    },
+    "product": {
+      "$ref": "common.json#/$defs/line"
+    },
+    "involves": {
+      "description": "a list of actors, each {to, role}",
+      "type": "array",
+      "items": {
+        "description": "a map with to, role",
+        "type": "object",
+        "required": [
+          "to",
+          "role"
+        ],
+        "properties": {
+          "to": {
+            "$ref": "common.json#/$defs/ref"
+          },
+          "role": {
+            "enum": [
+              "decides",
+              "consulted",
+              "interested"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "mentions": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "created": {
+      "$ref": "common.json#/$defs/date"
+    },
+    "aliases": {
+      "$ref": "common.json#/$defs/aliases"
+    },
+    "extra": {
+      "$ref": "common.json#/$defs/extra"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andycondon/loremason/schema/activity.json",
+  "title": "activity",
+  "description": "Something that happened, such as an agent's session or one run of a step.",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "created",
+    "started_at"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "title": {
+      "$ref": "common.json#/$defs/line"
+    },
+    "started_at": {
+      "$ref": "common.json#/$defs/time"
+    },
+    "ended_at": {
+      "$ref": "common.json#/$defs/time"
+    },
+    "status": {
+      "description": "Absent while running.",
+      "enum": [
+        "completed",
+        "failed"
+      ]
+    },
+    "associated_with": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "part_of": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "corresponds_to": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "mentions": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "created": {
+      "$ref": "common.json#/$defs/date"
+    },
+    "aliases": {
+      "$ref": "common.json#/$defs/aliases"
+    },
+    "extra": {
+      "$ref": "common.json#/$defs/extra"
+    }
+  },
+  "additionalProperties": false
+}

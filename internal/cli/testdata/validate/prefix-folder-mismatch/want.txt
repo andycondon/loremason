@@ -1,0 +1,4 @@
+graph/belief/task_9w4hzd.md:1: error: `task_` is the prefix of type task, so this file belongs in graph/task/
+graph/belief/zz_9w4hzd.md:1: error: no record type has the prefix `zz_`; records in this folder start with `bel_`
+2 records: 2 errors, 0 warnings
+exit 1

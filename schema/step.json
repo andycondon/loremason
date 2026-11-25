@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andycondon/loremason/schema/step.json",
+  "title": "step",
+  "description": "A unit of work for a small model: exact files, the pattern to copy, one check.",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "created",
+    "part_of"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "title": {
+      "$ref": "common.json#/$defs/line"
+    },
+    "part_of": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "follows": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "mentions": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "created": {
+      "$ref": "common.json#/$defs/date"
+    },
+    "aliases": {
+      "$ref": "common.json#/$defs/aliases"
+    },
+    "revisions": {
+      "description": "a list of revisions",
+      "type": "array",
+      "items": {
+        "description": "a map with rev",
+        "type": "object",
+        "required": [
+          "rev"
+        ],
+        "properties": {
+          "rev": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "date": {
+            "$ref": "common.json#/$defs/date"
+          },
+          "fp": {
+            "$ref": "common.json#/$defs/fingerprint"
+          },
+          "change": {
+            "$ref": "common.json#/$defs/change"
+          },
+          "title": {
+            "$ref": "common.json#/$defs/line"
+          },
+          "body": {
+            "$ref": "common.json#/$defs/text"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "extra": {
+      "$ref": "common.json#/$defs/extra"
+    }
+  },
+  "additionalProperties": false
+}

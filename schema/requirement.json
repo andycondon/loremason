@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andycondon/loremason/schema/requirement.json",
+  "title": "requirement",
+  "description": "One requirement.",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "created",
+    "statement",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "title": {
+      "$ref": "common.json#/$defs/line"
+    },
+    "statement": {
+      "$ref": "common.json#/$defs/text"
+    },
+    "status": {
+      "$ref": "common.json#/$defs/maturity"
+    },
+    "part_of": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "relies_on": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "mentions": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "created": {
+      "$ref": "common.json#/$defs/date"
+    },
+    "aliases": {
+      "$ref": "common.json#/$defs/aliases"
+    },
+    "revisions": {
+      "description": "a list of revisions",
+      "type": "array",
+      "items": {
+        "description": "a map with rev",
+        "type": "object",
+        "required": [
+          "rev"
+        ],
+        "properties": {
+          "rev": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "date": {
+            "$ref": "common.json#/$defs/date"
+          },
+          "fp": {
+            "$ref": "common.json#/$defs/fingerprint"
+          },
+          "change": {
+            "$ref": "common.json#/$defs/change"
+          },
+          "statement": {
+            "$ref": "common.json#/$defs/text"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "extra": {
+      "$ref": "common.json#/$defs/extra"
+    }
+  },
+  "additionalProperties": false
+}

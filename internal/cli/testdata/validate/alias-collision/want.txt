@@ -1,0 +1,4 @@
+graph/belief/bel_7k3m9q.md:7: error: the alias `task_9w4hzd` is the ID of a record in graph/task/task_9w4hzd.md
+graph/belief/bel_7k3m9r.md:7: error: the alias `B-1` is already used by graph/belief/bel_7k3m9q.md
+3 records: 2 errors, 0 warnings
+exit 1

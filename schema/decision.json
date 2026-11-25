@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andycondon/loremason/schema/decision.json",
+  "title": "decision",
+  "description": "A choice made. The body holds the reasoning.",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "created",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "title": {
+      "$ref": "common.json#/$defs/line"
+    },
+    "status": {
+      "$ref": "common.json#/$defs/maturity"
+    },
+    "criteria": {
+      "description": "a list of criteria",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/text"
+      }
+    },
+    "confirmation": {
+      "$ref": "common.json#/$defs/text"
+    },
+    "part_of": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "answers": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "chooses": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "decided_by": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "consults": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "informs": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "supersedes": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "amends": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "relies_on": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "mentions": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "created": {
+      "$ref": "common.json#/$defs/date"
+    },
+    "aliases": {
+      "$ref": "common.json#/$defs/aliases"
+    },
+    "revisions": {
+      "description": "a list of revisions",
+      "type": "array",
+      "items": {
+        "description": "a map with rev",
+        "type": "object",
+        "required": [
+          "rev"
+        ],
+        "properties": {
+          "rev": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "date": {
+            "$ref": "common.json#/$defs/date"
+          },
+          "fp": {
+            "$ref": "common.json#/$defs/fingerprint"
+          },
+          "change": {
+            "$ref": "common.json#/$defs/change"
+          },
+          "commit": {
+            "$ref": "common.json#/$defs/commit"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "extra": {
+      "$ref": "common.json#/$defs/extra"
+    }
+  },
+  "additionalProperties": false
+}

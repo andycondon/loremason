@@ -1,0 +1,6 @@
+graph/belief/bel_7k3m9q.md:1: error: the file must start with a YAML header between two `---` lines
+graph/belief/bel_7k3m9r.md:3: error: the file isn't valid UTF-8
+graph/belief/bel_7k3m9s.md:3: error: `id` appears twice
+graph/belief/bel_7k3m9t.md:3: error: the header isn't valid YAML: mapping values are not allowed in this context
+5 records: 4 errors, 0 warnings
+exit 1

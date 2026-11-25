@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andycondon/loremason/schema/common.json",
+  "$defs": {
+    "id": {
+      "description": "an ID: a type prefix, an underscore and six characters, such as bel_7k3m9q",
+      "type": "string",
+      "pattern": "^[a-z]+_[0-9a-hjkmnp-tv-z]{6}$"
+    },
+    "local_id": {
+      "description": "a short local ID such as s1",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*$"
+    },
+    "line": {
+      "description": "one line of text",
+      "type": "string",
+      "pattern": "^[^\\r\\n]*\\S[^\\r\\n]*$"
+    },
+    "text": {
+      "description": "text",
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "date": {
+      "description": "a date such as 2026-11-22",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+    },
+    "time": {
+      "description": "a date such as 2026-11-22, or a time such as 2026-11-22T14:30:00Z",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])([Tt ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?\\s?([Zz]|[+-][0-9]{2}:[0-9]{2})?)?$"
+    },
+    "ref": {
+      "description": "an ID such as bel_7k3m9q",
+      "type": "string",
+      "pattern": "^\\S+$"
+    },
+    "fingerprint": {
+      "description": "a fingerprint such as \"fp1:3a9c0e1b77d2\"",
+      "type": "string",
+      "pattern": "^fp[1-9][0-9]*:[0-9a-f]{12}$"
+    },
+    "link": {
+      "description": "an ID such as bel_7k3m9q, or a pinned link {to, rev, fp}",
+      "type": [
+        "string",
+        "object"
+      ],
+      "pattern": "^\\S+$",
+      "required": [
+        "to",
+        "rev",
+        "fp"
+      ],
+      "properties": {
+        "to": {
+          "$ref": "common.json#/$defs/ref"
+        },
+        "rev": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fp": {
+          "$ref": "common.json#/$defs/fingerprint"
+        },
+        "via": {
+          "$ref": "common.json#/$defs/ref"
+        }
+      },
+      "additionalProperties": false
+    },
+    "links": {
+      "description": "an ID such as bel_7k3m9q, or a pinned link {to, rev, fp}, or a list of these",
+      "type": [
+        "string",
+        "object",
+        "array"
+      ],
+      "pattern": "^\\S+$",
+      "required": [
+        "to",
+        "rev",
+        "fp"
+      ],
+      "properties": {
+        "to": {
+          "$ref": "common.json#/$defs/ref"
+        },
+        "rev": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fp": {
+          "$ref": "common.json#/$defs/fingerprint"
+        },
+        "via": {
+          "$ref": "common.json#/$defs/ref"
+        }
+      },
+      "additionalProperties": false,
+      "items": {
+        "$ref": "common.json#/$defs/link"
+      }
+    },
+    "aliases": {
+      "description": "a list of other names for this record",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.json#/$defs/ref"
+      }
+    },
+    "extra": {
+      "description": "a map of unchecked fields",
+      "type": "object"
+    },
+    "change": {
+      "enum": [
+        "breaking",
+        "non_breaking"
+      ]
+    },
+    "commit": {
+      "description": "a git commit hash",
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,64}$"
+    },
+    "maturity": {
+      "enum": [
+        "proposed",
+        "leaning",
+        "accepted",
+        "rejected",
+        "deprecated",
+        "superseded"
+      ]
+    }
+  }
+}
