@@ -54,10 +54,12 @@ func (r *Result) Count() (errs, warnings int) {
 
 // file is one record file. rec is nil when it couldn't be read.
 type file struct {
-	path string
-	id   string // from the filename
-	typ  *registry.Type
-	rec  *record.Record
+	path   string
+	id     string         // from the filename
+	typ    *registry.Type // from the ID's prefix, or else the folder
+	folder *registry.Type
+	rec    *record.Record
+	bad    map[int]bool // lines the reader already reported
 }
 
 type target struct {
@@ -82,8 +84,8 @@ func Run(root string, reg *registry.Registry) (*Result, error) {
 	}
 	c.index()
 	for _, f := range c.files {
+		c.identify(f)
 		if f.rec != nil {
-			c.identify(f)
 			c.shape(f)
 			c.links(f)
 		}
@@ -113,27 +115,30 @@ func didYouMean(s string) string {
 
 // load reads every file under graph/.
 func (c *checker) load(root string) error {
-	graph := filepath.Join(root, "graph")
+	graph, err := filepath.EvalSymlinks(filepath.Join(root, "graph"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil // a new workspace has no records yet
+	} else if err != nil {
+		return err
+	}
 	var folders []string
 	for _, t := range c.reg.Types {
 		folders = append(folders, t.Folder())
 	}
 	slices.Sort(folders)
 	return filepath.WalkDir(graph, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if p == graph && errors.Is(err, fs.ErrNotExist) {
-				return nil // a new workspace has no records yet
-			}
+		if p == graph {
 			return err
 		}
-		if p == graph {
+		rel, relErr := filepath.Rel(graph, p)
+		if relErr != nil {
+			return relErr
+		}
+		rel = "graph/" + filepath.ToSlash(rel)
+		if err != nil {
+			c.errorf(rel, 1, "can't read: %v", unwrap(err))
 			return nil
 		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
 		hidden := strings.HasPrefix(d.Name(), ".")
 		parts := strings.Split(rel, "/")
 		if d.IsDir() {
@@ -157,24 +162,45 @@ func (c *checker) load(root string) error {
 			c.errorf(rel, 1, "records are kept in a folder named after their type, such as graph/belief/")
 			return nil
 		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			if info, err := os.Stat(p); err == nil && info.Mode().IsRegular() {
+				d = fs.FileInfoToDirEntry(info)
+			}
+		}
 		if !d.Type().IsRegular() || path.Ext(rel) != ".md" {
 			c.errorf(rel, 1, "only record files (<id>.md) belong here")
 			return nil
 		}
-		data, err := os.ReadFile(p)
-		if err != nil {
-			return err
+		f := &file{path: rel, id: strings.TrimSuffix(d.Name(), ".md"), folder: c.reg.ByFolder(parts[1])}
+		f.typ = f.folder
+		if prefix, ok := id.Prefix(f.id); ok && c.reg.ByPrefix(prefix) != nil {
+			f.typ = c.reg.ByPrefix(prefix)
 		}
-		f := &file{path: rel, id: strings.TrimSuffix(d.Name(), ".md"), typ: c.reg.ByFolder(parts[1])}
-		rec, errs := record.Parse(data)
-		for _, e := range errs {
-			c.errorf(rel, e.Line, "%s", e.Msg)
-		}
-		f.rec = rec
 		c.files = append(c.files, f)
 		c.res.Records++
+		// A file that can't be read still has an ID, so links to it resolve.
+		data, err := os.ReadFile(p)
+		if err != nil {
+			c.errorf(rel, 1, "can't read: %v", unwrap(err))
+			return nil
+		}
+		rec, errs := record.Parse(data)
+		f.bad = map[int]bool{}
+		for _, e := range errs {
+			c.errorf(rel, e.Line, "%s", e.Msg)
+			f.bad[e.Line] = true
+		}
+		f.rec = rec
 		return nil
 	})
+}
+
+// unwrap drops the path from a file error; the message already names the file.
+func unwrap(err error) error {
+	if pe, ok := err.(*fs.PathError); ok {
+		return pe.Err
+	}
+	return err
 }
 
 // index notes every ID, sub-record and alias, so links can be followed.
@@ -183,13 +209,14 @@ func (c *checker) index() {
 	for _, f := range c.files {
 		if first, ok := c.byID[f.id]; ok {
 			c.errorf(f.path, 1, "`%s` is also the ID of %s", f.id, first.in.path)
-			continue
+		} else {
+			c.byID[f.id] = target{f.typ.Name, f}
+			c.names = append(c.names, f.id)
 		}
-		c.byID[f.id] = target{f.typ.Name, f}
-		c.names = append(c.names, f.id)
 		if f.rec == nil {
 			continue
 		}
+		seen := map[string]bool{}
 		for field, sub := range f.typ.Subrecords {
 			list, _ := f.rec.Fields[field].([]any)
 			for i, item := range list {
@@ -198,13 +225,16 @@ func (c *checker) index() {
 				if local == "" {
 					continue
 				}
-				full := f.id + "/" + local
-				if _, ok := c.byID[full]; ok {
+				if seen[local] {
 					c.errorf(f.path, f.rec.Line(field, fmt.Sprint(i), "id"), "two entries have the id `%s`", local)
 					continue
 				}
-				c.byID[full] = target{sub.Type, f}
-				c.names = append(c.names, full)
+				seen[local] = true
+				full := f.id + "/" + local
+				if _, ok := c.byID[full]; !ok {
+					c.byID[full] = target{sub.Type, f}
+					c.names = append(c.names, full)
+				}
 			}
 		}
 	}
@@ -235,11 +265,14 @@ func (c *checker) index() {
 // identify checks that the id, filename and folder agree.
 func (c *checker) identify(f *file) {
 	if prefix, ok := id.Prefix(f.id); !ok {
-		c.errorf(f.path, 1, "the filename must be an ID such as %s.md", f.typ.Prefix+"_7k3m9q")
+		c.errorf(f.path, 1, "the filename must be an ID such as %s.md", f.folder.Prefix+"_7k3m9q")
 	} else if t := c.reg.ByPrefix(prefix); t == nil {
-		c.errorf(f.path, 1, "no record type has the prefix `%s_`; records in this folder start with `%s_`", prefix, f.typ.Prefix)
-	} else if t != f.typ {
+		c.errorf(f.path, 1, "no record type has the prefix `%s_`; records in this folder start with `%s_`", prefix, f.folder.Prefix)
+	} else if t != f.folder {
 		c.errorf(f.path, 1, "`%s_` is the prefix of type %s, so this file belongs in graph/%s/", prefix, t.Name, t.Folder())
+	}
+	if f.rec == nil {
+		return
 	}
 	if got, ok := f.rec.Fields["id"].(string); ok && got != f.id {
 		c.errorf(f.path, f.rec.Line("id"), "the id `%s` doesn't match the filename `%s.md`", got, f.id)

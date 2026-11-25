@@ -5,9 +5,11 @@ import (
 	"bytes"
 	"fmt"
 	"io/fs"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
@@ -106,6 +108,8 @@ func parse() (*Registry, error) {
 		return nil, err
 	}
 	r := &Registry{byPrefix: map[string]*Type{}, byFolder: map[string]*Type{}, compiler: jsonschema.NewCompiler()}
+	r.compiler.RegisterFormat(&jsonschema.Format{Name: "calendar-date", Validate: calendarDate})
+	r.compiler.AssertFormat()
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(r); err != nil {
@@ -145,4 +149,19 @@ func parse() (*Registry, error) {
 		}
 	}
 	return r, nil
+}
+
+var looksLikeDate = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}`)
+
+// calendarDate checks that text starting with a date names a real day, such
+// as no 30 February. The schema's pattern checks the rest of the shape.
+func calendarDate(v any) error {
+	s, ok := v.(string)
+	if !ok || !looksLikeDate.MatchString(s) {
+		return nil
+	}
+	if _, err := time.Parse(time.DateOnly, s[:len(time.DateOnly)]); err != nil {
+		return fmt.Errorf("there's no such day")
+	}
+	return nil
 }

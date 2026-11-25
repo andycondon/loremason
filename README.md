@@ -44,7 +44,7 @@ mason new belief --title "validate doesn't handle non-UTF-8 input"   # prints gr
 mason validate                                                      # checks every record; exits 1 on errors
 ```
 
-`mason` finds the workspace by walking up from the current folder, the way git finds `.git`. Set `LOREMASON_WORKSPACE` to point it at another.
+`mason` finds the workspace by walking up from the current folder, the way git finds `.git`. Set `LOREMASON_WORKSPACE` to point it at another. It stops at the first `.loremason/` it finds, so a marker without a `config.yaml` is an error rather than skipped.
 
 Each record type's fields are defined by a JSON Schema in [`schema/`](schema/), and [`schema/types.yaml`](schema/types.yaml) holds what JSON Schema can't say: ID prefixes, which edges point where, and which fields make up a record's meaning.
 

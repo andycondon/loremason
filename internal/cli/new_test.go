@@ -23,7 +23,7 @@ func emptyWorkspace(t *testing.T) string {
 
 // Titles that YAML could misread, plus one long enough to tempt it to wrap.
 var titles = []string{
-	"X", "42", "true", "2026-11-22", "a: b", "# not a comment", `"quoted" and 'single'`,
+	"X", "日本語 one", "日本語 two", "!!!", "42", "true", "2026-11-22", "a: b", "# not a comment", `"quoted" and 'single'`,
 	"[list]", "{title} {today}", "日本語", "- dash", "@at", strings.Repeat("long title ", 30) + "end",
 }
 
@@ -50,8 +50,7 @@ func TestNewRecordsAreValid(t *testing.T) {
 			}
 		}
 	}
-	// Titles with no letters share a slug, so duplicates may be warned about.
-	if code, out, _ := run("validate"); code != 0 {
+	if code, out, _ := run("validate"); code != 0 || !strings.HasSuffix(out, ": 0 errors, 0 warnings\n") {
 		t.Errorf("new records aren't valid:\n%s", out)
 	}
 }
@@ -70,6 +69,7 @@ func TestNewMistakes(t *testing.T) {
 		"the types are activity,": {"new", "xyzzyplugh", "--title", "X"},
 		"needs --title":           {"new", "belief"},
 		"one line of text":        {"new", "belief", "--title", "a\nb"},
+		"isn't valid UTF-8":       {"new", "belief", "--title", "bad \xff byte"},
 		"takes one record type":   {"new", "belief", "--title", "two", "words"},
 		"unknown command `nwe`":   {"nwe"},
 	} {

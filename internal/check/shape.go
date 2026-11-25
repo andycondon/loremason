@@ -21,6 +21,9 @@ var printer = message.NewPrinter(language.English)
 
 // shape checks a header against its type's JSON Schema.
 func (c *checker) shape(f *file) {
+	if f.rec.Fields == nil || f.typ != f.folder {
+		return // the reader, or the check of the path, has already said why
+	}
 	var invalid *jsonschema.ValidationError
 	if errors.As(f.typ.Schema.Validate(f.rec.Fields), &invalid) {
 		c.leaves(f, invalid)
@@ -37,6 +40,9 @@ func (c *checker) leaves(f *file, e *jsonschema.ValidationError) {
 	}
 	loc := e.InstanceLocation
 	line := f.rec.Line(loc...)
+	if f.bad[line] {
+		return // the value the reader rejected
+	}
 	at := fieldPath(loc)
 	in := "" // where a missing or unknown field is, when it's inside an entry
 	if at != "" {
@@ -113,6 +119,8 @@ func (c *checker) leaves(f *file, e *jsonschema.ValidationError) {
 			got := typeNames[k.Got]
 			c.errorf(f.path, line, "`%s` is %s; it must be %s", at, got, want)
 		}
+	case *kind.Format:
+		c.errorf(f.path, line, "`%s` is %q, but %v", at, k.Got, k.Err)
 	case *kind.Pattern:
 		switch {
 		case k.Got == "":

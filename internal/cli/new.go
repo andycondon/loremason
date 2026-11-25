@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 
@@ -45,6 +46,9 @@ func runNew(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "mason: unknown record type `%s`; %s\n", names[0], hint)
 		return 2
 	}
+	if !utf8.ValidString(*title) {
+		return misuse(stderr, "the title isn't valid UTF-8")
+	}
 	if strings.TrimSpace(*title) == "" || strings.ContainsFunc(*title, unicode.IsControl) {
 		return misuse(stderr, "new needs --title with one line of text")
 	}
@@ -78,7 +82,7 @@ func runNew(args []string, stdout, stderr io.Writer) int {
 // render writes a new record.
 func render(typ *registry.Type, rid, title, today string) string {
 	yamlTitle := quote(title)
-	fill := strings.NewReplacer("{title}", yamlTitle, "{slug}", quote(slug(title)), "{today}", today)
+	fill := strings.NewReplacer("{title}", yamlTitle, "{slug}", quote(slug(title, rid)), "{today}", today)
 	var b strings.Builder
 	fmt.Fprintf(&b, "---\nid: %s\ntitle: %s\n%screated: %s\n---\n", rid, yamlTitle, fill.Replace(typ.Template), today)
 	if typ.Body != "" {
@@ -87,13 +91,14 @@ func render(typ *registry.Type, rid, title, today string) string {
 	return b.String()
 }
 
-// slug turns a title into a kebab-case name.
-func slug(title string) string {
+// slug turns a title into a kebab-case name. A title with no letters or
+// digits it can use gets one made from the ID, so it can't clash.
+func slug(title, rid string) string {
 	words := strings.FieldsFunc(strings.ToLower(title), func(r rune) bool {
 		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
 	})
 	if len(words) == 0 {
-		return "untitled"
+		return strings.ReplaceAll(rid, "_", "-")
 	}
 	return strings.Join(words, "-")
 }

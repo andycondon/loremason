@@ -85,3 +85,46 @@ func TestNoWorkspace(t *testing.T) {
 		t.Fatalf("exit %d, stderr %q", code, errOut)
 	}
 }
+
+func copyDir(t *testing.T, from, to string) {
+	t.Helper()
+	if err := os.CopyFS(to, os.DirFS(from)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnreadableFileIsReportedAndTheRestChecked(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root can read anything")
+	}
+	useVersion(t, "test")
+	root := t.TempDir()
+	copyDir(t, "testdata/worked-example", root)
+	locked := filepath.Join(root, "graph", "belief", "bel_7k3m9q.md")
+	os.Chmod(locked, 0)
+	t.Cleanup(func() { os.Chmod(locked, 0o644) })
+	t.Setenv("LOREMASON_WORKSPACE", root)
+	code, out, _ := run("validate")
+	if code != 1 || !strings.Contains(out, "graph/belief/bel_7k3m9q.md:1: error: can't read: permission denied\n") || !strings.Contains(out, "records: 1 error") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}
+
+func TestSymlinksAreFollowed(t *testing.T) {
+	useVersion(t, "test")
+	elsewhere, root := t.TempDir(), t.TempDir()
+	copyDir(t, "testdata/worked-example", elsewhere)
+	os.Mkdir(filepath.Join(root, ".loremason"), 0o755)
+	os.WriteFile(filepath.Join(root, ".loremason", "config.yaml"), []byte("version: test\n"), 0o644)
+	if err := os.Symlink(filepath.Join(elsewhere, "graph"), filepath.Join(root, "graph")); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	// A record that is itself a link, under its own ID.
+	os.Rename(filepath.Join(elsewhere, "graph", "belief", "bel_c9d4se.md"), filepath.Join(elsewhere, "kept.md"))
+	os.Symlink(filepath.Join(elsewhere, "kept.md"), filepath.Join(elsewhere, "graph", "belief", "bel_c9d4se.md"))
+	t.Setenv("LOREMASON_WORKSPACE", root)
+	code, out, _ := run("validate")
+	if code != 0 || out != "26 records: 0 errors, 0 warnings\n" {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+}

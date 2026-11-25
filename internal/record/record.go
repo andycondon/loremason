@@ -5,6 +5,7 @@ package record
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -49,6 +50,7 @@ func Parse(data []byte) (*Record, []*Error) {
 		}
 		return fail(line, "the file isn't valid UTF-8")
 	}
+	data = bytes.TrimPrefix(data, []byte("\ufeff")) // a byte order mark, as some editors write
 	header, body, ok := split(data)
 	if !ok {
 		return fail(1, "the file must start with a YAML header between two `---` lines")
@@ -115,6 +117,10 @@ func (c *converter) value(n *yaml.Node) any {
 				c.errorf(key, "a field name must be plain text")
 				continue
 			}
+			if key.Value == "<<" && key.Tag == "!!merge" {
+				c.errorf(key, "YAML merge keys (<<) aren't supported; write the fields out")
+				continue
+			}
 			if _, dup := m[key.Value]; dup {
 				c.errorf(key, "`%s` appears twice", key.Value)
 				continue
@@ -130,14 +136,21 @@ func (c *converter) value(n *yaml.Node) any {
 		return s
 	}
 	switch n.Tag {
+	case "!!str", "!!timestamp":
+		return n.Value
 	case "!!int", "!!float", "!!bool", "!!null":
 		var v any
 		if err := n.Decode(&v); err != nil {
 			c.errorf(n, "%v", err)
 		}
+		if f, ok := v.(float64); ok && (math.IsInf(f, 0) || math.IsNaN(f)) {
+			c.errorf(n, "`%s` isn't a number a record can hold; put it in quotes if it's meant as text", n.Value)
+			return nil
+		}
 		return v
 	}
-	return n.Value
+	c.errorf(n, "YAML tags such as %s aren't supported", n.Tag)
+	return nil
 }
 
 // Line finds the line of the value at a path of field names and list indexes,
