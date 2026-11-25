@@ -71,6 +71,16 @@ func (r *Registry) ByPrefix(p string) *Type { return r.byPrefix[p] }
 // ByFolder returns the type a folder holds, or nil.
 func (r *Registry) ByFolder(f string) *Type { return r.byFolder[f] }
 
+// Folders lists the type folders in order.
+func (r *Registry) Folders() []string {
+	var folders []string
+	for _, t := range r.Types {
+		folders = append(folders, t.Folder())
+	}
+	slices.Sort(folders)
+	return folders
+}
+
 // Names lists the type names in order.
 func (r *Registry) Names() []string {
 	var names []string

@@ -35,9 +35,9 @@
       "format": "calendar-date"
     },
     "ref": {
-      "description": "an ID such as bel_7k3m9q",
+      "description": "an ID such as bel_7k3m9q, perhaps with a revision as in bel_7k3m9q@r2",
       "type": "string",
-      "pattern": "^\\S+$"
+      "pattern": "^[^\\s@]+(@r[1-9][0-9]{0,8})?$"
     },
     "fingerprint": {
       "description": "a fingerprint such as \"fp1:3a9c0e1b77d2\"",
@@ -45,12 +45,12 @@
       "pattern": "^fp[1-9][0-9]*:[0-9a-f]{12}$"
     },
     "link": {
-      "description": "an ID such as bel_7k3m9q, or a pinned link {to, rev, fp}",
+      "description": "an ID such as bel_7k3m9q or bel_7k3m9q@r2, or a pinned link {to, rev, fp}",
       "type": [
         "string",
         "object"
       ],
-      "pattern": "^\\S+$",
+      "pattern": "^[^\\s@]+(@r[1-9][0-9]{0,8})?$",
       "required": [
         "to",
         "rev",
@@ -74,13 +74,13 @@
       "additionalProperties": false
     },
     "links": {
-      "description": "an ID such as bel_7k3m9q, or a pinned link {to, rev, fp}, or a list of these",
+      "description": "an ID such as bel_7k3m9q or bel_7k3m9q@r2, or a pinned link {to, rev, fp}, or a list of these",
       "type": [
         "string",
         "object",
         "array"
       ],
-      "pattern": "^\\S+$",
+      "pattern": "^[^\\s@]+(@r[1-9][0-9]{0,8})?$",
       "required": [
         "to",
         "rev",
@@ -111,7 +111,7 @@
       "type": "array",
       "uniqueItems": true,
       "items": {
-        "$ref": "common.json#/$defs/ref"
+        "$ref": "common.json#/$defs/name"
       }
     },
     "extra": {
@@ -138,6 +138,11 @@
         "deprecated",
         "superseded"
       ]
+    },
+    "name": {
+      "description": "a name such as an old ID, without spaces or @",
+      "type": "string",
+      "pattern": "^[^\\s@]+$"
     }
   }
 }

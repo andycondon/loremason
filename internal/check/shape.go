@@ -5,166 +5,193 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/santhosh-tekuri/jsonschema/v6/kind"
-
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
 	"github.com/andycondon/loremason/internal/graph"
+	"github.com/andycondon/loremason/internal/record"
 	"github.com/andycondon/loremason/internal/suggest"
 )
 
-var printer = message.NewPrinter(language.English)
-
-// shape checks a header against its type's JSON Schema.
+// shape checks a header against its type's JSON Schema, and turns each
+// failure into a message in plain words at the right line.
 func (c *checker) shape(f *graph.File) {
-	if f.Record == nil || f.Record.Data == nil || f.Type != f.Folder {
-		return // the reader, or the check of the path, has already said why
+	if f.Record == nil || f.Record.Data == nil || f.Misplaced() {
+		return // reading the file, or placement, has already said why
 	}
 	var invalid *jsonschema.ValidationError
 	if errors.As(f.Type.Schema.Validate(f.Record.Data), &invalid) {
-		c.leaves(f, invalid)
+		for _, leaf := range leaves(invalid) {
+			c.schemaError(f, leaf)
+		}
 	}
 }
 
-// leaves reports the innermost causes; the outer ones only say "see below".
-func (c *checker) leaves(f *graph.File, e *jsonschema.ValidationError) {
-	if len(e.Causes) > 0 {
-		for _, cause := range e.Causes {
-			c.leaves(f, cause)
+// leaves returns the innermost causes of a failure. The ones around them
+// only say that something inside failed.
+func leaves(e *jsonschema.ValidationError) []*jsonschema.ValidationError {
+	if len(e.Causes) == 0 {
+		return []*jsonschema.ValidationError{e}
+	}
+	var out []*jsonschema.ValidationError
+	for _, cause := range e.Causes {
+		out = append(out, leaves(cause)...)
+	}
+	return out
+}
+
+// failure is one schema failure, located in the file.
+type failure struct {
+	at   record.Path
+	line int
+	// description is the schema's own words for what's wanted, such as
+	// "a date such as 2026-11-22"; empty when it has none.
+	description string
+	schema      *jsonschema.Schema // the part of the schema that failed; may be nil
+}
+
+func (c *checker) schemaError(f *graph.File, e *jsonschema.ValidationError) {
+	fl := failure{at: record.Path(e.InstanceLocation)}
+	fl.line = f.Record.Line(fl.at)
+	if f.Rejected(fl.line) {
+		return // the reader has already reported this value
+	}
+	if fl.schema = c.reg.SubschemaAt(e.SchemaURL); fl.schema != nil {
+		fl.description = fl.schema.Description
+	}
+	if k, ok := e.ErrorKind.(*kind.AdditionalProperties); ok {
+		for _, name := range k.Properties {
+			c.ds.Errorf(f.Path, f.Record.Line(fl.at.Field(name)), "%s", unknownField(fl, name))
 		}
 		return
 	}
-	loc := e.InstanceLocation
-	line := f.Record.Line(loc...)
-	if f.Bad[line] {
-		return // the value the reader rejected
-	}
-	at := fieldPath(loc)
-	in := "" // where a missing or unknown field is, when it's inside an entry
-	if at != "" {
-		in = fmt.Sprintf(" in `%s`", at)
-	}
-	var description string
-	sub := c.reg.SubschemaAt(e.SchemaURL)
-	if sub != nil {
-		description = sub.Description
-	}
+	c.ds.Errorf(f.Path, fl.line, "%s", explain(fl, e.ErrorKind))
+}
 
-	switch k := e.ErrorKind.(type) {
+// unknownField explains a field the schema doesn't have.
+func unknownField(fl failure, name string) string {
+	topLevel := len(fl.at) == 0
+	if topLevel && name == "type" {
+		return "unknown field `type`; the type comes from the ID's prefix, so remove it"
+	}
+	var known []string
+	if fl.schema != nil {
+		known = slices.Sorted(maps.Keys(fl.schema.Properties))
+	}
+	where := ""
+	if !topLevel {
+		where = fmt.Sprintf(" in `%s`", fl.at)
+	}
+	hint := suggest.Hint(suggest.Near(name, known))
+	switch {
+	case hint != "":
+	case topLevel:
+		hint = "; fields the schema doesn't know go under `extra`"
+	default:
+		hint = "; known fields are " + strings.Join(known, ", ")
+	}
+	return fmt.Sprintf("unknown field `%s`%s%s", name, where, hint)
+}
+
+// explain explains every other kind of failure.
+func explain(fl failure, k jsonschema.ErrorKind) string {
+	switch k := k.(type) {
 	case *kind.Required:
-		names := make([]string, len(k.Missing))
-		for i, name := range k.Missing {
-			names[i] = "`" + name + "`"
-		}
-		verb := "is"
-		if len(names) > 1 {
-			verb = "are"
-		}
-		c.ds.Errorf(f.Path, line, "%s %s missing%s", list(names), verb, in)
-	case *kind.AdditionalProperties:
-		var known []string
-		if sub != nil {
-			known = slices.Sorted(maps.Keys(sub.Properties))
-		}
-		for _, name := range k.Properties {
-			line := f.Record.Line(append(slices.Clone(loc), name)...)
-			if at == "" && name == "type" {
-				c.ds.Errorf(f.Path, line, "unknown field `type`; the type comes from the ID's prefix, so remove it")
-				continue
-			}
-			hint := suggest.Hint(suggest.Near(name, known))
-			if hint == "" && at == "" {
-				hint = "; fields the schema doesn't know go under `extra`"
-			} else if hint == "" {
-				hint = "; known fields are " + strings.Join(known, ", ")
-			}
-			c.ds.Errorf(f.Path, line, "unknown field `%s`%s%s", name, in, hint)
-		}
+		return missing(fl, k.Missing)
 	case *kind.Enum:
-		var want []string
-		for _, w := range k.Want {
-			want = append(want, fmt.Sprint(w))
-		}
-		msg := fmt.Sprintf("`%s` must be one of %s", at, strings.Join(want, ", "))
-		if k.Got == nil {
-			msg = fmt.Sprintf("`%s` is empty; it must be one of %s", at, strings.Join(want, ", "))
-		} else if got, ok := k.Got.(string); ok {
-			msg = fmt.Sprintf("`%s` is `%s`; it must be one of %s", at, got, strings.Join(want, ", "))
-			msg += suggest.Hint(suggest.Near(got, want))
-		}
-		c.ds.Errorf(f.Path, line, "%s", msg)
+		return notAllowed(fl, k)
 	case *kind.Type:
-		want := description
-		if want == "" {
-			var names []string
-			for _, w := range k.Want {
-				names = append(names, typeNames[w])
-			}
-			want = strings.Join(names, " or ")
-		}
-		switch k.Got {
-		case "null":
-			c.ds.Errorf(f.Path, line, "`%s` is empty; it must be %s", at, want)
-		case "number", "boolean":
-			hint := ""
-			if slices.Contains(k.Want, "string") {
-				hint = "; put it in quotes if it's meant as text"
-			}
-			c.ds.Errorf(f.Path, line, "`%s` is a %s; it must be %s%s", at, k.Got, want, hint)
-		default:
-			got := typeNames[k.Got]
-			c.ds.Errorf(f.Path, line, "`%s` is %s; it must be %s", at, got, want)
-		}
+		return wrongType(fl, k)
 	case *kind.Format:
-		c.ds.Errorf(f.Path, line, "`%s` is %q, but %v", at, k.Got, k.Err)
+		return fmt.Sprintf("`%s` is %q, but %v", fl.at, k.Got, k.Err)
 	case *kind.Pattern:
 		switch {
 		case k.Got == "":
-			c.ds.Errorf(f.Path, line, "`%s` is empty; it must be %s", at, description)
-		case description != "":
-			c.ds.Errorf(f.Path, line, "`%s` is %q; it must be %s", at, k.Got, description)
+			return fmt.Sprintf("`%s` is empty; it must be %s", fl.at, fl.description)
+		case fl.description != "":
+			return fmt.Sprintf("`%s` is %q; it must be %s", fl.at, k.Got, fl.description)
 		default:
-			c.ds.Errorf(f.Path, line, "`%s` is %q, which doesn't match %s", at, k.Got, k.Want)
+			return fmt.Sprintf("`%s` is %q, which doesn't match %s", fl.at, k.Got, k.Want)
 		}
+	}
+	// Kinds the schemas don't use today get the library's own words.
+	if len(fl.at) == 0 {
+		return k.LocalizedString(printer)
+	}
+	return fmt.Sprintf("`%s`: %s", fl.at, k.LocalizedString(printer))
+}
+
+var printer = message.NewPrinter(language.English)
+
+func missing(fl failure, names []string) string {
+	quoted := make([]string, len(names))
+	for i, name := range names {
+		quoted[i] = "`" + name + "`"
+	}
+	verb := "is"
+	if len(names) > 1 {
+		verb = "are"
+	}
+	where := ""
+	if len(fl.at) > 0 {
+		where = fmt.Sprintf(" in `%s`", fl.at)
+	}
+	return fmt.Sprintf("%s %s missing%s", andList(quoted), verb, where)
+}
+
+func notAllowed(fl failure, k *kind.Enum) string {
+	var want []string
+	for _, w := range k.Want {
+		want = append(want, fmt.Sprint(w))
+	}
+	allowed := strings.Join(want, ", ")
+	switch got := k.Got.(type) {
+	case nil:
+		return fmt.Sprintf("`%s` is empty; it must be one of %s", fl.at, allowed)
+	case string:
+		return fmt.Sprintf("`%s` is `%s`; it must be one of %s%s", fl.at, got, allowed, suggest.Hint(suggest.Near(got, want)))
 	default:
-		where := ""
-		if at != "" {
-			where = fmt.Sprintf("`%s`: ", at)
-		}
-		c.ds.Errorf(f.Path, line, "%s%s", where, e.ErrorKind.LocalizedString(printer))
+		return fmt.Sprintf("`%s` must be one of %s", fl.at, allowed)
 	}
 }
 
+func wrongType(fl failure, k *kind.Type) string {
+	want := fl.description
+	if want == "" {
+		var names []string
+		for _, w := range k.Want {
+			names = append(names, typeNames[w])
+		}
+		want = strings.Join(names, " or ")
+	}
+	switch k.Got {
+	case "null":
+		return fmt.Sprintf("`%s` is empty; it must be %s", fl.at, want)
+	case "number", "boolean":
+		hint := ""
+		if slices.Contains(k.Want, "string") {
+			hint = "; put it in quotes if it's meant as text"
+		}
+		return fmt.Sprintf("`%s` is a %s; it must be %s%s", fl.at, k.Got, want, hint)
+	default:
+		return fmt.Sprintf("`%s` is %s; it must be %s", fl.at, typeNames[k.Got], want)
+	}
+}
+
+// typeNames are JSON's type names in plain words.
 var typeNames = map[string]string{
 	"array": "a list", "object": "a map", "string": "text", "integer": "a whole number",
 	"number": "a number", "boolean": "true or false", "null": "empty",
 }
 
-// list joins names as "a, b and c".
-func list(names []string) string {
+// andList joins names as "a, b and c".
+func andList(names []string) string {
 	if len(names) < 2 {
 		return strings.Join(names, "")
 	}
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
-}
-
-// fieldPath writes a location as support[0].direction.
-func fieldPath(loc []string) string {
-	var b strings.Builder
-	for _, p := range loc {
-		if _, err := strconv.Atoi(p); err == nil {
-			fmt.Fprintf(&b, "[%s]", p)
-			continue
-		}
-		if b.Len() > 0 {
-			b.WriteByte('.')
-		}
-		b.WriteString(p)
-	}
-	return b.String()
 }

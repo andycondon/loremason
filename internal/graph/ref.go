@@ -22,16 +22,18 @@ type Ref struct {
 
 var revRE = regexp.MustCompile(`^r[1-9][0-9]{0,8}$`)
 
-// ParseRef reads a reference.
+// ParseRef reads a reference. The schemas' `ref` pattern accepts exactly the
+// same text, so a link the schema check passes always parses.
 func ParseRef(s string) (Ref, error) {
-	if s == "" || strings.ContainsFunc(s, isSpace) {
+	if s == "" || strings.ContainsAny(s, " \t\n\f\r") {
 		return Ref{}, errors.New("a reference can't be empty or contain spaces")
 	}
-	name, rev, found := cutLast(s, "@")
-	if !found {
+	i := strings.LastIndexByte(s, '@')
+	if i < 0 {
 		return Ref{Name: s}, nil
 	}
-	if name == "" || !revRE.MatchString(rev) {
+	name, rev := s[:i], s[i+1:]
+	if name == "" || strings.Contains(name, "@") || !revRE.MatchString(rev) {
 		return Ref{}, fmt.Errorf("`%s` isn't a reference: a revision goes last and counts from 1, as in bel_7k3m9q@r2 or bel_7k3m9q/s1@r2", s)
 	}
 	n, _ := strconv.Atoi(rev[1:])
@@ -44,12 +46,3 @@ func (r Ref) String() string {
 	}
 	return fmt.Sprintf("%s@r%d", r.Name, r.Rev)
 }
-
-func cutLast(s, sep string) (before, after string, found bool) {
-	if i := strings.LastIndex(s, sep); i >= 0 {
-		return s[:i], s[i+len(sep):], true
-	}
-	return s, "", false
-}
-
-func isSpace(r rune) bool { return r == ' ' || r == '\t' || r == '\r' || r == '\n' }

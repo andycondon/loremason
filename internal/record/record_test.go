@@ -18,10 +18,10 @@ func TestParse(t *testing.T) {
 		if want := strings.ReplaceAll("\nBody\n---\nmore\n", "\n", eol); r.Body != want {
 			t.Errorf("body is %q", r.Body)
 		}
-		if got := r.Line("support", "1", "rev"); got != 7 {
+		if got := r.Line(Path{"support", "1", "rev"}); got != 7 {
 			t.Errorf("rev is on line %d", got)
 		}
-		if got := r.Line("support", "1", "nope"); got != 6 {
+		if got := r.Line(Path{"support", "1", "nope"}); got != 6 {
 			t.Errorf("a missing field points at line %d", got)
 		}
 	}
@@ -43,5 +43,30 @@ func TestParseErrors(t *testing.T) {
 		if len(errs) == 0 || !strings.Contains(errs[0].Error(), want) {
 			t.Errorf("%q: got %v, want %q", src, errs, want)
 		}
+	}
+}
+
+func TestFields(t *testing.T) {
+	r, errs := Parse([]byte("---\nid: bel_7k3m9q\nrelies_on: bel_x\nsupport:\n  - {id: s1}\n  - plain\n  - id: s2\n---\n"))
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	h := r.Header
+	if h.Text("id") != "bel_7k3m9q" || h.Text("nope") != "" || h.KeyLine("support") != 4 || h.KeyLine("nope") != 2 {
+		t.Error("field lookups are wrong")
+	}
+	single, _ := h.Get("relies_on")
+	if items := single.Items(); len(items) != 1 || items[0].Path.String() != "relies_on" {
+		t.Errorf("a single value is its own item: %v", items)
+	}
+	entries := h.Entries("support")
+	if len(entries) != 2 || entries[1].Text("id") != "s2" || entries[1].Path.String() != "support[2]" || entries[1].Line() != 7 {
+		t.Errorf("entries: %+v", entries)
+	}
+	if (Map{}).Text("id") != "" || len((Map{}).Entries("support")) != 0 {
+		t.Error("the zero Map isn't empty")
+	}
+	if got := (Path{"options", "0", "for", "1"}).String(); got != "options[0].for[1]" {
+		t.Errorf("path prints as %s", got)
 	}
 }

@@ -16,8 +16,8 @@ import (
 
 // Record is one parsed file.
 type Record struct {
-	Header *yaml.Node     // the header mapping; line numbers are the file's own
-	Data   map[string]any // the header as plain values, for the JSON Schema check
+	Header Map            // the header's fields; line numbers are the file's own
+	Data   map[string]any // the same fields as plain values, for the JSON Schema check
 	Body   string
 }
 
@@ -68,9 +68,9 @@ func Parse(data []byte) (*Record, []*Error) {
 	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
 		return fail(1, "the header must be a list of `field: value` lines")
 	}
-	r := &Record{Header: doc.Content[0], Body: string(body)}
+	r := &Record{Header: Map{node: doc.Content[0]}, Body: string(body)}
 	var c converter
-	r.Data, _ = c.value(r.Header).(map[string]any)
+	r.Data, _ = c.value(doc.Content[0]).(map[string]any)
 	return r, c.errs
 }
 
@@ -153,22 +153,19 @@ func (c *converter) value(n *yaml.Node) any {
 	return nil
 }
 
-// Line finds the line of the value at a path of field names and list indexes,
-// or the nearest enclosing line the header has.
-func (r *Record) Line(path ...string) int {
-	n, line := r.Header, 1
-	for _, p := range path {
-		next := (*yaml.Node)(nil)
+// Line finds the line of the value at a path, or of the nearest thing
+// around it that's there. A field's line is the line its name is on.
+func (r *Record) Line(p Path) int {
+	n, line := r.Header.node, 1
+	for _, part := range p {
+		var next *yaml.Node
 		switch n.Kind {
 		case yaml.MappingNode:
-			for i := 0; i+1 < len(n.Content); i += 2 {
-				if n.Content[i].Value == p {
-					next, line = n.Content[i+1], n.Content[i].Line
-					break
-				}
+			if key, value := (Map{node: n}).find(part); key != nil {
+				next, line = value, key.Line
 			}
 		case yaml.SequenceNode:
-			if i, err := strconv.Atoi(p); err == nil && i >= 0 && i < len(n.Content) {
+			if i, err := strconv.Atoi(part); err == nil && i >= 0 && i < len(n.Content) {
 				next, line = n.Content[i], n.Content[i].Line
 			}
 		}
@@ -178,25 +175,4 @@ func (r *Record) Line(path ...string) int {
 		n = next
 	}
 	return line
-}
-
-// Get returns the key and value nodes of a field in a mapping node, or nils.
-func Get(m *yaml.Node, field string) (key, value *yaml.Node) {
-	if m == nil || m.Kind != yaml.MappingNode {
-		return nil, nil
-	}
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == field {
-			return m.Content[i], m.Content[i+1]
-		}
-	}
-	return nil, nil
-}
-
-// Text returns a field's value when it's plain text, or "".
-func Text(m *yaml.Node, field string) string {
-	if _, v := Get(m, field); v != nil && v.Kind == yaml.ScalarNode && v.Tag == "!!str" {
-		return v.Value
-	}
-	return ""
 }

@@ -1,4 +1,4 @@
-graph/evidence/ev_p4n2xa.md:5: error: `about[0]`: `bel_7k3m9q@r0` isn't a reference: a revision goes last and counts from 1, as in bel_7k3m9q@r2 or bel_7k3m9q/s1@r2
-graph/evidence/ev_p4n2xa.md:5: error: `about[5]`: `bel_7k3m9q@r1/s1` isn't a reference: a revision goes last and counts from 1, as in bel_7k3m9q@r2 or bel_7k3m9q/s1@r2
+graph/evidence/ev_p4n2xa.md:5: error: `about[0]` is "bel_7k3m9q@r0"; it must be an ID such as bel_7k3m9q or bel_7k3m9q@r2, or a pinned link {to, rev, fp}
+graph/evidence/ev_p4n2xa.md:5: error: `about[5]` is "bel_7k3m9q@r1/s1"; it must be an ID such as bel_7k3m9q or bel_7k3m9q@r2, or a pinned link {to, rev, fp}
 2 records: 2 errors, 0 warnings
 exit 1
