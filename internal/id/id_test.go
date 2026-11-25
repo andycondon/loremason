@@ -23,16 +23,3 @@ func TestPrefix(t *testing.T) {
 		}
 	}
 }
-
-func TestTrimRevision(t *testing.T) {
-	for in, want := range map[string]string{
-		"plan_k2x8wd@r2":  "plan_k2x8wd",
-		"plan_k2x8wd@r10": "plan_k2x8wd",
-		"plan_k2x8wd@r0":  "plan_k2x8wd@r0",
-		"plan_k2x8wd":     "plan_k2x8wd",
-	} {
-		if got := TrimRevision(in); got != want {
-			t.Errorf("TrimRevision(%q) = %q, want %q", in, got, want)
-		}
-	}
-}

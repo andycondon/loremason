@@ -44,3 +44,11 @@ func distance(a, b string) int {
 	}
 	return d[len(ra)][len(rb)]
 }
+
+// Hint ends a message with a suggestion, or with nothing when there is none.
+func Hint(s string) string {
+	if s == "" {
+		return ""
+	}
+	return "; did you mean `" + s + "`?"
+}

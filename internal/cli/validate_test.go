@@ -53,7 +53,7 @@ func TestValidateFixtures(t *testing.T) {
 
 func TestWorkedExampleIsValid(t *testing.T) {
 	useVersion(t, "test")
-	t.Setenv("LOREMASON_WORKSPACE", "testdata/worked-example")
+	t.Setenv("LOREMASON_WORKSPACE", "../../testdata/worked-example")
 	code, out, errOut := run("validate")
 	if code != 0 || errOut != "" || !strings.HasSuffix(out, " records: 0 errors, 0 warnings\n") || strings.Count(out, "\n") != 1 {
 		t.Fatalf("exit %d\n%s%s", code, out, errOut)
@@ -63,7 +63,7 @@ func TestWorkedExampleIsValid(t *testing.T) {
 func TestValidateFindsTheWorkspaceFromInside(t *testing.T) {
 	useVersion(t, "test")
 	t.Setenv("LOREMASON_WORKSPACE", "")
-	t.Chdir("testdata/worked-example/graph/belief")
+	t.Chdir("../../testdata/worked-example/graph/belief")
 	if code, out, _ := run("validate"); code != 0 || !strings.Contains(out, "0 errors") {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
@@ -71,7 +71,7 @@ func TestValidateFindsTheWorkspaceFromInside(t *testing.T) {
 
 func TestVersionMismatchWarns(t *testing.T) {
 	useVersion(t, "other")
-	t.Setenv("LOREMASON_WORKSPACE", "testdata/worked-example")
+	t.Setenv("LOREMASON_WORKSPACE", "../../testdata/worked-example")
 	code, _, errOut := run("validate")
 	if code != 0 || !strings.Contains(errOut, "this is mason other, but the workspace uses test") {
 		t.Fatalf("exit %d, stderr %q", code, errOut)
@@ -99,7 +99,7 @@ func TestUnreadableFileIsReportedAndTheRestChecked(t *testing.T) {
 	}
 	useVersion(t, "test")
 	root := t.TempDir()
-	copyDir(t, "testdata/worked-example", root)
+	copyDir(t, "../../testdata/worked-example", root)
 	locked := filepath.Join(root, "graph", "belief", "bel_7k3m9q.md")
 	os.Chmod(locked, 0)
 	t.Cleanup(func() { os.Chmod(locked, 0o644) })
@@ -113,7 +113,7 @@ func TestUnreadableFileIsReportedAndTheRestChecked(t *testing.T) {
 func TestSymlinksAreFollowed(t *testing.T) {
 	useVersion(t, "test")
 	elsewhere, root := t.TempDir(), t.TempDir()
-	copyDir(t, "testdata/worked-example", elsewhere)
+	copyDir(t, "../../testdata/worked-example", elsewhere)
 	os.Mkdir(filepath.Join(root, ".loremason"), 0o755)
 	os.WriteFile(filepath.Join(root, ".loremason", "config.yaml"), []byte("version: test\n"), 0o644)
 	if err := os.Symlink(filepath.Join(elsewhere, "graph"), filepath.Join(root, "graph")); err != nil {

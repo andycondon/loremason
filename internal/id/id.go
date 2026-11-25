@@ -4,16 +4,12 @@ package id
 import (
 	"crypto/rand"
 	"regexp"
-	"strings"
 )
 
 // alphabet is digits and lowercase letters without i, l, o and u.
 const alphabet = "0123456789abcdefghjkmnpqrstvwxyz"
 
-var (
-	idRE  = regexp.MustCompile(`^([a-z]+)_[0-9a-hjkmnp-tv-z]{6}$`)
-	revRE = regexp.MustCompile(`@r[1-9][0-9]*$`)
-)
+var idRE = regexp.MustCompile(`^([a-z]+)_[0-9a-hjkmnp-tv-z]{6}$`)
 
 // New returns a fresh random ID with the given prefix.
 func New(prefix string) string {
@@ -32,18 +28,4 @@ func Prefix(s string) (string, bool) {
 		return "", false
 	}
 	return m[1], true
-}
-
-// TrimRevision removes a revision suffix such as @r2.
-func TrimRevision(s string) string {
-	return s[:len(s)-len(revRE.FindString(s))]
-}
-
-// SplitSub splits bel_7k3m9q/s1 at its last slash. ok is false without one.
-func SplitSub(s string) (parent, local string, ok bool) {
-	i := strings.LastIndexByte(s, '/')
-	if i < 0 {
-		return s, "", false
-	}
-	return s[:i], s[i+1:], true
 }

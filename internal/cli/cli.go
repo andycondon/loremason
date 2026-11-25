@@ -114,10 +114,10 @@ func runValidate(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stderr, err)
 	}
-	for _, p := range res.Problems {
-		fmt.Fprintln(stdout, p)
+	for _, d := range res.Diagnostics {
+		fmt.Fprintln(stdout, d)
 	}
-	errs, warnings := res.Count()
+	errs, warnings := res.Diagnostics.Count()
 	fmt.Fprintf(stdout, "%s: %s, %s\n", plural(res.Records, "record"), plural(errs, "error"), plural(warnings, "warning"))
 	if errs > 0 {
 		return 1

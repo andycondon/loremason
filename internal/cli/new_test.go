@@ -45,7 +45,7 @@ func TestNewRecordsAreValid(t *testing.T) {
 				t.Fatal(err)
 			}
 			r, errs := record.Parse(data)
-			if len(errs) > 0 || r.Fields["title"] != title {
+			if len(errs) > 0 || r.Data["title"] != title {
 				t.Fatalf("%s %q: %v\n%s", name, title, errs, data)
 			}
 		}

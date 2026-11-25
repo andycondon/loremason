@@ -14,24 +14,25 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
+	"github.com/andycondon/loremason/internal/graph"
 	"github.com/andycondon/loremason/internal/suggest"
 )
 
 var printer = message.NewPrinter(language.English)
 
 // shape checks a header against its type's JSON Schema.
-func (c *checker) shape(f *file) {
-	if f.rec.Fields == nil || f.typ != f.folder {
+func (c *checker) shape(f *graph.File) {
+	if f.Record == nil || f.Record.Data == nil || f.Type != f.Folder {
 		return // the reader, or the check of the path, has already said why
 	}
 	var invalid *jsonschema.ValidationError
-	if errors.As(f.typ.Schema.Validate(f.rec.Fields), &invalid) {
+	if errors.As(f.Type.Schema.Validate(f.Record.Data), &invalid) {
 		c.leaves(f, invalid)
 	}
 }
 
 // leaves reports the innermost causes; the outer ones only say "see below".
-func (c *checker) leaves(f *file, e *jsonschema.ValidationError) {
+func (c *checker) leaves(f *graph.File, e *jsonschema.ValidationError) {
 	if len(e.Causes) > 0 {
 		for _, cause := range e.Causes {
 			c.leaves(f, cause)
@@ -39,8 +40,8 @@ func (c *checker) leaves(f *file, e *jsonschema.ValidationError) {
 		return
 	}
 	loc := e.InstanceLocation
-	line := f.rec.Line(loc...)
-	if f.bad[line] {
+	line := f.Record.Line(loc...)
+	if f.Bad[line] {
 		return // the value the reader rejected
 	}
 	at := fieldPath(loc)
@@ -64,25 +65,25 @@ func (c *checker) leaves(f *file, e *jsonschema.ValidationError) {
 		if len(names) > 1 {
 			verb = "are"
 		}
-		c.errorf(f.path, line, "%s %s missing%s", list(names), verb, in)
+		c.ds.Errorf(f.Path, line, "%s %s missing%s", list(names), verb, in)
 	case *kind.AdditionalProperties:
 		var known []string
 		if sub != nil {
 			known = slices.Sorted(maps.Keys(sub.Properties))
 		}
 		for _, name := range k.Properties {
-			line := f.rec.Line(append(slices.Clone(loc), name)...)
+			line := f.Record.Line(append(slices.Clone(loc), name)...)
 			if at == "" && name == "type" {
-				c.errorf(f.path, line, "unknown field `type`; the type comes from the ID's prefix, so remove it")
+				c.ds.Errorf(f.Path, line, "unknown field `type`; the type comes from the ID's prefix, so remove it")
 				continue
 			}
-			hint := didYouMean(suggest.Near(name, known))
+			hint := suggest.Hint(suggest.Near(name, known))
 			if hint == "" && at == "" {
 				hint = "; fields the schema doesn't know go under `extra`"
 			} else if hint == "" {
 				hint = "; known fields are " + strings.Join(known, ", ")
 			}
-			c.errorf(f.path, line, "unknown field `%s`%s%s", name, in, hint)
+			c.ds.Errorf(f.Path, line, "unknown field `%s`%s%s", name, in, hint)
 		}
 	case *kind.Enum:
 		var want []string
@@ -94,9 +95,9 @@ func (c *checker) leaves(f *file, e *jsonschema.ValidationError) {
 			msg = fmt.Sprintf("`%s` is empty; it must be one of %s", at, strings.Join(want, ", "))
 		} else if got, ok := k.Got.(string); ok {
 			msg = fmt.Sprintf("`%s` is `%s`; it must be one of %s", at, got, strings.Join(want, ", "))
-			msg += didYouMean(suggest.Near(got, want))
+			msg += suggest.Hint(suggest.Near(got, want))
 		}
-		c.errorf(f.path, line, "%s", msg)
+		c.ds.Errorf(f.Path, line, "%s", msg)
 	case *kind.Type:
 		want := description
 		if want == "" {
@@ -108,34 +109,34 @@ func (c *checker) leaves(f *file, e *jsonschema.ValidationError) {
 		}
 		switch k.Got {
 		case "null":
-			c.errorf(f.path, line, "`%s` is empty; it must be %s", at, want)
+			c.ds.Errorf(f.Path, line, "`%s` is empty; it must be %s", at, want)
 		case "number", "boolean":
 			hint := ""
 			if slices.Contains(k.Want, "string") {
 				hint = "; put it in quotes if it's meant as text"
 			}
-			c.errorf(f.path, line, "`%s` is a %s; it must be %s%s", at, k.Got, want, hint)
+			c.ds.Errorf(f.Path, line, "`%s` is a %s; it must be %s%s", at, k.Got, want, hint)
 		default:
 			got := typeNames[k.Got]
-			c.errorf(f.path, line, "`%s` is %s; it must be %s", at, got, want)
+			c.ds.Errorf(f.Path, line, "`%s` is %s; it must be %s", at, got, want)
 		}
 	case *kind.Format:
-		c.errorf(f.path, line, "`%s` is %q, but %v", at, k.Got, k.Err)
+		c.ds.Errorf(f.Path, line, "`%s` is %q, but %v", at, k.Got, k.Err)
 	case *kind.Pattern:
 		switch {
 		case k.Got == "":
-			c.errorf(f.path, line, "`%s` is empty; it must be %s", at, description)
+			c.ds.Errorf(f.Path, line, "`%s` is empty; it must be %s", at, description)
 		case description != "":
-			c.errorf(f.path, line, "`%s` is %q; it must be %s", at, k.Got, description)
+			c.ds.Errorf(f.Path, line, "`%s` is %q; it must be %s", at, k.Got, description)
 		default:
-			c.errorf(f.path, line, "`%s` is %q, which doesn't match %s", at, k.Got, k.Want)
+			c.ds.Errorf(f.Path, line, "`%s` is %q, which doesn't match %s", at, k.Got, k.Want)
 		}
 	default:
 		where := ""
 		if at != "" {
 			where = fmt.Sprintf("`%s`: ", at)
 		}
-		c.errorf(f.path, line, "%s%s", where, e.ErrorKind.LocalizedString(printer))
+		c.ds.Errorf(f.Path, line, "%s%s", where, e.ErrorKind.LocalizedString(printer))
 	}
 }
 

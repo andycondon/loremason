@@ -12,8 +12,8 @@ func TestParse(t *testing.T) {
 		if len(errs) > 0 {
 			t.Fatal(errs)
 		}
-		if r.Fields["created"] != "2026-11-22" {
-			t.Errorf("created is %#v", r.Fields["created"])
+		if r.Data["created"] != "2026-11-22" {
+			t.Errorf("created is %#v", r.Data["created"])
 		}
 		if want := strings.ReplaceAll("\nBody\n---\nmore\n", "\n", eol); r.Body != want {
 			t.Errorf("body is %q", r.Body)

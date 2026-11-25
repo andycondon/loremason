@@ -17,7 +17,7 @@ import (
 // Record is one parsed file.
 type Record struct {
 	Header *yaml.Node     // the header mapping; line numbers are the file's own
-	Fields map[string]any // the header as plain JSON-like values
+	Data   map[string]any // the header as plain values, for the JSON Schema check
 	Body   string
 }
 
@@ -70,7 +70,7 @@ func Parse(data []byte) (*Record, []*Error) {
 	}
 	r := &Record{Header: doc.Content[0], Body: string(body)}
 	var c converter
-	r.Fields, _ = c.value(r.Header).(map[string]any)
+	r.Data, _ = c.value(r.Header).(map[string]any)
 	return r, c.errs
 }
 
@@ -178,4 +178,25 @@ func (r *Record) Line(path ...string) int {
 		n = next
 	}
 	return line
+}
+
+// Get returns the key and value nodes of a field in a mapping node, or nils.
+func Get(m *yaml.Node, field string) (key, value *yaml.Node) {
+	if m == nil || m.Kind != yaml.MappingNode {
+		return nil, nil
+	}
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == field {
+			return m.Content[i], m.Content[i+1]
+		}
+	}
+	return nil, nil
+}
+
+// Text returns a field's value when it's plain text, or "".
+func Text(m *yaml.Node, field string) string {
+	if _, v := Get(m, field); v != nil && v.Kind == yaml.ScalarNode && v.Tag == "!!str" {
+		return v.Value
+	}
+	return ""
 }
