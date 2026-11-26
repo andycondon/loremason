@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andycondon/loremason/schema/actor.json",
+  "title": "actor",
+  "description": "A person, organization or software agent.",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "created",
+    "kind"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "title": {
+      "$ref": "common.json#/$defs/line"
+    },
+    "kind": {
+      "enum": [
+        "person",
+        "organization",
+        "software_agent"
+      ]
+    },
+    "acts_for": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "interested_in": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "mentions": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "created": {
+      "$ref": "common.json#/$defs/date"
+    },
+    "aliases": {
+      "$ref": "common.json#/$defs/aliases"
+    },
+    "extra": {
+      "$ref": "common.json#/$defs/extra"
+    }
+  },
+  "additionalProperties": false
+}

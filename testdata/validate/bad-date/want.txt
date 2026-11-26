@@ -1,0 +1,4 @@
+graph/activity/actv_000001.md:4: error: `started_at` is "2026-02-30T10:00:00Z", but there's no such day
+graph/activity/actv_000001.md:6: error: `created` is "2026-04-31", but there's no such day
+1 record: 2 errors, 0 warnings
+exit 1

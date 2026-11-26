@@ -1,0 +1,4 @@
+graph/belief/bel_7k3m9q.md:1: error: `title`, `created`, `claim`, `status` and `asserted_by` are missing
+graph/belief/bel_7k3m9q.md:4: error: `evidence` and `direction` are missing in `support[0]`
+1 record: 2 errors, 0 warnings
+exit 1

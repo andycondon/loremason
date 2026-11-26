@@ -1,0 +1,5 @@
+graph/belief/bel_7k3m9r.md:2: error: the id `bel_7k3m9q` doesn't match the filename `bel_7k3m9r.md`
+graph/belief/bel_abc.md:1: error: the filename must be an ID such as bel_7k3m9q.md
+graph/belief/bel_abc.md:2: error: `id` is "bel_abc"; it must be an ID: a type prefix, an underscore and six characters, such as bel_7k3m9q
+2 records: 3 errors, 0 warnings
+exit 1

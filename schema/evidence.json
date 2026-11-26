@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andycondon/loremason/schema/evidence.json",
+  "title": "evidence",
+  "description": "A verbatim quote or observation, held in the body. Never edited.",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "created",
+    "observed_at"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "title": {
+      "$ref": "common.json#/$defs/line"
+    },
+    "observed_at": {
+      "$ref": "common.json#/$defs/time"
+    },
+    "from": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "generated_by": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "about": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "undermines": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "undercuts": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "mentions": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "created": {
+      "$ref": "common.json#/$defs/date"
+    },
+    "aliases": {
+      "$ref": "common.json#/$defs/aliases"
+    },
+    "extra": {
+      "$ref": "common.json#/$defs/extra"
+    }
+  },
+  "additionalProperties": false
+}

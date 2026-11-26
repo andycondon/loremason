@@ -1,0 +1,18 @@
+graph/initiative/ini_2m8vqe.md:4: error: `slug` is "Search Redesign"; it must be a kebab-case name such as search-redesign
+graph/initiative/ini_2m8vqe.md:6: error: `involves[0]` is text; it must be a map with to, role
+graph/initiative/ini_2m8vqe.md:6: error: `involves[0]` points at `who_4d9snc`, which doesn't exist
+graph/task/task_9w4hzd.md:3: error: `title` is a number; it must be one line of text; put it in quotes if it's meant as text
+graph/task/task_9w4hzd.md:4: error: `status` is empty; it must be one of proposed, leaning, accepted, rejected, deprecated, superseded
+graph/task/task_9w4hzd.md:5: error: `part_of[0]` is a number; it must be an ID such as bel_7k3m9q or bel_7k3m9q@r2, or a pinned link {to, rev, fp}; put it in quotes if it's meant as text
+graph/task/task_9w4hzd.md:5: error: `to`, `rev` and `fp` are missing in `part_of[1]`
+graph/task/task_9w4hzd.md:5: error: unknown field `a` in `part_of[1]`; known fields are fp, rev, to, via
+graph/task/task_9w4hzd.md:7: error: `relies_on[0].fp` is "3a9c"; it must be a fingerprint such as "fp1:3a9c0e1b77d2"
+graph/task/task_9w4hzd.md:7: error: `relies_on[0].rev` is text; it must be a whole number
+graph/task/task_9w4hzd.md:7: error: `relies_on[0].to` points at `task_9w4hzd`, which is of type task; it must point at belief
+graph/task/task_9w4hzd.md:8: error: `implements` is empty; it must be an ID such as bel_7k3m9q or bel_7k3m9q@r2, or a pinned link {to, rev, fp}, or a list of these
+graph/task/task_9w4hzd.md:9: error: `derived_from` is "two words"; it must be an ID such as bel_7k3m9q or bel_7k3m9q@r2, or a pinned link {to, rev, fp}, or a list of these
+graph/task/task_9w4hzd.md:10: error: `created` is "22 Nov 2026"; it must be a date such as 2026-11-22
+graph/task/task_9w4hzd.md:11: error: `aliases` is text; it must be a list of other names for this record
+graph/task/task_9w4hzd.md:12: error: `extra` is text; it must be a map of unchecked fields
+2 records: 16 errors, 0 warnings
+exit 1

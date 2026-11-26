@@ -34,10 +34,27 @@ mason --version
 
 `go install` puts `mason` in `$(go env GOPATH)/bin` (usually `~/go/bin`), which needs to be on your `PATH`.
 
+## Use
+
+A workspace is any folder with a `.loremason/config.yaml` naming the loremason version it uses:
+
+```sh
+mkdir .loremason && echo "version: 0.0.1" > .loremason/config.yaml
+mason new belief --title "validate doesn't handle non-UTF-8 input"   # prints graph/belief/bel_….md
+mason validate                                                      # checks every record; exits 1 on errors
+```
+
+`mason` finds the workspace by walking up from the current folder, the way git finds `.git`. Set `LOREMASON_WORKSPACE` to point it at another. It stops at the first `.loremason/` it finds, so a marker without a `config.yaml` is an error rather than skipped.
+
+Each record type's fields are defined by a JSON Schema in [`schema/`](schema/), and [`schema/types.yaml`](schema/types.yaml) holds what JSON Schema can't say: ID prefixes, which edges point where, and which fields make up a record's meaning.
+
 ## Development
+
+See [docs/development.md](docs/development.md) for how the code is organised and the principles it follows.
 
 ```sh
 go test ./...                # run the tests
+go test ./cmd/mason -update  # rewrite the expected output of the validate fixtures
 go run ./cmd/mason --version # run without installing
 go install ./cmd/mason       # install from a clone
 ```

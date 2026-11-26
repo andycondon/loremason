@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/andycondon/loremason/schema/artifact.json",
+  "title": "artifact",
+  "description": "Something made outside the graph: a document, code, a conversation, an issue.",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "created",
+    "kind"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "title": {
+      "$ref": "common.json#/$defs/line"
+    },
+    "kind": {
+      "enum": [
+        "document",
+        "code",
+        "conversation",
+        "issue"
+      ]
+    },
+    "url": {
+      "type": "string"
+    },
+    "commit": {
+      "$ref": "common.json#/$defs/commit"
+    },
+    "attributed_to": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "mentions": {
+      "$ref": "common.json#/$defs/links"
+    },
+    "created": {
+      "$ref": "common.json#/$defs/date"
+    },
+    "aliases": {
+      "$ref": "common.json#/$defs/aliases"
+    },
+    "extra": {
+      "$ref": "common.json#/$defs/extra"
+    }
+  },
+  "additionalProperties": false
+}
