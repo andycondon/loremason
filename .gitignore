@@ -1,0 +1,4 @@
+/mason
+/dist/
+*.test
+*.out
