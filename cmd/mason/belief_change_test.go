@@ -10,10 +10,11 @@ import (
 	"github.com/andycondon/loremason/internal/registry"
 )
 
-// The worked example in docs/context-graph/03-implementation.md, section 9:
-// a belief changes, and only what's built on it is re-checked.
+// A belief changes, and only what's built on it is re-checked. This is the
+// worked example in docs/context-graph/03-implementation.md ("Worked
+// example: a belief changes"), one test per outcome.
 
-const section9Plan = `---
+const beliefChangePlan = `---
 id: plan_k2x8wd
 title: Plan for reporting unreadable files
 status: accepted
@@ -24,21 +25,21 @@ created: 2026-11-22
 Catch the error where it happens, then report it, then test it.
 `
 
-func section9Step(id, title string) string {
+func beliefChangeStep(id, title string) string {
 	return "---\nid: " + id + "\ntitle: " + title + "\npart_of: plan_k2x8wd\ncreated: 2026-11-22\n---\n\nChange the read call; check with one test.\n"
 }
 
-// section9Before is step 1: a task relies on the belief, a plan is derived
+// beliefChangeBefore is step 1: a task relies on the belief, a plan is derived
 // from the task, and its three steps are part of the plan, all pinned.
-func section9Before(t *testing.T) string {
+func beliefChangeBefore(t *testing.T) string {
 	t.Helper()
 	root := newWorkspace(t, map[string]string{
 		"belief/bel_7k3m9q.md": beliefRecord,
 		"task/task_9w4hzd.md":  taskRecord,
-		"plan/plan_k2x8wd.md":  section9Plan,
-		"step/step_2c7rq1.md":  section9Step("step_2c7rq1", "Catch the decode error"),
-		"step/step_8v0ynf.md":  section9Step("step_8v0ynf", "Report the file"),
-		"step/step_d3m6hk.md":  section9Step("step_d3m6hk", "Add a fixture per encoding"),
+		"plan/plan_k2x8wd.md":  beliefChangePlan,
+		"step/step_2c7rq1.md":  beliefChangeStep("step_2c7rq1", "Catch the decode error"),
+		"step/step_8v0ynf.md":  beliefChangeStep("step_8v0ynf", "Report the file"),
+		"step/step_d3m6hk.md":  beliefChangeStep("step_d3m6hk", "Add a fixture per encoding"),
 	})
 	must(t, "sync")
 	if stale := staleLinks(t, root); len(stale) != 0 {
@@ -47,11 +48,11 @@ func section9Before(t *testing.T) string {
 	return root
 }
 
-// section9Revised is steps 2 and 3: the claim narrows to Latin-1, as a
+// beliefChangeRevised is steps 2 and 3: the claim narrows to Latin-1, as a
 // breaking revision, and only the task's link goes stale.
-func section9Revised(t *testing.T) string {
+func beliefChangeRevised(t *testing.T) string {
 	t.Helper()
-	root := section9Before(t)
+	root := beliefChangeBefore(t)
 	must(t, "revise", "bel_7k3m9q", "--breaking")
 	edit(t, root, "belief/bel_7k3m9q.md", "claim: validate doesn't handle non-UTF-8 input", "claim: validate doesn't handle Latin-1 input")
 	must(t, "sync")
@@ -64,8 +65,8 @@ func section9Revised(t *testing.T) string {
 	return root
 }
 
-func TestSection9ReCheckStopsEarly(t *testing.T) {
-	root := section9Revised(t)
+func TestBeliefChangeStopsAtTheTaskThatStillHolds(t *testing.T) {
+	root := beliefChangeRevised(t)
 	planBefore := read(t, root, "plan/plan_k2x8wd.md")
 
 	// Step 4: an agent re-reads the task, finds it still holds, writes
@@ -110,8 +111,8 @@ func TestSection9ReCheckStopsEarly(t *testing.T) {
 	}
 }
 
-func TestSection9HadItGoneTheOtherWay(t *testing.T) {
-	root := section9Revised(t)
+func TestBeliefChangeReachesThePlanWhenTheTaskChanges(t *testing.T) {
+	root := beliefChangeRevised(t)
 
 	// Step 5: the task's approach named UTF-16 detection, so the task gets a
 	// breaking revision. Now the plan's link is stale, and nothing below it.
@@ -124,8 +125,8 @@ func TestSection9HadItGoneTheOtherWay(t *testing.T) {
 	}
 }
 
-func TestSection9CosmeticChange(t *testing.T) {
-	root := section9Before(t)
+func TestCosmeticEditChangesNothing(t *testing.T) {
+	root := beliefChangeBefore(t)
 
 	// Step 6: only the belief's reasoning is re-wrapped. Its meaning fields
 	// don't change, so neither does its fingerprint.
