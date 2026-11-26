@@ -62,6 +62,24 @@ When a rule is also stated in a schema, a test keeps the two in agreement, as `T
 
 Run `go vet ./... && go test -race ./...` before committing. CI runs the same, plus `gofmt`.
 
-## Before building a milestone
+## Doc comments
 
-Write down its code model first: the new types, which package they live in, and the methods callers will use. Get that reviewed, then write the code. Acceptance criteria that only describe output can be met by code with no model at all.
+A comment is checked like code: it must be true of the code as it is now.
+
+- **Say what it's for, or how it differs from its neighbours.** `Node`, `Lookup` and `Resolve` all return a node; their comments say which takes an ID, which parses text and returns an error, and which takes a parsed reference and returns nil.
+- **Describe today's code.** Plans belong in the task, not in a comment. Re-read the comments of anything that moved or changed meaning, after every restructure.
+- **Name what callers need** when it isn't obvious: what a flag means, which exit code, when it panics.
+- **One home per rule.** Explain a rule where it's implemented; elsewhere, point there.
+- **Fields that mirror a config file** each get one line, worded like the config's key.
+- **Go's form:** start with the name and a verb ("Lookup returns…", "Sealed reports whether…"). Package comments state the design and point to the section of the design doc they implement.
+- **No padding.** Small unexported helpers whose name says it all, and `String` and `Error` methods, can go without.
+
+## Building a milestone
+
+Each milestone, or each task within one, goes through the same steps:
+
+1. **Code model first.** Write down the new types, the package each lives in, and the methods callers will use. A person reviews it before any code is written. Acceptance criteria that only describe output can be met by code with no model at all.
+2. **Say where each criterion is proven.** Each acceptance criterion names the package whose tests prove it. A command criterion is only for wiring.
+3. **Build** against the model. Report any departure from it, and why.
+4. **Review** by someone who didn't write it, on four concerns: correctness, design (the principles above), tests (each rule proven in its own package) and doc comments.
+5. **Comment pass.** After the review's fixes, re-read every comment on code that changed.
