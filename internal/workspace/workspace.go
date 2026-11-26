@@ -54,9 +54,6 @@ func Find(dir, override string) (*Workspace, error) {
 	}
 }
 
-// Graph is the folder that holds every record.
-func (w *Workspace) Graph() string { return filepath.Join(w.Root, "graph") }
-
 func isMarked(dir string) bool {
 	info, err := os.Stat(filepath.Join(dir, marker))
 	return err == nil && info.IsDir()

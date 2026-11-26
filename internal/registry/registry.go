@@ -14,6 +14,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 
+	"github.com/andycondon/loremason/internal/id"
 	"github.com/andycondon/loremason/schema"
 )
 
@@ -64,6 +65,28 @@ type Subrecord struct {
 
 // Folder is the folder under graph/ that holds the type's records.
 func (t *Type) Folder() string { return strings.ReplaceAll(t.Name, "_", "-") }
+
+// Validate checks a record's fields, as plain values, against the type's schema.
+func (t *Type) Validate(fields map[string]any) error { return t.Schema.Validate(fields) }
+
+// Lookup returns a type by its name or its folder's name, so design_doc and
+// design-doc both work; nil when there's none.
+func (r *Registry) Lookup(name string) *Type {
+	if t := r.Types[name]; t != nil {
+		return t
+	}
+	return r.byFolder[name]
+}
+
+// TypeOfID returns the type an ID's prefix names, or nil when the text isn't
+// an ID or no type has its prefix.
+func (r *Registry) TypeOfID(s string) *Type {
+	prefix, ok := id.Prefix(s)
+	if !ok {
+		return nil
+	}
+	return r.byPrefix[prefix]
+}
 
 // ByPrefix returns the type with an ID prefix, or nil.
 func (r *Registry) ByPrefix(p string) *Type { return r.byPrefix[p] }

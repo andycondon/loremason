@@ -46,3 +46,17 @@ func (r Ref) String() string {
 	}
 	return fmt.Sprintf("%s@r%d", r.Name, r.Rev)
 }
+
+// SubrecordID is the ID of a sub-record: its record's ID, a slash, and its
+// own id, as in bel_7k3m9q/s1.
+func SubrecordID(record, local string) string { return record + "/" + local }
+
+// splitSubrecord splits a name at its last slash into the record part and
+// the local part. ok is false when there's no slash.
+func splitSubrecord(name string) (record, local string, ok bool) {
+	i := strings.LastIndexByte(name, '/')
+	if i < 0 {
+		return name, "", false
+	}
+	return name[:i], name[i+1:], true
+}

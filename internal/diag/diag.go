@@ -8,10 +8,15 @@ import (
 	"slices"
 )
 
+// Pos is a place in a file.
+type Pos struct {
+	Path string // relative to the workspace, with forward slashes
+	Line int
+}
+
 // Diagnostic is one thing wrong with a file.
 type Diagnostic struct {
-	Path    string // relative to the workspace, with forward slashes
-	Line    int
+	Pos
 	Warning bool
 	Msg     string
 }
@@ -28,13 +33,13 @@ func (d Diagnostic) String() string {
 type List []Diagnostic
 
 // Errorf adds an error.
-func (l *List) Errorf(path string, line int, format string, args ...any) {
-	*l = append(*l, Diagnostic{Path: path, Line: line, Msg: fmt.Sprintf(format, args...)})
+func (l *List) Errorf(at Pos, format string, args ...any) {
+	*l = append(*l, Diagnostic{Pos: at, Msg: fmt.Sprintf(format, args...)})
 }
 
 // Warnf adds a warning.
-func (l *List) Warnf(path string, line int, format string, args ...any) {
-	*l = append(*l, Diagnostic{Path: path, Line: line, Warning: true, Msg: fmt.Sprintf(format, args...)})
+func (l *List) Warnf(at Pos, format string, args ...any) {
+	*l = append(*l, Diagnostic{Pos: at, Warning: true, Msg: fmt.Sprintf(format, args...)})
 }
 
 // Sort orders diagnostics by file, then line, then message, so output is the

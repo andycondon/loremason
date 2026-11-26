@@ -54,26 +54,25 @@ func Run(root string, reg *registry.Registry) (*Result, error) {
 func (c *checker) placement(f *graph.File) {
 	rid := f.Node.ID
 	if prefix, ok := id.Prefix(rid); !ok {
-		c.ds.Errorf(f.Path, 1, "the filename must be an ID such as %s_7k3m9q.md", f.Folder.Prefix)
+		c.ds.Errorf(f.At(1), "the filename must be an ID such as %s_7k3m9q.md", f.Folder.Prefix)
 	} else if t := c.reg.ByPrefix(prefix); t == nil {
-		c.ds.Errorf(f.Path, 1, "no record type has the prefix `%s_`; records in this folder start with `%s_`", prefix, f.Folder.Prefix)
+		c.ds.Errorf(f.At(1), "no record type has the prefix `%s_`; records in this folder start with `%s_`", prefix, f.Folder.Prefix)
 	} else if f.Misplaced() {
-		c.ds.Errorf(f.Path, 1, "`%s_` is the prefix of type %s, so this file belongs in graph/%s/", prefix, t.Name, t.Folder())
+		c.ds.Errorf(f.At(1), "`%s_` is the prefix of type %s, so this file belongs in graph/%s/", prefix, t.Name, t.Folder())
 	}
 	if got := f.Header().Text("id"); got != "" && got != rid {
-		c.ds.Errorf(f.Path, f.Header().KeyLine("id"), "the id `%s` doesn't match the filename `%s.md`", got, rid)
+		c.ds.Errorf(f.At(f.Header().KeyLine("id")), "the id `%s` doesn't match the filename `%s.md`", got, rid)
 	}
 }
 
 // target checks that a link points at something, of a type its edge allows.
 func (c *checker) target(e *graph.Edge) {
-	at := e.From.File.Path
 	n := c.g.Resolve(e.To)
 	switch {
 	case n == nil:
-		c.ds.Errorf(at, e.At.Line, "`%s` points at `%s`, which doesn't exist%s", e.At.Field, e.To, c.missingHint(e.To))
+		c.ds.Errorf(e.At.Pos, "`%s` points at `%s`, which doesn't exist%s", e.At.Field, e.To, c.missingHint(e.To))
 	case !e.Def.Allows(n.Type):
-		c.ds.Errorf(at, e.At.Line, "`%s` points at `%s`, which is of type %s; it must point at %s", e.At.Field, e.To, n.Type, strings.Join(e.Def.To, " or "))
+		c.ds.Errorf(e.At.Pos, "`%s` points at `%s`, which is of type %s; it must point at %s", e.At.Field, e.To, n.Type, strings.Join(e.Def.To, " or "))
 	}
 }
 
@@ -92,18 +91,18 @@ func (c *checker) missingHint(r graph.Ref) string {
 }
 
 // duplicates warns about a record that looks like the same thing as an
-// earlier one, by its type's identity fields.
+// earlier one.
 func (c *checker) duplicates() {
 	first := map[string]*graph.File{}
 	for _, f := range c.g.Files {
-		key, ok := f.Identity()
+		id, ok := f.Identity()
 		if !ok {
 			continue
 		}
-		if earlier := first[key]; earlier != nil {
-			c.ds.Warnf(f.Path, f.Header().KeyLine(f.Type.Identity[0]), "same %s as %s; if they're the same thing, use that record instead", strings.Join(f.Type.Identity, " and "), earlier.Node.ID)
+		if earlier := first[id.Key]; earlier != nil {
+			c.ds.Warnf(id.At, "same %s as %s; if they're the same thing, use that record instead", andList(id.Fields), earlier.Node.ID)
 		} else {
-			first[key] = f
+			first[id.Key] = f
 		}
 	}
 }

@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/andycondon/loremason/internal/diag"
-	"github.com/andycondon/loremason/internal/id"
 	"github.com/andycondon/loremason/internal/record"
 	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/internal/suggest"
@@ -26,7 +25,7 @@ import (
 // the right things is for the caller to check.
 func Load(root string, reg *registry.Registry) (*Graph, diag.List, error) {
 	l := &loader{reg: reg, g: &Graph{nodes: map[string]*Node{}, aliases: map[string]*Node{}}}
-	if err := l.readAll(filepath.Join(root, "graph")); err != nil {
+	if err := l.readAll(filepath.Join(root, Dir)); err != nil {
 		return nil, nil, err
 	}
 	for _, f := range l.g.Files {
@@ -36,9 +35,9 @@ func Load(root string, reg *registry.Registry) (*Graph, diag.List, error) {
 		l.addAliases(f)
 	}
 	for _, f := range l.g.Files {
-		l.addEdges(f.Node, f.Type.Edges)
+		l.addEdges(f.Node)
 		for _, c := range f.Node.Children {
-			l.addEdges(c, f.Type.Subrecords[c.List].Edges)
+			l.addEdges(c)
 		}
 	}
 	return l.g, l.ds, nil
@@ -67,11 +66,12 @@ func (l *loader) readAll(dir string) error {
 		if relErr != nil {
 			return relErr
 		}
-		rel = "graph/" + filepath.ToSlash(rel)
-		inTypeFolder := path.Dir(rel) != "graph"
+		rel = path.Join(Dir, filepath.ToSlash(rel))
+		start := diag.Pos{Path: rel, Line: 1}
+		inTypeFolder := path.Dir(rel) != Dir
 		switch {
 		case err != nil:
-			l.ds.Errorf(rel, 1, "can't read: %v", unwrap(err))
+			l.ds.Errorf(start, "can't read: %v", unwrap(err))
 		case strings.HasPrefix(d.Name(), "."):
 			if d.IsDir() {
 				return fs.SkipDir
@@ -81,9 +81,9 @@ func (l *loader) readAll(dir string) error {
 				return fs.SkipDir
 			}
 		case !inTypeFolder:
-			l.ds.Errorf(rel, 1, "records are kept in a folder named after their type, such as graph/belief/")
+			l.ds.Errorf(start, "records are kept in a folder named after their type, such as graph/belief/")
 		case !isRegularFile(p, d) || path.Ext(rel) != ".md":
-			l.ds.Errorf(rel, 1, "only record files (<id>.md) belong here")
+			l.ds.Errorf(start, "only record files (<id>.md) belong here")
 		default:
 			l.read(p, rel)
 		}
@@ -94,12 +94,12 @@ func (l *loader) readAll(dir string) error {
 // isTypeFolder reports whether a folder is one records belong in, and says
 // why not when it isn't.
 func (l *loader) isTypeFolder(rel string, nested bool) bool {
-	name := path.Base(rel)
+	name, start := path.Base(rel), diag.Pos{Path: rel, Line: 1}
 	switch {
 	case nested:
-		l.ds.Errorf(rel, 1, "records aren't kept in folders inside a type's folder")
+		l.ds.Errorf(start, "records aren't kept in folders inside a type's folder")
 	case l.reg.ByFolder(name) == nil:
-		l.ds.Errorf(rel, 1, "no record type has the folder `%s`%s", name, suggest.Hint(suggest.Near(name, l.reg.Folders())))
+		l.ds.Errorf(start, "no record type has the folder `%s`%s", name, suggest.Hint(suggest.Near(name, l.reg.Folders())))
 	default:
 		return true
 	}
@@ -119,22 +119,22 @@ func isRegularFile(p string, d fs.DirEntry) bool {
 func (l *loader) read(p, rel string) {
 	folder := l.reg.ByFolder(path.Base(path.Dir(rel)))
 	f := &File{Path: rel, Folder: folder, Type: folder}
-	rid := strings.TrimSuffix(path.Base(rel), ".md")
-	if prefix, ok := id.Prefix(rid); ok && l.reg.ByPrefix(prefix) != nil {
-		f.Type = l.reg.ByPrefix(prefix)
+	rid := idFromPath(rel)
+	if t := l.reg.TypeOfID(rid); t != nil {
+		f.Type = t
 	}
 	f.Node = &Node{ID: rid, Type: f.Type.Name, File: f}
 	l.g.Files = append(l.g.Files, f)
 
 	data, err := os.ReadFile(p)
 	if err != nil {
-		l.ds.Errorf(rel, 1, "can't read: %v", unwrap(err))
+		l.ds.Errorf(f.At(1), "can't read: %v", unwrap(err))
 		return
 	}
 	rec, errs := record.Parse(data)
 	f.Record, f.rejected = rec, map[int]bool{}
 	for _, e := range errs {
-		l.ds.Errorf(rel, e.Line, "%s", e.Msg)
+		l.ds.Errorf(f.At(e.Line), "%s", e.Msg)
 		f.rejected[e.Line] = true
 	}
 	f.Node.Fields = f.Header()
@@ -144,7 +144,7 @@ func (l *loader) read(p, rel string) {
 func (l *loader) addNodes(f *File) {
 	n := f.Node
 	if first := l.g.nodes[n.ID]; first != nil {
-		l.ds.Errorf(f.Path, 1, "`%s` is also the ID of %s", n.ID, first.File.Path)
+		l.ds.Errorf(f.At(1), "`%s` is also the ID of %s", n.ID, first.File.Path)
 	} else {
 		l.g.nodes[n.ID] = n
 	}
@@ -155,9 +155,9 @@ func (l *loader) addNodes(f *File) {
 			case local == "":
 				// the schema check says what's missing
 			case n.Child(local) != nil:
-				l.ds.Errorf(f.Path, entry.KeyLine("id"), "two entries have the id `%s`", local)
+				l.ds.Errorf(f.At(entry.KeyLine("id")), "two entries have the id `%s`", local)
 			default:
-				c := &Node{ID: n.ID + "/" + local, Type: f.Type.Subrecords[field].Type, File: f, Fields: entry, Parent: n, List: field, Local: local}
+				c := &Node{ID: SubrecordID(n.ID, local), Type: f.Type.Subrecords[field].Type, File: f, Fields: entry, Parent: n, List: field, Local: local}
 				n.Children = append(n.Children, c)
 				if l.g.nodes[c.ID] == nil { // a duplicate record's sub-records still resolve
 					l.g.nodes[c.ID] = c
@@ -176,9 +176,9 @@ func (l *loader) addAliases(f *File) {
 			continue
 		}
 		if other := l.g.nodes[alias]; other != nil {
-			l.ds.Errorf(f.Path, item.Line(), "the alias `%s` is the ID of a record in %s", alias, other.File.Path)
+			l.ds.Errorf(f.At(item.Line()), "the alias `%s` is the ID of a record in %s", alias, other.File.Path)
 		} else if other := l.g.aliases[alias]; other != nil && other != f.Node {
-			l.ds.Errorf(f.Path, item.Line(), "the alias `%s` is already used by %s", alias, other.File.Path)
+			l.ds.Errorf(f.At(item.Line()), "the alias `%s` is already used by %s", alias, other.File.Path)
 		} else {
 			l.g.aliases[alias] = f.Node
 		}
@@ -188,7 +188,8 @@ func (l *loader) addAliases(f *File) {
 // addEdges reads the links in a node's edge fields. Each field holds a link
 // or a list of them, and each link is a reference, or {to: …} with perhaps a
 // pin. Values of the wrong shape are skipped; the schema check reports them.
-func (l *loader) addEdges(from *Node, defs map[string]registry.Edge) {
+func (l *loader) addEdges(from *Node) {
+	defs := from.EdgeDefs()
 	for _, name := range slices.Sorted(maps.Keys(defs)) {
 		value, _ := from.Fields.Get(name)
 		for _, item := range value.Items() {
@@ -197,7 +198,7 @@ func (l *loader) addEdges(from *Node, defs map[string]registry.Edge) {
 				target, _ = m.Get("to")
 				p = pin(from, m)
 			}
-			to, at, ok := ref(target)
+			to, at, ok := ref(from.File, target)
 			if !ok {
 				continue
 			}
@@ -225,7 +226,7 @@ func pin(from *Node, m record.Map) *Pin {
 		rev.Decode(&p.Rev) // a bad value is the schema check's to report
 	}
 	if via, ok := m.Get("via"); ok {
-		if to, at, ok := ref(via); ok {
+		if to, at, ok := ref(from.File, via); ok {
 			p.Via = &Edge{From: from, Name: "via", Def: viaDef, To: to, At: at}
 		}
 	}
@@ -234,13 +235,13 @@ func pin(from *Node, m record.Map) *Pin {
 
 // ref reads a reference. ok is false when the value isn't one; the schema
 // check reports why.
-func ref(v record.Value) (Ref, Loc, bool) {
+func ref(f *File, v record.Value) (Ref, Loc, bool) {
 	s, _ := v.Text()
 	r, err := ParseRef(s)
 	if err != nil {
 		return Ref{}, Loc{}, false
 	}
-	return r, Loc{Line: v.Line(), Field: v.Path}, true
+	return r, Loc{Pos: f.At(v.Line()), Field: v.Path}, true
 }
 
 // unwrap drops the path from a file error; the message already names the file.

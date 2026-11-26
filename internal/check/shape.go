@@ -12,6 +12,7 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
+	"github.com/andycondon/loremason/internal/diag"
 	"github.com/andycondon/loremason/internal/graph"
 	"github.com/andycondon/loremason/internal/record"
 	"github.com/andycondon/loremason/internal/suggest"
@@ -24,7 +25,7 @@ func (c *checker) shape(f *graph.File) {
 		return // reading the file, or placement, has already said why
 	}
 	var invalid *jsonschema.ValidationError
-	if errors.As(f.Type.Schema.Validate(f.Record.Data), &invalid) {
+	if errors.As(f.Type.Validate(f.Record.Data), &invalid) {
 		for _, leaf := range leaves(invalid) {
 			c.schemaError(f, leaf)
 		}
@@ -46,8 +47,8 @@ func leaves(e *jsonschema.ValidationError) []*jsonschema.ValidationError {
 
 // failure is one schema failure, located in the file.
 type failure struct {
-	at   record.Path
-	line int
+	at  record.Path
+	pos diag.Pos
 	// description is the schema's own words for what's wanted, such as
 	// "a date such as 2026-11-22"; empty when it has none.
 	description string
@@ -56,8 +57,8 @@ type failure struct {
 
 func (c *checker) schemaError(f *graph.File, e *jsonschema.ValidationError) {
 	fl := failure{at: record.Path(e.InstanceLocation)}
-	fl.line = f.Record.Line(fl.at)
-	if f.Rejected(fl.line) {
+	fl.pos = f.At(f.Record.Line(fl.at))
+	if f.Rejected(fl.pos.Line) {
 		return // the reader has already reported this value
 	}
 	if fl.schema = c.reg.SubschemaAt(e.SchemaURL); fl.schema != nil {
@@ -65,11 +66,11 @@ func (c *checker) schemaError(f *graph.File, e *jsonschema.ValidationError) {
 	}
 	if k, ok := e.ErrorKind.(*kind.AdditionalProperties); ok {
 		for _, name := range k.Properties {
-			c.ds.Errorf(f.Path, f.Record.Line(fl.at.Field(name)), "%s", unknownField(fl, name))
+			c.ds.Errorf(f.At(f.Record.Line(fl.at.Field(name))), "%s", unknownField(fl, name))
 		}
 		return
 	}
-	c.ds.Errorf(f.Path, fl.line, "%s", explain(fl, e.ErrorKind))
+	c.ds.Errorf(fl.pos, "%s", explain(fl, e.ErrorKind))
 }
 
 // unknownField explains a field the schema doesn't have.

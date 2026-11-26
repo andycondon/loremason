@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/andycondon/loremason/internal/diag"
 	"github.com/andycondon/loremason/internal/record"
 	"github.com/andycondon/loremason/internal/registry"
 )
@@ -60,9 +61,9 @@ type Pin struct {
 	Via *Edge // to the evidence for the last re-check, if there is one
 }
 
-// Loc is where something is written in a file.
+// Loc is where a link is written: the file and line, and the field.
 type Loc struct {
-	Line  int
+	diag.Pos
 	Field record.Path
 }
 
@@ -77,7 +78,8 @@ func (g *Graph) Resolve(r Ref) *Node {
 		return n
 	}
 	if parent := g.Parent(r); parent != nil {
-		return parent.Child(r.Name[strings.LastIndexByte(r.Name, '/')+1:])
+		_, local, _ := splitSubrecord(r.Name)
+		return parent.Child(local)
 	}
 	return nil
 }
@@ -85,11 +87,11 @@ func (g *Graph) Resolve(r Ref) *Node {
 // Parent returns the record that a parent/local reference points inside,
 // when the parent part resolves, whether or not the sub-record exists.
 func (g *Graph) Parent(r Ref) *Node {
-	i := strings.LastIndexByte(r.Name, '/')
-	if i < 0 {
+	name, _, ok := splitSubrecord(r.Name)
+	if !ok {
 		return nil
 	}
-	if n := g.byName(r.Name[:i]); n != nil && !n.IsSubrecord() {
+	if n := g.byName(name); n != nil && !n.IsSubrecord() {
 		return n
 	}
 	return nil
@@ -118,6 +120,15 @@ func (g *Graph) Names() []string {
 // IsSubrecord reports whether the node lives inside another record.
 func (n *Node) IsSubrecord() bool { return n.Parent != nil }
 
+// EdgeDefs returns the edges the node's fields may hold: its type's, or for
+// a sub-record, those of its kind of entry.
+func (n *Node) EdgeDefs() map[string]registry.Edge {
+	if n.IsSubrecord() {
+		return n.File.Type.Subrecords[n.List].Edges
+	}
+	return n.File.Type.Edges
+}
+
 // Child returns a sub-record by its local id, or nil.
 func (n *Node) Child(local string) *Node {
 	for _, c := range n.Children {
@@ -137,6 +148,9 @@ func (n *Node) Locals() []string {
 	return ids
 }
 
+// At is a line in the file.
+func (f *File) At(line int) diag.Pos { return diag.Pos{Path: f.Path, Line: line} }
+
 // Header returns the file's fields; none when it couldn't be read.
 func (f *File) Header() record.Map {
 	if f.Record == nil {
@@ -152,20 +166,28 @@ func (f *File) Misplaced() bool { return f.Type != f.Folder }
 // Rejected reports whether the reader already reported a problem on a line.
 func (f *File) Rejected(line int) bool { return f.rejected[line] }
 
-// Identity returns what makes two records of this type look like the same
-// thing: the type's identity fields, ignoring case and spacing. ok is false
-// when the type has none, or one of them is empty.
-func (f *File) Identity() (key string, ok bool) {
-	if len(f.Type.Identity) == 0 {
-		return "", false
+// Identity is what makes two records look like the same thing, such as two
+// artifacts with the same url.
+type Identity struct {
+	Key    string   // the type, then each identity field ignoring case and spacing
+	Fields []string // the type's identity fields
+	At     diag.Pos // where the first of them is written
+}
+
+// Identity returns the record's identity. ok is false when its type has no
+// identity fields, or one of them is empty.
+func (f *File) Identity() (id Identity, ok bool) {
+	fields := f.Type.Identity
+	if len(fields) == 0 {
+		return Identity{}, false
 	}
 	parts := []string{f.Type.Name}
-	for _, field := range f.Type.Identity {
+	for _, field := range fields {
 		v := strings.ToLower(strings.Join(strings.Fields(f.Header().Text(field)), " "))
 		if v == "" {
-			return "", false
+			return Identity{}, false
 		}
 		parts = append(parts, v)
 	}
-	return strings.Join(parts, "\x00"), true
+	return Identity{Key: strings.Join(parts, "\x00"), Fields: fields, At: f.At(f.Header().KeyLine(fields[0]))}, true
 }
