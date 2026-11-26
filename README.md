@@ -50,6 +50,8 @@ Each record type's fields are defined by a JSON Schema in [`schema/`](schema/), 
 
 ## Development
 
+See [docs/development.md](docs/development.md) for how the code is organised and the principles it follows.
+
 ```sh
 go test ./...                # run the tests
 go test ./cmd/mason -update  # rewrite the expected output of the validate fixtures
