@@ -206,6 +206,27 @@ func Revise(n *graph.Node, breaking bool, today, commit string) (*Plan, error) {
 	return p, nil
 }
 
+// Recheck records the outcome "still holds" for a stale link: its pin moves
+// to the target's current revision, with via naming the evidence that says
+// why. The record holding the link gets no new revision, so nothing built on
+// it is touched (early cutoff). The re-check skill calls this.
+func Recheck(e *graph.Edge, evidence *graph.Node) (*Plan, error) {
+	switch {
+	case e.Pin == nil || e.Target == nil:
+		return nil, fmt.Errorf("`%s` in %s isn't a pinned link", e.Item.Path, e.From.File.Path)
+	case evidence.Kind.Name != "evidence":
+		return nil, fmt.Errorf("%s is of type %s; the reason for a re-check is evidence", evidence.ID, evidence.Kind.Name)
+	}
+	cur := e.Target.Current()
+	if cur == nil || cur.FP.IsZero() {
+		return nil, fmt.Errorf("%s has no recorded revision to pin yet; run `mason sync`", e.Target.ID)
+	}
+	p := newPlan()
+	p.edit(e.From.File).pins[e] = &graph.Pin{Rev: cur.Rev, FP: cur.FP, Via: &graph.Edge{Name: "via", To: graph.Ref{Name: evidence.ID}}}
+	p.say(e.From.File, "re-pin `%s` to %s@r%d: it still holds, as %s says", e.Item.Path, e.Target.ID, cur.Rev, evidence.ID)
+	return p, nil
+}
+
 // wordingNow is a record's meaning fields as they are now, to keep inline.
 func wordingNow(n *graph.Node) map[string]record.Out {
 	w := map[string]record.Out{}
@@ -240,11 +261,15 @@ func (e *fileEdit) write(root string) error {
 		return err
 	}
 	if e.revisions != nil {
-		h.Set("revisions", record.Render("revisions", e.renderRevisions()))
+		if v, ok := e.file.Node.Fields.Get("revisions"); ok {
+			h.Set("revisions", v.Rewrite(e.renderRevisions()))
+		} else {
+			h.Set("revisions", record.Render("revisions", e.renderRevisions()))
+		}
 	}
 	for _, field := range e.pinnedFields() {
 		v, _ := e.file.Node.Fields.Get(field)
-		h.Set(field, record.Render(field, e.renderLinks(v)))
+		h.Set(field, v.Rewrite(e.renderLinks(v)))
 	}
 	return writeFile(path, h.Bytes())
 }

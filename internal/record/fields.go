@@ -45,6 +45,7 @@ type Map struct {
 // Value is one field's value, and where it is.
 type Value struct {
 	node *yaml.Node
+	key  *yaml.Node // the field's name, for a value read with Get; nil for list items
 	Path Path
 }
 
@@ -86,7 +87,7 @@ func (m Map) LineOf(p Path) int {
 // Get returns a field's value.
 func (m Map) Get(field string) (Value, bool) {
 	if key, value := m.find(field); key != nil {
-		return Value{node: value, Path: m.Path.Field(field)}, true
+		return Value{node: value, key: key, Path: m.Path.Field(field)}, true
 	}
 	return Value{}, false
 }

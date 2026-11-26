@@ -72,12 +72,31 @@ func (o Out) WithCommentsOf(v Value) Out {
 	return Out{&n}
 }
 
-// Render writes a field and its value as header lines, ending in a newline.
+// Render writes a new field and its value as header lines, ending in a
+// newline.
 func Render(field string, value Out) string {
+	return render(&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: field}, value)
+}
+
+// Rewrite writes the field that holds v again, with a new value. Comments a
+// person wrote on the field's own line are kept: YAML attaches them to the
+// field's name, or for a one-line list or value, to the value.
+func (v Value) Rewrite(value Out) string {
+	key := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v.Path[len(v.Path)-1]}
+	if v.key != nil {
+		key.HeadComment, key.LineComment, key.FootComment = v.key.HeadComment, v.key.LineComment, v.key.FootComment
+	}
+	if v.node != nil && v.node.Kind == yaml.SequenceNode && key.LineComment == "" {
+		key.LineComment = v.node.LineComment
+	}
+	return render(key, value)
+}
+
+func render(key *yaml.Node, value Out) string {
 	var b bytes.Buffer
 	enc := yaml.NewEncoder(&b)
 	enc.SetIndent(2)
-	if err := enc.Encode(mapping([]KV{{field, value}}, 0)); err != nil {
+	if err := enc.Encode(&yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{key, value.node}}); err != nil {
 		panic("record: " + err.Error()) // nodes built here always encode
 	}
 	return b.String()
