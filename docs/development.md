@@ -8,7 +8,11 @@ How the code is organised, and the principles it follows. Read this before addin
 cmd/mason/          the command: parse arguments, call one domain function, print
 internal/graph/     the model: Graph, File, Node, Edge, Ref, Pin; Load and Create
 internal/check/     rules over a loaded graph
-internal/record/    reading a record file: Parse, and Map, Value and Path over the header
+internal/pinning/  sync and revise: plan the changes, then apply them
+internal/fingerprint/ the fp1 method, pure functions
+internal/splice/   rewrite the header fields tools own; leave every other byte
+internal/record/    reading a record file (Parse; Map, Value and Path over the header)
+                    and writing YAML in the one form tools use (Out, Render, Rewrite)
 internal/registry/  the record types (schema/types.yaml) and their JSON Schemas
 internal/diag/      errors and warnings, each at a place in a file
 internal/workspace/ finding the workspace and reading its config
@@ -38,6 +42,8 @@ When a rule is also stated in a schema, a test keeps the two in agreement, as `T
 **Loading and checking have a fixed boundary.** `graph.Load` reports only what keeps a file, name or link out of the graph: a folder no type has, a second record with the same ID, an alias already taken. Everything that made it into the graph but is wrong (a link to the wrong type, a field the schema rejects) is found by a rule in `check`. When the schema can report a bad value, the loader skips that value silently rather than reporting it twice.
 
 **The command stays thin.** A command parses its arguments, calls one domain function, prints the result and picks the exit code. Domain rules, such as what counts as a valid title or which type a name means, live in the domain packages, so a later caller (a skill, a server) gets the same rules.
+
+**Tools that write plan first.** A writing command decides everything it will change, as a list of actions said in plain words, before it touches a file. Then it applies them. That gives `--dry-run` for free, and lets tests check the plan without writing files. Writes go through `splice`, so only the fields a tool owns are rewritten, and each file is replaced in one step.
 
 **Messages are for people.** Every error names the file, the line and the field, says what was wrong in plain words, and suggests a fix when one is likely. Wording helpers live in `check/words.go`.
 
