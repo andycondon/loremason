@@ -134,9 +134,10 @@ func (m Map) find(field string) (key, value *yaml.Node) {
 // Line is where the value is written.
 func (v Value) Line() int { return v.node.Line }
 
-// Text returns the value when it's text.
+// Text returns the value when it's text. A date such as 2026-11-22 counts
+// as text, as written; YAML would otherwise read it as a timestamp.
 func (v Value) Text() (string, bool) {
-	if v.node == nil || v.node.Kind != yaml.ScalarNode || v.node.Tag != "!!str" {
+	if v.node == nil || v.node.Kind != yaml.ScalarNode || (v.node.Tag != "!!str" && v.node.Tag != "!!timestamp") {
 		return "", false
 	}
 	return v.node.Value, true
@@ -164,6 +165,16 @@ func (v Value) Items() []Value {
 		items[i] = Value{node: n, Path: v.Path.Index(i)}
 	}
 	return items
+}
+
+// Plain returns the value as plain data (text, numbers, lists, maps), as the
+// JSON Schema check and fingerprints see it.
+func (v Value) Plain() any {
+	if v.node == nil {
+		return nil
+	}
+	var c converter
+	return c.value(v.node)
 }
 
 // Decode stores the value in out, as yaml.Unmarshal would.

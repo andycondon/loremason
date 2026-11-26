@@ -96,3 +96,41 @@ func TestFind(t *testing.T) {
 		}
 	}
 }
+
+func TestShouldPin(t *testing.T) {
+	r := Load()
+	kind := func(name string) *Kind { typ, _ := r.Find(name); return &typ.Kind }
+	task, evidence := r.Types["task"], r.Types["evidence"]
+	for _, c := range []struct {
+		edge   Edge
+		target string
+		want   bool
+	}{
+		{task.Edges["relies_on"], "belief", true},    // propagates
+		{task.Edges["part_of"], "initiative", false}, // doesn't propagate
+		{task.Edges["mentions"], "belief", false},    // never
+		{evidence.Edges["from"], "finding", true},    // pinned, though it doesn't propagate
+		{evidence.Edges["from"], "artifact", false},  // artifacts have no revisions
+	} {
+		if got := c.edge.ShouldPin(kind(c.target)); got != c.want {
+			t.Errorf("%+v to %s: got %v", c.edge, c.target, got)
+		}
+	}
+}
+
+// Pins are written only in a record's own link fields, so no sub-record's
+// edge may need one.
+func TestSubrecordEdgesAreNeverPinned(t *testing.T) {
+	r := Load()
+	for name, typ := range r.Types {
+		for field, sub := range typ.Subrecords {
+			for e, edge := range sub.Edges {
+				for _, to := range r.Types {
+					if edge.Allows(&to.Kind) && edge.ShouldPin(&to.Kind) {
+						t.Errorf("%s.%s.%s would pin %s", name, field, e, to.Name)
+					}
+				}
+			}
+		}
+	}
+}

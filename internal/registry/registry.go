@@ -35,6 +35,9 @@ type Kind struct {
 	Name     string          `yaml:"type"`     // a record type's name comes from its key in types.yaml
 	Edges    map[string]Edge `yaml:"edges"`    // the links its fields may hold; a record type's include the common ones
 	Identity []string        `yaml:"identity"` // fields that suggest two records are the same thing
+	// Revisable kinds keep a revisions list; links can pin their revisions.
+	// Sub-record kinds never are.
+	Revisable bool `yaml:"revisable"`
 }
 
 // Type is one record type.
@@ -42,7 +45,6 @@ type Type struct {
 	Kind            `yaml:",inline"`
 	Prefix          string           `yaml:"prefix"`
 	Layer           string           `yaml:"layer"`
-	Revisable       bool             `yaml:"revisable"`
 	RevisionsInline bool             `yaml:"revisions_inline"`
 	Meaning         []string         `yaml:"meaning"`
 	Subrecords      map[string]*Kind `yaml:"subrecords"` // by the field that lists them
@@ -57,6 +59,18 @@ type Edge struct {
 	To         []string `yaml:"to"`
 	Propagates bool     `yaml:"propagates"`
 	Pinned     *bool    `yaml:"pinned"`
+}
+
+// ShouldPin reports whether a link of this edge to a node of kind target
+// records the target's revision and fingerprint. An edge is pinned when its
+// type says so, which by default is when it propagates; and only a target
+// that has revisions can be pinned.
+func (e Edge) ShouldPin(target *Kind) bool {
+	pinned := e.Propagates
+	if e.Pinned != nil {
+		pinned = *e.Pinned
+	}
+	return pinned && target.Revisable
 }
 
 // Allows reports whether the edge may point at a node of kind k.

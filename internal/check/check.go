@@ -67,7 +67,7 @@ func (c *checker) placement(f *graph.File) {
 
 // target checks that a link points at something, of a type its edge allows.
 func (c *checker) target(e *graph.Edge) {
-	n := c.g.Resolve(e.To)
+	n := e.Target
 	switch {
 	case n == nil:
 		c.ds.Errorf(e.At.Pos, "`%s` points at `%s`, which doesn't exist%s", e.At.Field, e.To, c.missingHint(e.To))

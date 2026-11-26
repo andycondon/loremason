@@ -11,14 +11,16 @@ import (
 	"strings"
 
 	"github.com/andycondon/loremason/internal/diag"
+	"github.com/andycondon/loremason/internal/fingerprint"
 	"github.com/andycondon/loremason/internal/record"
 	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/internal/suggest"
 )
 
-// Load reads every record under root/graph and links them up, in four steps:
-// read the files, index the records and their sub-records, index aliases,
-// then read the edges (which needs every name indexed first).
+// Load reads every record under root/graph and links them up, in five
+// steps: read the files; index the records, their sub-records and
+// revisions; index aliases; read the edges; then resolve each edge's target,
+// which needs every name indexed first.
 //
 // The line between Load and the checks: Load reports what keeps a file,
 // name or link out of the graph (a folder no type has, a second record with
@@ -39,6 +41,11 @@ func Load(root string, reg *registry.Registry) (*Graph, diag.List, error) {
 		l.addEdges(f.Node)
 		for _, c := range f.Node.Children {
 			l.addEdges(c)
+		}
+	}
+	for _, e := range l.g.Edges {
+		if e.Target = l.g.Resolve(e.To); e.Target != nil {
+			e.Target.Incoming = append(e.Target.Incoming, e)
 		}
 	}
 	return l.g, l.ds, nil
@@ -151,6 +158,7 @@ func (l *loader) addNodes(f *File) {
 	} else {
 		l.g.nodes[n.ID] = n
 	}
+	addRevisions(n)
 	for _, field := range slices.Sorted(maps.Keys(f.Type.Subrecords)) {
 		for _, entry := range n.Fields.Entries(field) {
 			local := entry.Text("id")
@@ -167,6 +175,26 @@ func (l *loader) addNodes(f *File) {
 				}
 			}
 		}
+	}
+}
+
+// addRevisions reads a revisable record's revisions list. Entries of the
+// wrong shape are skipped; the schema check reports them.
+func addRevisions(n *Node) {
+	if !n.Revisable() {
+		return
+	}
+	for _, entry := range n.Fields.Entries("revisions") {
+		v, ok := entry.Get("rev")
+		if !ok {
+			continue
+		}
+		r := Revision{Date: entry.Text("date"), Breaking: entry.Text("change") != "non_breaking", Commit: entry.Text("commit"), Old: entry, At: Loc{Pos: n.File.At(entry.Line()), Field: entry.Path}}
+		if v.Decode(&r.Rev) != nil {
+			continue
+		}
+		r.FP, _ = fingerprint.Parse(entry.Text("fp"))
+		n.Revisions = append(n.Revisions, r)
 	}
 }
 
@@ -205,7 +233,7 @@ func (l *loader) addEdges(from *Node) {
 			if !ok {
 				continue
 			}
-			l.g.Edges = append(l.g.Edges, &Edge{From: from, Name: name, Def: defs[name], To: to, Pin: p, At: at})
+			l.g.Edges = append(l.g.Edges, &Edge{From: from, Name: name, Def: defs[name], To: to, Pin: p, At: at, Item: item})
 			if p != nil && p.Via != nil {
 				l.g.Edges = append(l.g.Edges, p.Via)
 			}
@@ -224,7 +252,8 @@ func pin(from *Node, m record.Map) *Pin {
 	if !hasRev && !hasFP {
 		return nil
 	}
-	p := &Pin{FP: m.Text("fp")}
+	p := &Pin{}
+	p.FP, _ = fingerprint.Parse(m.Text("fp")) // a bad value is the schema check's to report
 	if hasRev {
 		rev.Decode(&p.Rev) // a bad value is the schema check's to report
 	}

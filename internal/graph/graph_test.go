@@ -119,7 +119,7 @@ func TestPins(t *testing.T) {
 	for _, e := range g.Edges {
 		if e.Pin != nil {
 			pins++
-			if e.Pin.Rev < 1 || !strings.HasPrefix(e.Pin.FP, "fp1:") || e.Pin.Via == nil {
+			if e.Pin.Rev < 1 || e.Pin.FP.Method != 1 || e.Pin.Via == nil {
 				t.Errorf("pin: %+v", e.Pin)
 			}
 		}

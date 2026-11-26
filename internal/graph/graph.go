@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/andycondon/loremason/internal/diag"
+	"github.com/andycondon/loremason/internal/fingerprint"
 	"github.com/andycondon/loremason/internal/record"
 	"github.com/andycondon/loremason/internal/registry"
 )
@@ -42,22 +43,41 @@ type Node struct {
 	Parent   *Node      // the record holding a sub-record; nil for records
 	Local    string     // a sub-record's own id, such as s1
 	Children []*Node    // a record's sub-records, in file order
+
+	// Revisions are a revisable record's revisions, oldest first; the last
+	// is the current one.
+	Revisions []Revision
+	// Incoming are the edges that point at this node.
+	Incoming []*Edge
+}
+
+// Revision is one entry in a record's revisions list.
+type Revision struct {
+	Rev      int
+	Date     string
+	FP       fingerprint.FP // zero until sync records it
+	Breaking bool           // compared with the revision before; true unless change is non_breaking
+	Commit   string         // for long records, where the old text is kept in git
+	Old      record.Map     // the entry itself, holding the old wording for short records
+	At       Loc
 }
 
 // Edge is one link, from the node whose field holds it.
 type Edge struct {
-	From *Node
-	Name string // the field, such as relies_on, or via for a pin's evidence
-	Def  registry.Edge
-	To   Ref
-	Pin  *Pin // set when the link records the target's revision
-	At   Loc
+	From   *Node
+	Name   string // the field, such as relies_on, or via for a pin's evidence
+	Def    registry.Edge
+	To     Ref
+	Target *Node // what To resolves to; nil when it doesn't
+	Pin    *Pin  // set when the link records the target's revision
+	At     Loc
+	Item   record.Value // the link as written: a reference, or a {to: …} map
 }
 
 // Pin is what a pinned link records about its target.
 type Pin struct {
 	Rev int
-	FP  string
+	FP  fingerprint.FP
 	Via *Edge // to the evidence for the last re-check, if there is one
 }
 
@@ -119,6 +139,105 @@ func (g *Graph) Names() []string {
 
 // IsSubrecord reports whether the node lives inside another record.
 func (n *Node) IsSubrecord() bool { return n.Parent != nil }
+
+// Revisable reports whether the node is a record that keeps revisions.
+func (n *Node) Revisable() bool { return n.Kind.Revisable && !n.IsSubrecord() }
+
+// Current returns the current revision, or nil when there are none yet.
+func (n *Node) Current() *Revision {
+	if len(n.Revisions) == 0 {
+		return nil
+	}
+	return &n.Revisions[len(n.Revisions)-1]
+}
+
+// Revision returns a revision by number, or nil.
+func (n *Node) Revision(rev int) *Revision {
+	for i := range n.Revisions {
+		if n.Revisions[i].Rev == rev {
+			return &n.Revisions[i]
+		}
+	}
+	return nil
+}
+
+// Sealed reports whether something pins the revision. A sealed revision's
+// meaning can't change without a new revision.
+func (n *Node) Sealed(rev int) bool {
+	for _, e := range n.Incoming {
+		if e.Pin != nil && e.Pin.Rev == rev {
+			return true
+		}
+	}
+	return false
+}
+
+// Fingerprint is the fingerprint of the record's meaning as it is now. It's
+// zero for sub-records, and for files that couldn't be read.
+func (n *Node) Fingerprint() fingerprint.FP {
+	if n.IsSubrecord() || n.File.Record == nil {
+		return fingerprint.FP{}
+	}
+	fields := map[string]any{}
+	hasBody := false
+	for _, name := range n.File.Type.Meaning {
+		if name == "body" {
+			hasBody = true
+			continue
+		}
+		if v, ok := n.Fields.Get(name); ok {
+			fields[name] = withoutRevisions(v.Plain())
+		}
+	}
+	return fingerprint.Of(fields, n.File.Record.Body, hasBody)
+}
+
+// withoutRevisions writes references in a value without their @rN, so that
+// moving a link to a newer revision doesn't change what the record means.
+func withoutRevisions(v any) any {
+	switch v := v.(type) {
+	case string:
+		if r, err := ParseRef(v); err == nil && r.Rev > 0 {
+			return r.Name
+		}
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = withoutRevisions(item)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for k, item := range v {
+			out[k] = withoutRevisions(item)
+		}
+		return out
+	}
+	return v
+}
+
+// Stale reports whether a pinned link no longer matches its target: the
+// target has a newer revision, or its meaning changed.
+func (e *Edge) Stale() bool {
+	if e.Pin == nil || e.Target == nil || e.Target.Current() == nil {
+		return false
+	}
+	return e.Pin.Rev != e.Target.Current().Rev || e.Pin.FP != e.Target.Fingerprint()
+}
+
+// Behind returns the target's revisions after the one the link pins.
+func (e *Edge) Behind() []Revision {
+	if e.Pin == nil || e.Target == nil {
+		return nil
+	}
+	var revs []Revision
+	for _, r := range e.Target.Revisions {
+		if r.Rev > e.Pin.Rev {
+			revs = append(revs, r)
+		}
+	}
+	return revs
+}
 
 // Child returns a sub-record by its local id, or nil.
 func (n *Node) Child(local string) *Node {
