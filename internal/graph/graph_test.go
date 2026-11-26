@@ -113,6 +113,21 @@ func TestResolve(t *testing.T) {
 	}
 }
 
+func TestLookup(t *testing.T) {
+	g, _ := load(t, "validate/alias-resolves")
+	if n, err := g.Lookup("old/B-1@r1"); err != nil || n.ID != "bel_7k3m9q" {
+		t.Errorf("an alias with a revision: %v, %v", n, err)
+	}
+	for in, want := range map[string]string{
+		"bel_nope00": "no record is called `bel_nope00`",
+		"bel@r0":     "bel@r0",
+	} {
+		if _, err := g.Lookup(in); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Lookup(%q): %v", in, err)
+		}
+	}
+}
+
 func TestPins(t *testing.T) {
 	g, _ := load(t, "validate/pinned-links")
 	var pins, vias int
