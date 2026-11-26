@@ -81,8 +81,10 @@ type Loc struct {
 // Node returns the node with an ID, or nil.
 func (g *Graph) Node(id string) *Node { return g.nodes[id] }
 
-// Lookup returns the node a reference written by a person names, such as
-// bel_7k3m9q or an alias.
+// Lookup parses s as a reference, such as bel_7k3m9q, an alias or
+// bel_7k3m9q/s1, and returns the node it names. It's for references that
+// arrive as text, such as a command's argument; the error says whether s
+// isn't a reference or names no record.
 func (g *Graph) Lookup(s string) (*Node, error) {
 	r, err := ParseRef(s)
 	if err != nil {
