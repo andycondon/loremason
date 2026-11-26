@@ -1,3 +1,5 @@
 graph/task/task_9w4hzd.md:7: error: `relies_on[1].via` points at `bel_7k3m9q`, which is of type belief; it must point at evidence
-3 records: 1 error, 0 warnings
+graph/task/task_9w4hzd.md:8: error: `relies_on[2]`: the pin names revision 3 of bel_7k3m9q, which has revisions 1 to 2
+graph/task/task_9w4hzd.md:10: error: `part_of[0]`: the pin names revision 1, but an initiative has no revisions; write just `ini_2m8vqe`
+4 records: 3 errors, 0 warnings
 exit 1

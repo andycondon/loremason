@@ -196,6 +196,9 @@ func addRevisions(n *Node) {
 		r.FP, _ = fingerprint.Parse(entry.Text("fp"))
 		n.Revisions = append(n.Revisions, r)
 	}
+	if _, written := n.Fields.Get("revisions"); !written {
+		n.Revisions = []Revision{{Rev: 1, Breaking: true, Implicit: true, At: Loc{Pos: n.File.At(1)}}}
+	}
 }
 
 // addAliases indexes a record's other names.

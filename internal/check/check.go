@@ -3,8 +3,9 @@
 // Loading the graph reports what keeps files, names and links out of it.
 // The rules here then check what's left: that each file is in the right
 // place, that each header has the shape its schema gives, that each link
-// points at something of a type its edge allows, and that no two records
-// look like the same thing.
+// points at something of a type its edge allows, that revisions and pins
+// are consistent and sealed revisions haven't changed, and that no two
+// records look like the same thing.
 package check
 
 import (
@@ -40,9 +41,12 @@ func Run(root string, reg *registry.Registry) (*Result, error) {
 	for _, f := range g.Files {
 		c.placement(f)
 		c.shape(f)
+		c.revisionNumbers(f)
+		c.sealed(f)
 	}
 	for _, e := range g.Edges {
 		c.target(e)
+		c.pinning(e)
 	}
 	c.duplicates()
 	c.ds.Sort()

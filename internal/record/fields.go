@@ -179,12 +179,3 @@ func (v Value) Plain() any {
 
 // Decode stores the value in out, as yaml.Unmarshal would.
 func (v Value) Decode(out any) error { return v.node.Decode(out) }
-
-// Quote writes text as a YAML value, with quotes when YAML needs them.
-func Quote(s string) string {
-	out, err := yaml.Marshal(s)
-	if err != nil {
-		panic(err) // a string always marshals
-	}
-	return strings.TrimSuffix(string(out), "\n")
-}

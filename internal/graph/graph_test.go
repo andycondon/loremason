@@ -119,7 +119,7 @@ func TestPins(t *testing.T) {
 	for _, e := range g.Edges {
 		if e.Pin != nil {
 			pins++
-			if e.Pin.Rev < 1 || e.Pin.FP.Method != 1 || e.Pin.Via == nil {
+			if e.Pin.Rev < 1 || e.Pin.FP.Method != 1 {
 				t.Errorf("pin: %+v", e.Pin)
 			}
 		}
@@ -127,7 +127,7 @@ func TestPins(t *testing.T) {
 			vias++
 		}
 	}
-	if pins != 2 || vias != 2 {
+	if pins != 4 || vias != 2 {
 		t.Errorf("%d pins, %d via edges", pins, vias)
 	}
 }

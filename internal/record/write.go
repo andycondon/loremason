@@ -1,0 +1,89 @@
+package record
+
+import (
+	"bytes"
+	"strconv"
+	"strings"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Out is a YAML value to write into a header. Tools write only the fields
+// they own (link lists and revisions), and always in one form: block lists,
+// flow maps for links, and block maps for revisions.
+type Out struct{ node *yaml.Node }
+
+// KV is one field of a map being written.
+type KV struct {
+	Key string
+	Val Out
+}
+
+func scalar(tag, value string, style yaml.Style) Out {
+	return Out{&yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: value, Style: style}}
+}
+
+// Str writes text, quoted only when YAML needs it.
+func Str(s string) Out { return scalar("!!str", s, 0) }
+
+// Quoted writes text in double quotes, as fingerprints are written.
+func Quoted(s string) Out { return scalar("!!str", s, yaml.DoubleQuotedStyle) }
+
+// Int writes a whole number.
+func Int(i int) Out { return scalar("!!int", strconv.Itoa(i), 0) }
+
+// Date writes a date such as 2026-11-22 without quotes.
+func Date(s string) Out { return scalar("!!timestamp", s, 0) }
+
+// List writes a block list.
+func List(items ...Out) Out {
+	n := &yaml.Node{Kind: yaml.SequenceNode}
+	for _, item := range items {
+		n.Content = append(n.Content, item.node)
+	}
+	return Out{n}
+}
+
+// BlockMap writes a map with a field per line, in the order given.
+func BlockMap(fields ...KV) Out { return Out{mapping(fields, 0)} }
+
+// FlowMap writes a map on one line: {to: bel_7k3m9q, rev: 1}.
+func FlowMap(fields ...KV) Out { return Out{mapping(fields, yaml.FlowStyle)} }
+
+func mapping(fields []KV, style yaml.Style) *yaml.Node {
+	n := &yaml.Node{Kind: yaml.MappingNode, Style: style}
+	for _, f := range fields {
+		n.Content = append(n.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: f.Key}, f.Val.node)
+	}
+	return n
+}
+
+// Out writes a value again as it was read, comments included.
+func (v Value) Out() Out { return Out{v.node} }
+
+// WithCommentsOf carries a value's comments over to what replaces it, so a
+// note a person wrote beside a link survives the link being pinned.
+func (o Out) WithCommentsOf(v Value) Out {
+	if v.node == nil {
+		return o
+	}
+	n := *o.node
+	n.HeadComment, n.LineComment, n.FootComment = v.node.HeadComment, v.node.LineComment, v.node.FootComment
+	return Out{&n}
+}
+
+// Render writes a field and its value as header lines, ending in a newline.
+func Render(field string, value Out) string {
+	var b bytes.Buffer
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	if err := enc.Encode(mapping([]KV{{field, value}}, 0)); err != nil {
+		panic("record: " + err.Error()) // nodes built here always encode
+	}
+	return b.String()
+}
+
+// Quote writes text as a YAML value, with quotes when YAML needs them.
+func Quote(s string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(Render("x", Str(s)), "x: "), "\n")
+}

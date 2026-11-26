@@ -45,7 +45,8 @@ type Node struct {
 	Children []*Node    // a record's sub-records, in file order
 
 	// Revisions are a revisable record's revisions, oldest first; the last
-	// is the current one.
+	// is the current one. A revisable record whose file has no revisions
+	// list yet is at revision 1, which is Implicit until sync writes it.
 	Revisions []Revision
 	// Incoming are the edges that point at this node.
 	Incoming []*Edge
@@ -60,6 +61,7 @@ type Revision struct {
 	Commit   string         // for long records, where the old text is kept in git
 	Old      record.Map     // the entry itself, holding the old wording for short records
 	At       Loc
+	Implicit bool // not written in the file yet; sync writes it
 }
 
 // Edge is one link, from the node whose field holds it.
@@ -143,7 +145,8 @@ func (n *Node) IsSubrecord() bool { return n.Parent != nil }
 // Revisable reports whether the node is a record that keeps revisions.
 func (n *Node) Revisable() bool { return n.Kind.Revisable && !n.IsSubrecord() }
 
-// Current returns the current revision, or nil when there are none yet.
+// Current returns the current revision, or nil for a node that isn't
+// revisable.
 func (n *Node) Current() *Revision {
 	if len(n.Revisions) == 0 {
 		return nil
@@ -170,6 +173,25 @@ func (n *Node) Sealed(rev int) bool {
 		}
 	}
 	return false
+}
+
+// PinnedBy lists the IDs of the records whose links pin the revision.
+func (n *Node) PinnedBy(rev int) []string {
+	var ids []string
+	for _, e := range n.Incoming {
+		if e.Pin != nil && e.Pin.Rev == rev && !slices.Contains(ids, e.From.Record().ID) {
+			ids = append(ids, e.From.Record().ID)
+		}
+	}
+	return ids
+}
+
+// Record returns the record a node belongs to: itself, or its parent.
+func (n *Node) Record() *Node {
+	if n.Parent != nil {
+		return n.Parent
+	}
+	return n
 }
 
 // Fingerprint is the fingerprint of the record's meaning as it is now. It's
