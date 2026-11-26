@@ -1,4 +1,4 @@
-package cli
+package main
 
 import (
 	"flag"
@@ -18,18 +18,18 @@ func useVersion(t *testing.T, v string) {
 	t.Cleanup(func() { Version = old })
 }
 
-// Each folder in testdata/validate is a workspace; want.txt holds what
+// Each folder in testdata/validate, at the top of the repo, is a workspace; want.txt holds what
 // `mason validate` should print there, and its exit code.
 func TestValidateFixtures(t *testing.T) {
 	useVersion(t, "test")
-	dirs, _ := filepath.Glob("testdata/validate/*")
+	dirs, _ := filepath.Glob("../../testdata/validate/*")
 	if len(dirs) < 10 {
 		t.Fatalf("only %d fixtures found", len(dirs))
 	}
 	for _, dir := range dirs {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			t.Setenv("LOREMASON_WORKSPACE", dir)
-			code, out, errOut := run("validate")
+			code, out, errOut := mason("validate")
 			if errOut != "" {
 				t.Fatalf("stderr: %s", errOut)
 			}
@@ -54,7 +54,7 @@ func TestValidateFixtures(t *testing.T) {
 func TestWorkedExampleIsValid(t *testing.T) {
 	useVersion(t, "test")
 	t.Setenv("LOREMASON_WORKSPACE", "../../testdata/worked-example")
-	code, out, errOut := run("validate")
+	code, out, errOut := mason("validate")
 	if code != 0 || errOut != "" || !strings.HasSuffix(out, " records: 0 errors, 0 warnings\n") || strings.Count(out, "\n") != 1 {
 		t.Fatalf("exit %d\n%s%s", code, out, errOut)
 	}
@@ -64,7 +64,7 @@ func TestValidateFindsTheWorkspaceFromInside(t *testing.T) {
 	useVersion(t, "test")
 	t.Setenv("LOREMASON_WORKSPACE", "")
 	t.Chdir("../../testdata/worked-example/graph/belief")
-	if code, out, _ := run("validate"); code != 0 || !strings.Contains(out, "0 errors") {
+	if code, out, _ := mason("validate"); code != 0 || !strings.Contains(out, "0 errors") {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 }
@@ -72,7 +72,7 @@ func TestValidateFindsTheWorkspaceFromInside(t *testing.T) {
 func TestVersionMismatchWarns(t *testing.T) {
 	useVersion(t, "other")
 	t.Setenv("LOREMASON_WORKSPACE", "../../testdata/worked-example")
-	code, _, errOut := run("validate")
+	code, _, errOut := mason("validate")
 	if code != 0 || !strings.Contains(errOut, "this is mason other, but the workspace uses test") {
 		t.Fatalf("exit %d, stderr %q", code, errOut)
 	}
@@ -81,7 +81,7 @@ func TestVersionMismatchWarns(t *testing.T) {
 func TestNoWorkspace(t *testing.T) {
 	t.Setenv("LOREMASON_WORKSPACE", "")
 	t.Chdir(t.TempDir())
-	if code, _, errOut := run("validate"); code != 1 || !strings.Contains(errOut, "no workspace here") {
+	if code, _, errOut := mason("validate"); code != 1 || !strings.Contains(errOut, "no workspace here") {
 		t.Fatalf("exit %d, stderr %q", code, errOut)
 	}
 }
@@ -104,7 +104,7 @@ func TestUnreadableFileIsReportedAndTheRestChecked(t *testing.T) {
 	os.Chmod(locked, 0)
 	t.Cleanup(func() { os.Chmod(locked, 0o644) })
 	t.Setenv("LOREMASON_WORKSPACE", root)
-	code, out, _ := run("validate")
+	code, out, _ := mason("validate")
 	if code != 1 || !strings.Contains(out, "graph/belief/bel_7k3m9q.md:1: error: can't read: permission denied\n") || !strings.Contains(out, "records: 1 error") {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
@@ -123,7 +123,7 @@ func TestSymlinksAreFollowed(t *testing.T) {
 	os.Rename(filepath.Join(elsewhere, "graph", "belief", "bel_c9d4se.md"), filepath.Join(elsewhere, "kept.md"))
 	os.Symlink(filepath.Join(elsewhere, "kept.md"), filepath.Join(elsewhere, "graph", "belief", "bel_c9d4se.md"))
 	t.Setenv("LOREMASON_WORKSPACE", root)
-	code, out, _ := run("validate")
+	code, out, _ := mason("validate")
 	if code != 0 || out != "26 records: 0 errors, 0 warnings\n" {
 		t.Fatalf("exit %d\n%s", code, out)
 	}

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/andycondon/loremason/internal/diag"
 	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/schema"
 )
@@ -41,17 +42,22 @@ func TestParseRef(t *testing.T) {
 	}
 }
 
-func load(t *testing.T) *Graph {
+// load loads a workspace from the repo's testdata folder, and fails when it
+// holds no records, so a wrong path can't pass as an empty graph.
+func load(t *testing.T, workspace string) (*Graph, diag.List) {
 	t.Helper()
-	g, ds, err := Load("../../testdata/worked-example", registry.Load())
-	if err != nil || len(ds) > 0 {
-		t.Fatalf("%v %v", err, ds)
+	g, ds, err := Load("../../testdata/"+workspace, registry.Load())
+	if err != nil || len(g.Files) == 0 {
+		t.Fatalf("loading %s: %v", workspace, err)
 	}
-	return g
+	return g, ds
 }
 
 func TestLoadWorkedExample(t *testing.T) {
-	g := load(t)
+	g, ds := load(t, "worked-example")
+	if len(ds) > 0 {
+		t.Fatal(ds)
+	}
 	if len(g.Files) != 26 {
 		t.Errorf("%d files", len(g.Files))
 	}
@@ -80,10 +86,7 @@ func TestLoadWorkedExample(t *testing.T) {
 }
 
 func TestResolve(t *testing.T) {
-	g, _, err := Load("../cli/testdata/validate/alias-resolves", registry.Load())
-	if err != nil {
-		t.Fatal(err)
-	}
+	g, _ := load(t, "validate/alias-resolves")
 	for in, want := range map[string]string{
 		"bel_7k3m9q":      "bel_7k3m9q",
 		"old/B-1":         "bel_7k3m9q", // an alias with a slash in it
@@ -111,10 +114,7 @@ func TestResolve(t *testing.T) {
 }
 
 func TestPins(t *testing.T) {
-	g, _, err := Load("../cli/testdata/validate/pinned-links", registry.Load())
-	if err != nil {
-		t.Fatal(err)
-	}
+	g, _ := load(t, "validate/pinned-links")
 	var pins, vias int
 	for _, e := range g.Edges {
 		if e.Pin != nil {

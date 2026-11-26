@@ -52,7 +52,7 @@ Each record type's fields are defined by a JSON Schema in [`schema/`](schema/), 
 
 ```sh
 go test ./...                # run the tests
-go test ./internal/cli -update  # rewrite the expected output of the validate fixtures
+go test ./cmd/mason -update  # rewrite the expected output of the validate fixtures
 go run ./cmd/mason --version # run without installing
 go install ./cmd/mason       # install from a clone
 ```

@@ -1,4 +1,4 @@
-package cli
+package main
 
 import (
 	"os"
@@ -32,7 +32,7 @@ func TestNewRecordsAreValid(t *testing.T) {
 	for _, name := range registry.Load().Names() {
 		typ := registry.Load().Types[name]
 		for _, title := range titles {
-			code, out, errOut := run("new", name, "--title", title)
+			code, out, errOut := mason("new", name, "--title", title)
 			path := strings.TrimSuffix(out, "\n")
 			if code != 0 {
 				t.Fatalf("%s %q: exit %d, %s", name, title, code, errOut)
@@ -50,14 +50,14 @@ func TestNewRecordsAreValid(t *testing.T) {
 			}
 		}
 	}
-	if code, out, _ := run("validate"); code != 0 || !strings.HasSuffix(out, ": 0 errors, 0 warnings\n") {
+	if code, out, _ := mason("validate"); code != 0 || !strings.HasSuffix(out, ": 0 errors, 0 warnings\n") {
 		t.Errorf("new records aren't valid:\n%s", out)
 	}
 }
 
 func TestNewTakesFlagsFirstAndKebabCase(t *testing.T) {
 	emptyWorkspace(t)
-	if code, out, errOut := run("new", "--title", "X", "design-doc"); code != 0 || !strings.Contains(out, "design-doc") {
+	if code, out, errOut := mason("new", "--title", "X", "design-doc"); code != 0 || !strings.Contains(out, "design-doc") {
 		t.Fatalf("exit %d: %s%s", code, out, errOut)
 	}
 }
@@ -73,7 +73,7 @@ func TestNewMistakes(t *testing.T) {
 		"takes one record type":   {"new", "belief", "--title", "two", "words"},
 		"unknown command `nwe`":   {"nwe"},
 	} {
-		if code, _, errOut := run(args...); code != 2 || !strings.Contains(errOut, want) {
+		if code, _, errOut := mason(args...); code != 2 || !strings.Contains(errOut, want) {
 			t.Errorf("%v: exit %d, stderr %q", args, code, errOut)
 		}
 	}
