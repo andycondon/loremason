@@ -55,7 +55,7 @@ func section9Revised(t *testing.T) string {
 	must(t, "revise", "bel_7k3m9q", "--breaking")
 	edit(t, root, "belief/bel_7k3m9q.md", "claim: validate doesn't handle non-UTF-8 input", "claim: validate doesn't handle Latin-1 input")
 	must(t, "sync")
-	if bel := graphNode(t, root, "bel_7k3m9q"); bel.Current().Rev != 2 || !bel.Current().Breaking || bel.Revision(1).Old.Text("claim") != "validate doesn't handle non-UTF-8 input" {
+	if bel := graphNode(t, root, "bel_7k3m9q"); bel.Current().Rev != 2 || !bel.Current().Breaking || bel.Revision(1).KeptText("claim") != "validate doesn't handle non-UTF-8 input" {
 		t.Fatalf("step 2: the revision isn't as described: %+v", bel.Revisions)
 	}
 	if stale := staleLinks(t, root); !slices.Equal(stale, []string{"task_9w4hzd relies_on -> bel_7k3m9q"}) {

@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"crypto/sha256"
 	"errors"
 	"io/fs"
 	"maps"
@@ -11,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/andycondon/loremason/internal/diag"
-	"github.com/andycondon/loremason/internal/fingerprint"
 	"github.com/andycondon/loremason/internal/record"
 	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/internal/suggest"
@@ -139,6 +139,7 @@ func (l *loader) read(p, rel string) {
 		l.ds.Errorf(f.At(1), "can't read: %v", unwrap(err))
 		return
 	}
+	f.Sum = sha256.Sum256(data)
 	rec, errs := record.Parse(data)
 	f.Record, f.rejected = rec, map[int]bool{}
 	for _, e := range errs {
@@ -158,7 +159,7 @@ func (l *loader) addNodes(f *File) {
 	} else {
 		l.g.nodes[n.ID] = n
 	}
-	addRevisions(n)
+	readRevisions(n)
 	for _, field := range slices.Sorted(maps.Keys(f.Type.Subrecords)) {
 		for _, entry := range n.Fields.Entries(field) {
 			local := entry.Text("id")
@@ -175,29 +176,6 @@ func (l *loader) addNodes(f *File) {
 				}
 			}
 		}
-	}
-}
-
-// addRevisions reads a revisable record's revisions list. Entries of the
-// wrong shape are skipped; the schema check reports them.
-func addRevisions(n *Node) {
-	if !n.Revisable() {
-		return
-	}
-	for _, entry := range n.Fields.Entries("revisions") {
-		v, ok := entry.Get("rev")
-		if !ok {
-			continue
-		}
-		r := Revision{Date: entry.Text("date"), Breaking: entry.Text("change") != "non_breaking", Commit: entry.Text("commit"), Old: entry, At: Loc{Pos: n.File.At(entry.Line()), Field: entry.Path}}
-		if v.Decode(&r.Rev) != nil {
-			continue
-		}
-		r.FP, _ = fingerprint.Parse(entry.Text("fp"))
-		n.Revisions = append(n.Revisions, r)
-	}
-	if _, written := n.Fields.Get("revisions"); !written {
-		n.Revisions = []Revision{{Rev: 1, Breaking: true, Implicit: true, At: Loc{Pos: n.File.At(1)}}}
 	}
 }
 
@@ -228,17 +206,22 @@ func (l *loader) addEdges(from *Node) {
 		value, _ := from.Fields.Get(name)
 		for _, item := range value.Items() {
 			target, p := item, (*Pin)(nil)
-			if m, ok := item.Map(); ok {
+			m, isMap := item.Map()
+			if isMap {
 				target, _ = m.Get("to")
-				p = pin(from, m)
+				p = readPin(m)
 			}
 			to, at, ok := ref(from.File, target)
 			if !ok {
 				continue
 			}
 			l.g.Edges = append(l.g.Edges, &Edge{From: from, Name: name, Def: defs[name], To: to, Pin: p, At: at, Item: item})
-			if p != nil && p.Via != nil {
-				l.g.Edges = append(l.g.Edges, p.Via)
+			// A pin's via is a link of its own, to the evidence for the last
+			// re-check, so it's checked and indexed like any other.
+			if via, ok := m.Get("via"); isMap && p != nil && ok {
+				if to, at, ok := ref(from.File, via); ok {
+					l.g.Edges = append(l.g.Edges, &Edge{From: from, Name: "via", Def: viaDef, To: to, At: at, Item: via})
+				}
 			}
 		}
 	}
@@ -246,27 +229,6 @@ func (l *loader) addEdges(from *Node) {
 
 // viaDef is the edge from a pin to the evidence for its last re-check.
 var viaDef = registry.Edge{To: []string{"evidence"}}
-
-// pin reads the pin in a {to, rev, fp, via} link, or returns nil when the
-// link has neither rev nor fp, as an initiative's {to, role} entries don't.
-func pin(from *Node, m record.Map) *Pin {
-	rev, hasRev := m.Get("rev")
-	_, hasFP := m.Get("fp")
-	if !hasRev && !hasFP {
-		return nil
-	}
-	p := &Pin{}
-	p.FP, _ = fingerprint.Parse(m.Text("fp")) // a bad value is the schema check's to report
-	if hasRev {
-		rev.Decode(&p.Rev) // a bad value is the schema check's to report
-	}
-	if via, ok := m.Get("via"); ok {
-		if to, at, ok := ref(from.File, via); ok {
-			p.Via = &Edge{From: from, Name: "via", Def: viaDef, To: to, At: at}
-		}
-	}
-	return p
-}
 
 // ref reads a reference. ok is false when the value isn't one; the schema
 // check reports why.

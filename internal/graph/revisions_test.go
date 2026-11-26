@@ -73,7 +73,7 @@ func TestRevisionsPinsAndStaleness(t *testing.T) {
 		t.Fatalf("revisions: %+v", bel.Revisions)
 	}
 	// A missing change value counts as breaking.
-	if r1 := bel.Revision(1); r1 == nil || !r1.Breaking || r1.Old.Text("claim") != "validate doesn't handle non-UTF-8 input" {
+	if r1 := bel.Revision(1); r1 == nil || !r1.Breaking || r1.KeptText("claim") != "validate doesn't handle non-UTF-8 input" {
 		t.Errorf("revision 1: %+v", r1)
 	}
 	if e.Target != bel || len(bel.Incoming) != 1 || bel.Incoming[0] != e {

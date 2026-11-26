@@ -61,15 +61,42 @@ func mapping(fields []KV, style yaml.Style) *yaml.Node {
 // Out writes a value again as it was read, comments included.
 func (v Value) Out() Out { return Out{v.node} }
 
-// WithCommentsOf carries a value's comments over to what replaces it, so a
-// note a person wrote beside a link survives the link being pinned.
+// WithCommentsOf carries the comments before and beside a value over to
+// what replaces it, so a note a person wrote by a link survives the link
+// being pinned. Comment lines after a value aren't carried: they stay in the
+// file where they are.
 func (o Out) WithCommentsOf(v Value) Out {
 	if v.node == nil {
 		return o
 	}
 	n := *o.node
-	n.HeadComment, n.LineComment, n.FootComment = v.node.HeadComment, v.node.LineComment, v.node.FootComment
+	n.HeadComment, n.LineComment = v.node.HeadComment, v.node.LineComment
 	return Out{&n}
+}
+
+// WithoutComments is the value with no comments, for keeping old wording
+// without the notes that were beside it.
+func (o Out) WithoutComments() Out {
+	return Out{withoutComments(o.node)}
+}
+
+func withoutComments(n *yaml.Node) *yaml.Node {
+	if n == nil {
+		return nil
+	}
+	c := *n
+	c.HeadComment, c.LineComment, c.FootComment = "", "", ""
+	c.Content = make([]*yaml.Node, len(n.Content))
+	for i, child := range n.Content {
+		c.Content[i] = withoutComments(child)
+	}
+	return &c
+}
+
+// Plain returns the value as plain data, as fingerprints see it.
+func (o Out) Plain() any {
+	var c converter
+	return c.value(o.node)
 }
 
 // Render writes a new field and its value as header lines, ending in a

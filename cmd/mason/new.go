@@ -15,16 +15,9 @@ import (
 func runNew(args []string, stdout, stderr io.Writer) int {
 	flags := newFlags(stderr)
 	title := flags.String("title", "", "the record's title")
-	// Flags may come before or after the type.
-	var names []string
-	for rest := args; ; {
-		if code, done := parse(flags, rest); done {
-			return code
-		}
-		if flags.NArg() == 0 {
-			break
-		}
-		names, rest = append(names, flags.Arg(0)), flags.Args()[1:]
+	names, code, done := parseArgs(flags, args)
+	if done {
+		return code
 	}
 	if len(names) != 1 {
 		return misuse(stderr, "new takes one record type (quote a title that has spaces)")

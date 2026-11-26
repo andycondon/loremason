@@ -3,11 +3,11 @@
 package graph
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/andycondon/loremason/internal/diag"
-	"github.com/andycondon/loremason/internal/fingerprint"
 	"github.com/andycondon/loremason/internal/record"
 	"github.com/andycondon/loremason/internal/registry"
 )
@@ -30,6 +30,7 @@ type File struct {
 	Folder *registry.Type // the type its folder holds
 	Node   *Node
 	Record *record.Record // nil when the file couldn't be read or parsed
+	Sum    [32]byte       // SHA-256 of the file as it was read, so a writer can tell it hasn't changed since
 
 	rejected map[int]bool // lines the reader already reported
 }
@@ -52,18 +53,6 @@ type Node struct {
 	Incoming []*Edge
 }
 
-// Revision is one entry in a record's revisions list.
-type Revision struct {
-	Rev      int
-	Date     string
-	FP       fingerprint.FP // zero until sync records it
-	Breaking bool           // compared with the revision before; true unless change is non_breaking
-	Commit   string         // for long records, where the old text is kept in git
-	Old      record.Map     // the entry itself, holding the old wording for short records
-	At       Loc
-	Implicit bool // not written in the file yet; sync writes it
-}
-
 // Edge is one link, from the node whose field holds it.
 type Edge struct {
 	From   *Node
@@ -76,11 +65,11 @@ type Edge struct {
 	Item   record.Value // the link as written: a reference, or a {to: …} map
 }
 
-// Pin is what a pinned link records about its target.
-type Pin struct {
-	Rev int
-	FP  fingerprint.FP
-	Via *Edge // to the evidence for the last re-check, if there is one
+// Pinnable reports whether sync should pin the link: its edge is pinned by
+// type, its target keeps revisions, and it's in a record's own fields (sub-
+// records' links are never pinned).
+func (e *Edge) Pinnable() bool {
+	return e.Target != nil && !e.From.IsSubrecord() && e.Def.ShouldPin(e.Target.Kind)
 }
 
 // Loc is where a link is written: the file and line, and the field.
@@ -91,6 +80,19 @@ type Loc struct {
 
 // Node returns the node with an ID, or nil.
 func (g *Graph) Node(id string) *Node { return g.nodes[id] }
+
+// Lookup returns the node a reference written by a person names, such as
+// bel_7k3m9q or an alias.
+func (g *Graph) Lookup(s string) (*Node, error) {
+	r, err := ParseRef(s)
+	if err != nil {
+		return nil, err
+	}
+	if n := g.Resolve(r); n != nil {
+		return n, nil
+	}
+	return nil, fmt.Errorf("no record is called `%s`", s)
+}
 
 // Resolve returns the node a reference names, or nil. The name is tried as
 // an ID or alias first, then as parent/local for a sub-record, since an
@@ -145,8 +147,8 @@ func (n *Node) IsSubrecord() bool { return n.Parent != nil }
 // Revisable reports whether the node is a record that keeps revisions.
 func (n *Node) Revisable() bool { return n.Kind.Revisable && !n.IsSubrecord() }
 
-// Current returns the current revision, or nil for a node that isn't
-// revisable.
+// Current returns the current revision. A revisable record always has one
+// (perhaps implicit); for any other node it's nil.
 func (n *Node) Current() *Revision {
 	if len(n.Revisions) == 0 {
 		return nil
@@ -192,50 +194,6 @@ func (n *Node) Record() *Node {
 		return n.Parent
 	}
 	return n
-}
-
-// Fingerprint is the fingerprint of the record's meaning as it is now. It's
-// zero for sub-records, and for files that couldn't be read.
-func (n *Node) Fingerprint() fingerprint.FP {
-	if n.IsSubrecord() || n.File.Record == nil {
-		return fingerprint.FP{}
-	}
-	fields := map[string]any{}
-	hasBody := false
-	for _, name := range n.File.Type.Meaning {
-		if name == "body" {
-			hasBody = true
-			continue
-		}
-		if v, ok := n.Fields.Get(name); ok {
-			fields[name] = withoutRevisions(v.Plain())
-		}
-	}
-	return fingerprint.Of(fields, n.File.Record.Body, hasBody)
-}
-
-// withoutRevisions writes references in a value without their @rN, so that
-// moving a link to a newer revision doesn't change what the record means.
-func withoutRevisions(v any) any {
-	switch v := v.(type) {
-	case string:
-		if r, err := ParseRef(v); err == nil && r.Rev > 0 {
-			return r.Name
-		}
-	case []any:
-		out := make([]any, len(v))
-		for i, item := range v {
-			out[i] = withoutRevisions(item)
-		}
-		return out
-	case map[string]any:
-		out := make(map[string]any, len(v))
-		for k, item := range v {
-			out[k] = withoutRevisions(item)
-		}
-		return out
-	}
-	return v
 }
 
 // Stale reports whether a pinned link no longer matches its target: the

@@ -47,7 +47,7 @@ title: Report them
 status: accepted
 implements:
   - {to: req_5txk3a, rev: 1, fp: "fp1:000000000001"}
-relies_on: [req_5txk3a@r2]
+relies_on: [req_5txk3a@r1]
 created: 2026-11-22
 ---
 `
@@ -73,7 +73,8 @@ func TestRepinOnlyAcrossNonBreakingRevisions(t *testing.T) {
 
 func TestBareLinkPinsTheRevisionItNames(t *testing.T) {
 	p := Sync(load(t, map[string]string{"requirement/req_5txk3a.md": requirement("breaking"), "task/task_9w4hzd.md": task}), nil, "2026-11-25")
-	if !strings.Contains(actions(p), "pin `relies_on[0]` to req_5txk3a@r2") {
+	// Revision 2 is breaking, so the link stays on the revision it names.
+	if got := actions(p); !strings.Contains(got, "pin `relies_on[0]` to req_5txk3a@r1") || strings.Contains(got, "since every revision") {
 		t.Errorf("got:\n%s", actions(p))
 	}
 }

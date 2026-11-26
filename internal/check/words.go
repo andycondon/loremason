@@ -23,8 +23,8 @@ func joinLast(names []string, last string) string {
 	return strings.Join(names[:len(names)-1], ", ") + " " + last + " " + names[len(names)-1]
 }
 
-// a puts "a" or "an" before a word: a belief, an initiative.
-func a(word string) string {
+// article puts "a" or "an" before a word: a belief, an initiative.
+func article(word string) string {
 	if word != "" && strings.ContainsRune("aeiou", rune(word[0])) {
 		return "an " + word
 	}

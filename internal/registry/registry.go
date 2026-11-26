@@ -81,6 +81,22 @@ func (e Edge) Allows(k *Kind) bool {
 // Folder is the folder under graph/ that holds the type's records.
 func (t *Type) Folder() string { return strings.ReplaceAll(t.Name, "_", "-") }
 
+// MeaningFields are the header fields a fingerprint covers. Whether the body
+// counts too is BodyIsMeaning.
+func (t *Type) MeaningFields() []string {
+	var fields []string
+	for _, f := range t.Meaning {
+		if f != "body" {
+			fields = append(fields, f)
+		}
+	}
+	return fields
+}
+
+// BodyIsMeaning reports whether a fingerprint covers the body, as for
+// documents, rather than only header fields, as for beliefs.
+func (t *Type) BodyIsMeaning() bool { return slices.Contains(t.Meaning, "body") }
+
 // Validate checks a record's fields, as plain values, against the type's schema.
 func (t *Type) Validate(fields map[string]any) error { return t.Schema.Validate(fields) }
 

@@ -1,4 +1,5 @@
 graph/belief/bel_7k3m9q.md:4: error: the meaning changed, but revision 3 is pinned by task_9w4hzd: undo the change, run `mason revise bel_7k3m9q --breaking` (or `--non-breaking`), then make it again
+graph/belief/bel_7k3m9q.md:8: error: the wording kept for revision 1 no longer matches its fingerprint; kept wording records what was built on, so it can't be edited
 graph/belief/bel_7k3m9q.md:9: error: revisions are numbered 1, 2, 3 and so on; this one is 3 where 2 belongs
-2 records: 2 errors, 0 warnings
+2 records: 3 errors, 0 warnings
 exit 1

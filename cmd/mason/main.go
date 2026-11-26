@@ -90,6 +90,21 @@ func parse(fs *flag.FlagSet, args []string) (code int, done bool) {
 	}
 }
 
+// parseArgs parses flags that may come before or after the other
+// arguments, and returns the others. done is true when the command should
+// stop with code.
+func parseArgs(fs *flag.FlagSet, args []string) (rest []string, code int, done bool) {
+	for {
+		if code, done := parse(fs, args); done {
+			return nil, code, true
+		}
+		if fs.NArg() == 0 {
+			return rest, 0, false
+		}
+		rest, args = append(rest, fs.Arg(0)), fs.Args()[1:]
+	}
+}
+
 func misuse(stderr io.Writer, format string, args ...any) int {
 	fmt.Fprintf(stderr, "mason: "+format+"; see mason --help\n", args...)
 	return 2

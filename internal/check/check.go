@@ -51,7 +51,7 @@ func Graph(g *graph.Graph, loaded diag.List, reg *registry.Registry) *Result {
 	}
 	for _, e := range g.Edges {
 		c.target(e)
-		c.pinning(e)
+		c.revisionRefs(e)
 	}
 	c.duplicates()
 	c.ds.Sort()

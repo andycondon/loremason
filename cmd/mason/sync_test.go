@@ -164,7 +164,7 @@ func TestReviseThenEdit(t *testing.T) {
 	edit(t, root, "belief/bel_7k3m9q.md", "claim: validate doesn't handle non-UTF-8 input", "claim: validate doesn't handle Latin-1 input")
 	must(t, "sync")
 	n := graphNode(t, root, "bel_7k3m9q")
-	if r1 := n.Revision(1); r1.Old.Text("claim") != "validate doesn't handle non-UTF-8 input" {
+	if r1 := n.Revision(1); r1.KeptText("claim") != "validate doesn't handle non-UTF-8 input" {
 		t.Errorf("revision 1 doesn't keep the old claim: %+v", r1)
 	}
 	if r2 := n.Current(); r2.Rev != 2 || !r2.Breaking || r2.FP != n.Fingerprint() {
@@ -257,4 +257,20 @@ func graphNode(t *testing.T, root, id string) *graph.Node {
 		t.Fatalf("loading %s: %v", id, err)
 	}
 	return g.Node(id)
+}
+
+// A bare link to an old revision, with only non-breaking revisions after it,
+// is pinned straight to the current one, so a second sync has nothing to do.
+func TestSyncIsIdempotentWithNamedRevisions(t *testing.T) {
+	root := newWorkspace(t, map[string]string{"belief/bel_7k3m9q.md": beliefRecord, "task/task_9w4hzd.md": taskRecord})
+	must(t, "sync")
+	must(t, "revise", "bel_7k3m9q", "--non-breaking")
+	edit(t, root, "belief/bel_7k3m9q.md", "non-UTF-8 input", "non-UTF-8 input, such as Latin-1")
+	write(t, root, "task/task_2b4cdf.md", "---\nid: task_2b4cdf\ntitle: Another\nstatus: proposed\nrelies_on: [bel_7k3m9q@r1]\ncreated: 2026-11-22\n---\n")
+	if out := must(t, "sync"); !strings.Contains(out, "pin `relies_on[0]` to bel_7k3m9q@r2, since every revision after r1 is non-breaking") {
+		t.Errorf("got %s", out)
+	}
+	if out := must(t, "sync"); out != "nothing to sync\n" {
+		t.Errorf("a second sync did something:\n%s", out)
+	}
 }
