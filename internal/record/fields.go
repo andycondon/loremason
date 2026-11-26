@@ -9,7 +9,7 @@ import (
 )
 
 // Path says where a value is in a header: field names and list indexes. It
-// prints the way a person would write it, such as support[0].direction.
+// prints as messages show it, such as support[0].direction.
 type Path []string
 
 // Field returns the path of a field inside the value at p.
@@ -45,11 +45,12 @@ type Map struct {
 // Value is one field's value, and where it is.
 type Value struct {
 	node *yaml.Node
+	key  *yaml.Node // the field's name, for a value read with Get; nil for list items
 	Path Path
 }
 
-// Line is where the map starts: line 1 for the header, since it opens the
-// file, and the entry's first line for an entry.
+// Line returns the line the map starts on: 1 for the header, whose opening
+// --- starts the file, or an entry's first line.
 func (m Map) Line() int {
 	if m.start > 0 || m.node == nil {
 		return max(m.start, 1)
@@ -86,13 +87,13 @@ func (m Map) LineOf(p Path) int {
 // Get returns a field's value.
 func (m Map) Get(field string) (Value, bool) {
 	if key, value := m.find(field); key != nil {
-		return Value{node: value, Path: m.Path.Field(field)}, true
+		return Value{node: value, key: key, Path: m.Path.Field(field)}, true
 	}
 	return Value{}, false
 }
 
-// KeyLine is the line a field is written on, or the map's own line when the
-// field isn't there.
+// KeyLine returns the line a field's name is on, or the map's own line when
+// the field isn't there.
 func (m Map) KeyLine(field string) int {
 	if key, _ := m.find(field); key != nil {
 		return key.Line
@@ -131,12 +132,13 @@ func (m Map) find(field string) (key, value *yaml.Node) {
 	return nil, nil
 }
 
-// Line is where the value is written.
+// Line returns the line the value starts on.
 func (v Value) Line() int { return v.node.Line }
 
-// Text returns the value when it's text.
+// Text returns the value when it's text. A date such as 2026-11-22 counts
+// as text, as written; YAML would otherwise read it as a timestamp.
 func (v Value) Text() (string, bool) {
-	if v.node == nil || v.node.Kind != yaml.ScalarNode || v.node.Tag != "!!str" {
+	if v.node == nil || v.node.Kind != yaml.ScalarNode || (v.node.Tag != "!!str" && v.node.Tag != "!!timestamp") {
 		return "", false
 	}
 	return v.node.Value, true
@@ -166,14 +168,15 @@ func (v Value) Items() []Value {
 	return items
 }
 
+// Plain returns the value as plain data (text, numbers, lists, maps), as the
+// JSON Schema check and fingerprints see it.
+func (v Value) Plain() any {
+	if v.node == nil {
+		return nil
+	}
+	var c converter
+	return c.value(v.node)
+}
+
 // Decode stores the value in out, as yaml.Unmarshal would.
 func (v Value) Decode(out any) error { return v.node.Decode(out) }
-
-// Quote writes text as a YAML value, with quotes when YAML needs them.
-func Quote(s string) string {
-	out, err := yaml.Marshal(s)
-	if err != nil {
-		panic(err) // a string always marshals
-	}
-	return strings.TrimSuffix(string(out), "\n")
-}

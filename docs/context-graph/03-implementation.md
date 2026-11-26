@@ -4,7 +4,7 @@ part: 3
 status: leaning   # agreed in principle; not yet a recorded decision
 reading_time: 17 min
 created: 2026-11-22
-updated: 2026-11-22
+updated: 2026-11-25
 author: Andy Condon
 ---
 
@@ -219,12 +219,19 @@ revisions:
 - **`change`** says whether the revision is `breaking` or `non_breaking` compared with the one before. If it's left out, the revision counts as breaking. Removing or narrowing something is breaking; adding something isn't.
 - **Old text is kept inline for short records** (beliefs, questions, requirements, steps), so a reference to `@r1` can be read without git.
 - **For long documents, the old text stays in git.** That covers findings, design docs, PRDs, tasks, plans and decisions. Their entries hold a `commit` instead of the old text, so a file doesn't fill up with old drafts. Staleness never needs the old text, only the fingerprints, which are always in the file.
+- **A record with no `revisions` list is at revision 1.** That's how a new record starts, so `@r1` can be named straight away. `mason sync` writes the entry, with its date and fingerprint.
 
 ### Drafting stays cheap: a revision is sealed when something pins it
 
 Until another record pins a revision, it can be edited freely. `mason sync` keeps its recorded fingerprint up to date, and no new revision is made.
 
-**The first pin seals the revision.** After that, a change of substance needs a new revision, made with `mason revise`, which asks whether it's breaking. If someone changes a sealed record's substance without making a revision, `validate` fails and says which command to run.
+**The first pin seals the revision.** After that, a change of substance needs a new revision. **The revision comes first, then the edit:**
+
+1. `mason revise <id> --breaking` (or `--non-breaking`) keeps the current wording inline, or for long records the commit that holds it, and opens the next revision. It needs one of the two flags, so an agent never meets a prompt.
+2. Edit the record.
+3. `mason sync` records the new revision's fingerprint, since nothing pins it yet.
+
+Doing it in that order means the old wording is always still in the file when it's kept, with no need for git. If someone changes a sealed record's substance without a revision, `validate` fails and says to undo the change, run `mason revise`, then make it again. `revise` refuses to run in that state, so the changed wording can't be kept by mistake as the old one.
 
 This is what keeps the structure out of the way while ideas are forming. A design doc, finding or plan can go through many drafts in a day. Revisions only start once other work is built on it.
 
@@ -244,8 +251,8 @@ fp1:3a9c0e1b77d2
 The **canonical form** is fixed precisely, because any drift would look like every record changing:
 
 1. Take the record's meaning fields from the registry. `body` stands for the body.
-2. Write the fields as compact JSON with sorted keys, in UTF-8.
-3. Normalise the body: Windows line endings become Unix ones, trailing spaces are removed from each line, runs of blank lines become one, and blank lines at the start and end are dropped.
+2. Write the fields as compact JSON with sorted keys, in UTF-8. Characters are written as themselves, except what JSON itself requires to be escaped (quotes, backslashes, control characters) and the line and paragraph separators U+2028 and U+2029, written as `\u2028` and `\u2029`. `<`, `>` and `&` are written as themselves.
+3. Normalise the body: Windows line endings (`\r\n`) become Unix ones, trailing spaces and tabs are removed from each line, runs of blank lines become one, and blank lines at the start and end are dropped. A line holding only spaces counts as blank. A lone `\r` is left as it is.
 4. Write IDs inside fields bare, without `@rN`.
 5. Hash the result with SHA-256 and keep the first 12 hex characters.
 
@@ -260,7 +267,7 @@ When a pinned link no longer matches its target, the record holding it is stale.
 | **Still holds** | The pin is updated to the target's current revision and fingerprint, with `via` pointing at a new evidence record that says why (`about` the record, `generated_by` the agent's session). The record itself gets no new revision, so nothing below it is touched. That's early cutoff. |
 | **Needs to change** | The record gets a new revision through `mason revise`, and its pins are updated. Whatever pins *it* now becomes stale, one step further down. |
 
-**Non-breaking revisions re-pin quietly.** If every revision between a pin and its target's current one is `non_breaking`, `mason sync` moves the pin forward with no re-check and no evidence. The revision's own `change` value is the record of why.
+**Non-breaking revisions re-pin quietly.** If every revision between a pin and its target's current one is `non_breaking`, `mason sync` moves the pin forward with no re-check and no evidence. The revision's own `change` value is the record of why, so a `via` from an earlier re-check is dropped.
 
 Pins, `via` links and re-check evidence all live in record files, never only in the index. So a rebuild from the files always gives the same answer to "what is stale?".
 
@@ -329,6 +336,8 @@ Invalidation is a second query: commitments whose `relies_on` targets a belief t
 
 Writing commands are kept separate and few. `mason new <type>` creates a record with a fresh ID, `mason revise <id>` makes a new revision, and `mason sync` fills pins, refreshes unsealed fingerprints, re-pins across non-breaking revisions and regenerates views. `validate` only reads, and fails on any error.
 
+`mason sync` works in a fixed order, because a pin seals the revision it names: first it writes revision 1 where it's missing, then it records fingerprints of revisions nothing pins yet, then it pins bare links, then it re-pins across non-breaking revisions. It leaves a file with errors alone and says so, because re-writing a link list it can't read could lose what a person wrote. `mason sync --dry-run` says what it would do. Rewritten fields always take one form: links as a block list of `{to, rev, fp, via}` maps, revisions as a block list of maps. Every other line keeps its bytes, comments and spacing.
+
 ## 7. Generated pages
 
 An initiative's pages are built from the records linked to it and written to `initiatives/<name>/`:
@@ -367,7 +376,7 @@ The IDs follow part 1, section 5.
 
 **1. Before.** The task above relies on `bel_7k3m9q@r1`. A plan, `plan_k2x8wd`, is `derived_from` the task at revision 1. Its three steps are each `part_of` the plan at revision 1. `mason stale` returns nothing.
 
-**2. The belief is revised.** New evidence shows UTF-16 files are read fine and only Latin-1 fails. The claim narrows to "validate doesn't handle Latin-1 input". An agent runs `mason revise bel_7k3m9q`. Narrowing a claim is breaking, so the new entry gets `change: breaking`, and the old wording stays inline as revision 1.
+**2. The belief is revised.** New evidence shows UTF-16 files are read fine and only Latin-1 fails. The claim narrows to "validate doesn't handle Latin-1 input". Narrowing a claim is breaking, so an agent runs `mason revise bel_7k3m9q --breaking`, which keeps the old wording inline as revision 1 and opens revision 2. Then it edits the claim and runs `mason sync`, which records revision 2's fingerprint.
 
 **3. One link goes stale.**
 
@@ -385,7 +394,9 @@ Only the task appears. The plan and steps aren't stale: their pins point at the 
 
 **6. Had the change been cosmetic.** If someone only re-wrapped the belief's reasoning, its meaning fields wouldn't change, so neither would its fingerprint. Nothing would be stale, and no revision would be needed.
 
-At no point did a person see a flag. The decision that relies on the belief is `accepted`, so its re-check would come to a person as a drafted change, never as a bare warning (part 1, section 4).
+At no point did a person see a flag. This example leaves out part 1's decision, which also relies on the belief. Its link would go stale in step 3 as well, and because the decision is `accepted`, its re-check would come to a person as a drafted change, never as a bare warning (part 1, section 4).
+
+This walk-through runs as tests (`internal/pinning/belief_change_test.go`).
 
 ## 10. Can safely come later
 

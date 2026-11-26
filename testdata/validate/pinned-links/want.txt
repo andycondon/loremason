@@ -1,3 +1,0 @@
-graph/task/task_9w4hzd.md:7: error: `relies_on[1].via` points at `bel_7k3m9q`, which is of type belief; it must point at evidence
-3 records: 1 error, 0 warnings
-exit 1

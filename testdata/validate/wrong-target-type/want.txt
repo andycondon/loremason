@@ -1,6 +1,0 @@
-graph/belief/bel_7k3m9q.md:7: error: `answers[0]` points at `task_9w4hzd`, which is of type task; it must point at question
-graph/decision/dec_6n1xtb.md:5: error: `chooses[0]` points at `q_3fz8km`, which is of type question; it must point at option
-graph/question/q_3fz8km.md:6: error: `options[0].for[0]` points at `task_9w4hzd`, which is of type task; it must point at belief
-graph/task/task_9w4hzd.md:5: error: `implements` points at `bel_7k3m9q`, which is of type belief; it must point at requirement
-4 records: 4 errors, 0 warnings
-exit 1

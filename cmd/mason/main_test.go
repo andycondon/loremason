@@ -2,9 +2,14 @@ package main
 
 import (
 	"bytes"
-	"strings"
 	"testing"
+
+	"github.com/andycondon/loremason/internal/testws"
 )
+
+// These tests cover the wiring: that each command calls the domain, prints
+// what it returns, and exits with the right code. The rules are tested in
+// their own packages, and parsing, help and exit codes in package cli.
 
 func mason(args ...string) (code int, stdout, stderr string) {
 	var out, errb bytes.Buffer
@@ -12,30 +17,52 @@ func mason(args ...string) (code int, stdout, stderr string) {
 	return code, out.String(), errb.String()
 }
 
-func TestVersion(t *testing.T) {
-	code, out, _ := mason("--version")
-	if code != 0 || out != "mason "+Version+"\n" {
-		t.Fatalf("got code %d, output %q", code, out)
-	}
+// newWorkspace makes a workspace with records, and points mason at it.
+func newWorkspace(t *testing.T, records map[string]string) *testws.Workspace {
+	t.Helper()
+	useVersion(t, testws.Version)
+	w := testws.New(t, records)
+	t.Setenv("LOREMASON_WORKSPACE", w.Root)
+	return w
 }
 
-func TestNoArgumentsPrintsUsage(t *testing.T) {
-	code, out, _ := mason()
-	if code != 0 || !strings.Contains(out, "Usage:\n  mason") {
-		t.Fatalf("got code %d, output %q", code, out)
-	}
+func useVersion(t *testing.T, v string) {
+	t.Helper()
+	old := Version
+	Version = v
+	t.Cleanup(func() { Version = old })
 }
+
+// This is mason's own help, which is part of its documentation.
+const help = "mason creates and checks the records of a context graph, and keeps the links\n" +
+	"between them pinned.\n" +
+	"\n" +
+	"Usage:\n" +
+	"  mason <command> [arguments]\n" +
+	"\n" +
+	"Commands:\n" +
+	"  validate   check every record in the workspace\n" +
+	"  new        create a record and print its path\n" +
+	"  sync       pin links and record fingerprints\n" +
+	"  revise     open a new revision before changing a record's meaning\n" +
+	"\n" +
+	"Run `mason <command> --help` for a command's arguments and flags.\n" +
+	"\n" +
+	"The workspace is the nearest folder, here or above, with a .loremason folder.\n" +
+	"Set LOREMASON_WORKSPACE to use another.\n" +
+	"\n" +
+	"Flags:\n" +
+	"  --version   print the version and exit\n" +
+	"  --help      show this help\n"
 
 func TestHelp(t *testing.T) {
-	code, _, errOut := mason("--help")
-	if code != 0 || !strings.Contains(errOut, "Usage:") {
-		t.Fatalf("got code %d, stderr %q", code, errOut)
+	if code, out, _ := mason("--help"); code != 0 || out != help {
+		t.Errorf("exit %d:\n%s", code, out)
 	}
 }
 
-func TestUnknownFlag(t *testing.T) {
-	code, _, errOut := mason("--nope")
-	if code != 2 || !strings.Contains(errOut, "nope") {
-		t.Fatalf("got code %d, stderr %q", code, errOut)
+func TestVersion(t *testing.T) {
+	if code, out, _ := mason("--version"); code != 0 || out != "mason "+Version+"\n" {
+		t.Errorf("exit %d: %q", code, out)
 	}
 }

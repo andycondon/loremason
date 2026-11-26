@@ -3,6 +3,7 @@
 package graph
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -29,6 +30,7 @@ type File struct {
 	Folder *registry.Type // the type its folder holds
 	Node   *Node
 	Record *record.Record // nil when the file couldn't be read or parsed
+	Sum    [32]byte       // SHA-256 of the file as it was read, so a writer can tell it hasn't changed since
 
 	rejected map[int]bool // lines the reader already reported
 }
@@ -42,23 +44,32 @@ type Node struct {
 	Parent   *Node      // the record holding a sub-record; nil for records
 	Local    string     // a sub-record's own id, such as s1
 	Children []*Node    // a record's sub-records, in file order
+
+	// Revisions are a revisable record's revisions, oldest first; the last
+	// is the current one. A revisable record whose file has no revisions
+	// list yet is at revision 1, which is Implicit until sync writes it.
+	Revisions []Revision
+	// Incoming are the edges that point at this node.
+	Incoming []*Edge
 }
 
 // Edge is one link, from the node whose field holds it.
 type Edge struct {
-	From *Node
-	Name string // the field, such as relies_on, or via for a pin's evidence
-	Def  registry.Edge
-	To   Ref
-	Pin  *Pin // set when the link records the target's revision
-	At   Loc
+	From   *Node
+	Name   string // the field, such as relies_on, or via for a pin's evidence
+	Def    registry.Edge
+	To     Ref
+	Target *Node // what To resolves to; nil when it doesn't
+	Pin    *Pin  // set when the link records the target's revision
+	At     Loc
+	Item   record.Value // the link as written: a reference, or a {to: …} map
 }
 
-// Pin is what a pinned link records about its target.
-type Pin struct {
-	Rev int
-	FP  string
-	Via *Edge // to the evidence for the last re-check, if there is one
+// Pinnable reports whether sync should pin the link: the edge should pin
+// its target (registry.Edge.ShouldPin), and the link is in a record's own
+// fields, not a sub-record's.
+func (e *Edge) Pinnable() bool {
+	return e.Target != nil && !e.From.IsSubrecord() && e.Def.ShouldPin(e.Target.Kind)
 }
 
 // Loc is where a link is written: the file and line, and the field.
@@ -67,8 +78,24 @@ type Loc struct {
 	Field record.Path
 }
 
-// Node returns the node with an ID, or nil.
+// Node returns the node with an ID, or nil. It doesn't resolve aliases;
+// Resolve does.
 func (g *Graph) Node(id string) *Node { return g.nodes[id] }
+
+// Lookup parses s as a reference, such as bel_7k3m9q, an alias or
+// bel_7k3m9q/s1, and returns the node it names. It's for references that
+// arrive as text, such as a command's argument; the error says whether s
+// isn't a reference or names no record.
+func (g *Graph) Lookup(s string) (*Node, error) {
+	r, err := ParseRef(s)
+	if err != nil {
+		return nil, err
+	}
+	if n := g.Resolve(r); n != nil {
+		return n, nil
+	}
+	return nil, fmt.Errorf("no record is called `%s`", s)
+}
 
 // Resolve returns the node a reference names, or nil. The name is tried as
 // an ID or alias first, then as parent/local for a sub-record, since an
@@ -120,6 +147,81 @@ func (g *Graph) Names() []string {
 // IsSubrecord reports whether the node lives inside another record.
 func (n *Node) IsSubrecord() bool { return n.Parent != nil }
 
+// Revisable reports whether the node is a record that keeps revisions.
+func (n *Node) Revisable() bool { return n.Kind.Revisable && !n.IsSubrecord() }
+
+// Current returns the current revision. A revisable record always has one
+// (perhaps implicit); for any other node it's nil.
+func (n *Node) Current() *Revision {
+	if len(n.Revisions) == 0 {
+		return nil
+	}
+	return &n.Revisions[len(n.Revisions)-1]
+}
+
+// Revision returns a revision by number, or nil.
+func (n *Node) Revision(rev int) *Revision {
+	for i := range n.Revisions {
+		if n.Revisions[i].Rev == rev {
+			return &n.Revisions[i]
+		}
+	}
+	return nil
+}
+
+// Sealed reports whether something pins the revision. A sealed revision's
+// meaning can't change without a new revision.
+func (n *Node) Sealed(rev int) bool {
+	for _, e := range n.Incoming {
+		if e.Pin != nil && e.Pin.Rev == rev {
+			return true
+		}
+	}
+	return false
+}
+
+// PinnedBy lists the IDs of the records whose links pin the revision.
+func (n *Node) PinnedBy(rev int) []string {
+	var ids []string
+	for _, e := range n.Incoming {
+		if e.Pin != nil && e.Pin.Rev == rev && !slices.Contains(ids, e.From.Record().ID) {
+			ids = append(ids, e.From.Record().ID)
+		}
+	}
+	return ids
+}
+
+// Record returns the record a node belongs to: itself, or its parent.
+func (n *Node) Record() *Node {
+	if n.Parent != nil {
+		return n.Parent
+	}
+	return n
+}
+
+// Stale reports whether a pinned link no longer matches its target: the
+// target is at another revision, or its meaning changed since it was pinned.
+func (e *Edge) Stale() bool {
+	if e.Pin == nil || e.Target == nil || e.Target.Current() == nil {
+		return false
+	}
+	return e.Pin.Rev != e.Target.Current().Rev || e.Pin.FP != e.Target.Fingerprint()
+}
+
+// Behind returns the target's revisions after the one the link pins.
+func (e *Edge) Behind() []Revision {
+	if e.Pin == nil || e.Target == nil {
+		return nil
+	}
+	var revs []Revision
+	for _, r := range e.Target.Revisions {
+		if r.Rev > e.Pin.Rev {
+			revs = append(revs, r)
+		}
+	}
+	return revs
+}
+
 // Child returns a sub-record by its local id, or nil.
 func (n *Node) Child(local string) *Node {
 	for _, c := range n.Children {
@@ -139,14 +241,15 @@ func (n *Node) Locals() []string {
 	return ids
 }
 
-// At is a line in the file.
+// At returns the position of a line in the file.
 func (f *File) At(line int) diag.Pos { return diag.Pos{Path: f.Path, Line: line} }
 
 // Misplaced reports whether the ID's prefix names a type other than the
 // folder's. The file is then checked against neither type's schema.
 func (f *File) Misplaced() bool { return f.Type != f.Folder }
 
-// Rejected reports whether the reader already reported a problem on a line.
+// Rejected reports whether reading the file already reported an error at
+// line, so a check doesn't report it twice.
 func (f *File) Rejected(line int) bool { return f.rejected[line] }
 
 // Identity is what makes two records look like the same thing, such as two

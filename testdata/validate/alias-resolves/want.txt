@@ -1,2 +1,0 @@
-4 records: 0 errors, 0 warnings
-exit 0

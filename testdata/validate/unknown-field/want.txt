@@ -1,5 +1,0 @@
-graph/task/task_9w4hzd.md:5: error: unknown field `relies_om`; did you mean `relies_on`?
-graph/task/task_9w4hzd.md:6: error: unknown field `banana`; fields the schema doesn't know go under `extra`
-graph/task/task_9w4hzd.md:7: error: unknown field `type`; the type comes from the ID's prefix, so remove it
-2 records: 3 errors, 0 warnings
-exit 1

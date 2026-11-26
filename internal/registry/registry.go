@@ -21,7 +21,7 @@ import (
 
 // Registry describes every record type.
 type Registry struct {
-	CommonEdges map[string]Edge  `yaml:"common_edges"`
+	CommonEdges map[string]Edge  `yaml:"common_edges"` // edges every record type has, such as mentions
 	Types       map[string]*Type `yaml:"types"`
 
 	byPrefix map[string]*Type
@@ -35,28 +35,41 @@ type Kind struct {
 	Name     string          `yaml:"type"`     // a record type's name comes from its key in types.yaml
 	Edges    map[string]Edge `yaml:"edges"`    // the links its fields may hold; a record type's include the common ones
 	Identity []string        `yaml:"identity"` // fields that suggest two records are the same thing
+	// Revisable kinds keep a revisions list; links can pin their revisions.
+	// Sub-record kinds never are.
+	Revisable bool `yaml:"revisable"`
 }
 
 // Type is one record type.
 type Type struct {
 	Kind            `yaml:",inline"`
-	Prefix          string           `yaml:"prefix"`
-	Layer           string           `yaml:"layer"`
-	Revisable       bool             `yaml:"revisable"`
-	RevisionsInline bool             `yaml:"revisions_inline"`
-	Meaning         []string         `yaml:"meaning"`
-	Subrecords      map[string]*Kind `yaml:"subrecords"` // by the field that lists them
-	Template        string           `yaml:"template"`
-	Body            string           `yaml:"body"`
+	Prefix          string           `yaml:"prefix"`           // the ID prefix: bel for bel_7k3m9q
+	Layer           string           `yaml:"layer"`            // knowing, committing or scope
+	RevisionsInline bool             `yaml:"revisions_inline"` // old wording is kept in the file, not left to git
+	Meaning         []string         `yaml:"meaning"`          // fields a fingerprint covers; "body" for the body
+	Subrecords      map[string]*Kind `yaml:"subrecords"`       // by the field that lists them
+	Template        string           `yaml:"template"`         // header lines `mason new` writes after id and title
+	Body            string           `yaml:"body"`             // the body `mason new` writes
 
 	Schema *jsonschema.Schema `yaml:"-"`
 }
 
 // Edge is a kind of link.
 type Edge struct {
-	To         []string `yaml:"to"`
-	Propagates bool     `yaml:"propagates"`
-	Pinned     *bool    `yaml:"pinned"`
+	To         []string `yaml:"to"`         // the types it may point at, or any
+	Propagates bool     `yaml:"propagates"` // a change in the target means the record needs a re-check
+	Pinned     *bool    `yaml:"pinned"`     // whether the link pins its target; nil means as Propagates
+}
+
+// ShouldPin reports whether a link of this edge to a node of kind target
+// records the target's revision and fingerprint: the edge is pinned, and the
+// target keeps revisions.
+func (e Edge) ShouldPin(target *Kind) bool {
+	pinned := e.Propagates
+	if e.Pinned != nil {
+		pinned = *e.Pinned
+	}
+	return pinned && target.Revisable
 }
 
 // Allows reports whether the edge may point at a node of kind k.
@@ -66,6 +79,22 @@ func (e Edge) Allows(k *Kind) bool {
 
 // Folder is the folder under graph/ that holds the type's records.
 func (t *Type) Folder() string { return strings.ReplaceAll(t.Name, "_", "-") }
+
+// MeaningFields are the header fields a fingerprint covers. Whether the body
+// counts too is BodyIsMeaning.
+func (t *Type) MeaningFields() []string {
+	var fields []string
+	for _, f := range t.Meaning {
+		if f != "body" {
+			fields = append(fields, f)
+		}
+	}
+	return fields
+}
+
+// BodyIsMeaning reports whether a fingerprint covers the body, as for
+// documents, rather than only header fields, as for beliefs.
+func (t *Type) BodyIsMeaning() bool { return slices.Contains(t.Meaning, "body") }
 
 // Validate checks a record's fields, as plain values, against the type's schema.
 func (t *Type) Validate(fields map[string]any) error { return t.Schema.Validate(fields) }
@@ -131,7 +160,8 @@ func (r *Registry) SubschemaAt(url string) *jsonschema.Schema {
 	return s
 }
 
-// Load returns the registry built into the program.
+// Load returns the registry built into the program. It panics if the
+// embedded schemas don't compile, which the tests rule out.
 func Load() *Registry { return load() }
 
 var load = sync.OnceValue(func() *Registry {

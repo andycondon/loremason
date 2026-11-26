@@ -1,0 +1,4 @@
+graph/belief/bel_7k3m9q.md:5: error: `status` is `hold`; it must be one of held, incorrect, insufficient, withdrawn; did you mean `held`?
+graph/belief/bel_7k3m9q.md:6: error: `asserted_by` is `robot`; it must be one of person, agent
+graph/belief/bel_7k3m9q.md:8: error: `support[0].direction` is `suports`; it must be one of supports, disputes; did you mean `supports`?
+graph/task/task_9w4hzd.md:6: error: `revisions[0].change` is `major`; it must be one of breaking, non_breaking

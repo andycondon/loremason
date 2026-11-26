@@ -1,92 +1,37 @@
 package graph
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/andycondon/loremason/internal/diag"
 	"github.com/andycondon/loremason/internal/registry"
-	"github.com/andycondon/loremason/schema"
 )
 
-var badRefs = []string{"", "a b", "a\tb", "@r1", "bel_7k3m9q@r0", "bel_7k3m9q@r", "bel_7k3m9q@x", "bel_7k3m9q@r1/s1", "bel_7k3m9q@r01", "bel_7k3m9q@r9999999999", "a@b@r1"}
+// names is a small graph with every kind of name: IDs, aliases (one with a
+// slash in it), and sub-records.
+func names(t *testing.T) *Graph {
+	return load(t,
+		file("bel_7k3m9q", "aliases: [old/B-1, B-2]", "support:", "  - {id: s1}", "  - {id: s2}"),
+		file("ev_p4n2xa", "aliases: [E-1]"),
+	)
+}
 
-// ParseRef and the schemas' ref pattern must agree, or a link could be
-// skipped by the loader without the schema check reporting it.
-func TestParseRefAgreesWithTheSchema(t *testing.T) {
-	refSchema := registry.Load().SubschemaAt(schema.BaseURL + "common.json#/$defs/ref")
-	for _, s := range append(badRefs, "bel_7k3m9q", "old/B-1@r3", "x\u00a0y", "bel_7k3m9q/s1@r12") {
-		_, err := ParseRef(s)
-		if schemaOK := refSchema.Validate(s) == nil; schemaOK != (err == nil) {
-			t.Errorf("%q: the schema says %v, ParseRef says %v", s, schemaOK, err)
-		}
+// ---- Graph ----
+
+func TestGraphNode(t *testing.T) {
+	g := names(t)
+	if g.Node("bel_7k3m9q") == nil || g.Node("bel_7k3m9q/s1") == nil {
+		t.Error("IDs and sub-record IDs are nodes")
+	}
+	if g.Node("B-2") != nil {
+		t.Error("Node doesn't resolve aliases")
 	}
 }
 
-func TestParseRef(t *testing.T) {
-	for in, want := range map[string]Ref{
-		"bel_7k3m9q":        {Name: "bel_7k3m9q"},
-		"plan_k2x8wd@r2":    {Name: "plan_k2x8wd", Rev: 2},
-		"bel_7k3m9q/s1@r12": {Name: "bel_7k3m9q/s1", Rev: 12},
-		"old/B-1":           {Name: "old/B-1"},
-	} {
-		got, err := ParseRef(in)
-		if err != nil || got != want || got.String() != in {
-			t.Errorf("ParseRef(%q) = %+v, %v", in, got, err)
-		}
-	}
-	for _, in := range badRefs {
-		if r, err := ParseRef(in); err == nil {
-			t.Errorf("ParseRef(%q) = %+v, want an error", in, r)
-		}
-	}
-}
-
-// load loads a workspace from the repo's testdata folder, and fails when it
-// holds no records, so a wrong path can't pass as an empty graph.
-func load(t *testing.T, workspace string) (*Graph, diag.List) {
-	t.Helper()
-	g, ds, err := Load("../../testdata/"+workspace, registry.Load())
-	if err != nil || len(g.Files) == 0 {
-		t.Fatalf("loading %s: %v", workspace, err)
-	}
-	return g, ds
-}
-
-func TestLoadWorkedExample(t *testing.T) {
-	g, ds := load(t, "worked-example")
-	if len(ds) > 0 {
-		t.Fatal(ds)
-	}
-	if len(g.Files) != 26 {
-		t.Errorf("%d files", len(g.Files))
-	}
-	bel := g.Node("bel_7k3m9q")
-	if bel == nil || bel.Kind.Name != "belief" || strings.Join(bel.Locals(), ",") != "s1,s2" {
-		t.Fatalf("belief: %+v", bel)
-	}
-	s2 := bel.Child("s2")
-	if s2.ID != "bel_7k3m9q/s2" || s2.Kind.Name != "support_link" || s2.Parent != bel || !s2.IsSubrecord() {
-		t.Errorf("sub-record: %+v", s2)
-	}
-	// Every edge resolves, and the ones out of the belief's sub-records start there.
-	var fromSub int
-	for _, e := range g.Edges {
-		n := g.Resolve(e.To)
-		if n == nil || !e.Def.Allows(n.Kind) {
-			t.Errorf("%s %s -> %s doesn't resolve to an allowed type", e.From.ID, e.Name, e.To)
-		}
-		if e.From.Parent == bel {
-			fromSub++
-		}
-	}
-	if fromSub != 2 {
-		t.Errorf("%d edges from the belief's support links", fromSub)
-	}
-}
-
-func TestResolve(t *testing.T) {
-	g, _ := load(t, "validate/alias-resolves")
+func TestGraphResolve(t *testing.T) {
+	g := names(t)
 	for in, want := range map[string]string{
 		"bel_7k3m9q":      "bel_7k3m9q",
 		"old/B-1":         "bel_7k3m9q", // an alias with a slash in it
@@ -94,40 +39,210 @@ func TestResolve(t *testing.T) {
 		"old/B-1/s1":      "bel_7k3m9q/s1", // a sub-record through an alias
 		"bel_7k3m9q/s1":   "bel_7k3m9q/s1",
 		"E-1":             "ev_p4n2xa",
-		"bel_7k3m9q/s9":   "",
-		"bel_7k3m9q/s1/x": "",
+		"bel_7k3m9q/s9":   "", // no such sub-record
+		"bel_7k3m9q/s1/x": "", // sub-records have no sub-records
 		"ev_p4n2xa/s1":    "",
 		"nothing":         "",
 	} {
-		n := g.Resolve(Ref{Name: in})
 		got := ""
-		if n != nil {
+		if n := g.Resolve(Ref{Name: in}); n != nil {
 			got = n.ID
 		}
 		if got != want {
 			t.Errorf("Resolve(%q) = %q, want %q", in, got, want)
 		}
 	}
-	if p := g.Parent(Ref{Name: "bel_7k3m9q/s9"}); p == nil || p.ID != "bel_7k3m9q" {
-		t.Errorf("Parent = %v", p)
+}
+
+func TestGraphParent(t *testing.T) {
+	g := names(t)
+	for in, want := range map[string]string{
+		"bel_7k3m9q/s9":   "bel_7k3m9q", // whether or not the sub-record exists
+		"old/B-1/s1":      "bel_7k3m9q",
+		"bel_7k3m9q/s1/x": "", // the part before the slash is a sub-record
+		"bel_7k3m9q":      "", // no slash
+		"nothing/s1":      "",
+	} {
+		got := ""
+		if p := g.Parent(Ref{Name: in}); p != nil {
+			got = p.ID
+		}
+		if got != want {
+			t.Errorf("Parent(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
-func TestPins(t *testing.T) {
-	g, _ := load(t, "validate/pinned-links")
-	var pins, vias int
-	for _, e := range g.Edges {
-		if e.Pin != nil {
-			pins++
-			if e.Pin.Rev < 1 || !strings.HasPrefix(e.Pin.FP, "fp1:") || e.Pin.Via == nil {
-				t.Errorf("pin: %+v", e.Pin)
-			}
-		}
-		if e.Name == "via" {
-			vias++
+func TestGraphLookup(t *testing.T) {
+	g := names(t)
+	if n, err := g.Lookup("old/B-1@r1"); err != nil || n.ID != "bel_7k3m9q" {
+		t.Errorf("an alias with a revision: %v, %v", n, err)
+	}
+	for in, want := range map[string]string{
+		"bel_nope00": "no record is called `bel_nope00`",
+		"bel@r0":     "bel@r0", // not a reference
+	} {
+		if _, err := g.Lookup(in); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Lookup(%q): %v", in, err)
 		}
 	}
-	if pins != 2 || vias != 2 {
-		t.Errorf("%d pins, %d via edges", pins, vias)
+}
+
+func TestGraphNames(t *testing.T) {
+	want := []string{"B-2", "E-1", "bel_7k3m9q", "bel_7k3m9q/s1", "bel_7k3m9q/s2", "ev_p4n2xa", "old/B-1"}
+	if got := names(t).Names(); !slices.Equal(got, want) {
+		t.Errorf("Names = %v", got)
+	}
+}
+
+// ---- Node ----
+
+func TestNodeShape(t *testing.T) {
+	g := load(t,
+		file("bel_7k3m9q", "support:", "  - {id: s1}", "  - {id: s2}"),
+		file("who_4d9snc"),
+	)
+	bel, s2, actor := g.Node("bel_7k3m9q"), g.Node("bel_7k3m9q/s2"), g.Node("who_4d9snc")
+	if bel.IsSubrecord() || !s2.IsSubrecord() {
+		t.Error("IsSubrecord")
+	}
+	if !bel.Revisable() || actor.Revisable() || s2.Revisable() {
+		t.Error("a belief keeps revisions; an actor and a sub-record don't")
+	}
+	if bel.Record() != bel || s2.Record() != bel {
+		t.Error("Record is the node itself, or its parent")
+	}
+	if bel.Child("s2") != s2 || bel.Child("s9") != nil || !slices.Equal(bel.Locals(), []string{"s1", "s2"}) {
+		t.Errorf("Child and Locals: %v", bel.Locals())
+	}
+}
+
+func TestNodeRevisions(t *testing.T) {
+	g := load(t,
+		file("bel_7k3m9q", "revisions:", "  - {rev: 1}", "  - {rev: 2}"),
+		file("who_4d9snc"),
+	)
+	bel := g.Node("bel_7k3m9q")
+	if bel.Current() != &bel.Revisions[1] || bel.Revision(1) != &bel.Revisions[0] || bel.Revision(3) != nil {
+		t.Errorf("revisions: %+v", bel.Revisions)
+	}
+	if actor := g.Node("who_4d9snc"); actor.Current() != nil || actor.Revision(1) != nil {
+		t.Error("a node that keeps no revisions has none")
+	}
+}
+
+func TestNodeSealedAndPinnedBy(t *testing.T) {
+	pin := func(rev string) string { return "  - {to: bel_7k3m9q, rev: " + rev + ", fp: \"fp1:000000000000\"}" }
+	bel := load(t,
+		file("bel_7k3m9q", "revisions:", "  - {rev: 1}", "  - {rev: 2}"),
+		file("task_9w4hzd", "relies_on:", pin("1"), pin("1")),
+		file("task_2b4cdf", "relies_on:", pin("1"), "  - bel_7k3m9q"),
+	).Node("bel_7k3m9q")
+	if !bel.Sealed(1) || bel.Sealed(2) {
+		t.Error("only the pinned revision is sealed; a bare link seals nothing")
+	}
+	// Each record once, however many of its links pin the revision.
+	if got := bel.PinnedBy(1); !slices.Equal(got, []string{"task_2b4cdf", "task_9w4hzd"}) {
+		t.Errorf("PinnedBy(1) = %v", got)
+	}
+	if got := bel.PinnedBy(2); got != nil {
+		t.Errorf("PinnedBy(2) = %v", got)
+	}
+}
+
+func TestNodeIdentity(t *testing.T) {
+	g := load(t,
+		file("art_7j3mdr", "url: https://example.com/a"),
+		file("art_9xk2pq", "url: \"  HTTPS://example.com/A  \""),
+		file("art_3nb6vw"),
+		file("ev_p4n2xa"),
+	)
+	a, ok := g.Node("art_7j3mdr").Identity()
+	if !ok || !slices.Equal(a.Fields, []string{"url"}) || a.At != (diag.Pos{Path: "graph/artifact/art_7j3mdr.md", Line: 4}) {
+		t.Fatalf("identity: %+v, %v", a, ok)
+	}
+	// Case and spacing don't count.
+	if b, _ := g.Node("art_9xk2pq").Identity(); b.Key != a.Key {
+		t.Errorf("keys differ: %q and %q", a.Key, b.Key)
+	}
+	if _, ok := g.Node("art_3nb6vw").Identity(); ok {
+		t.Error("an empty identity field means no identity")
+	}
+	if _, ok := g.Node("ev_p4n2xa").Identity(); ok {
+		t.Error("evidence has no identity fields")
+	}
+}
+
+// ---- Edge ----
+
+func TestEdgePinnable(t *testing.T) {
+	g := load(t,
+		file("bel_7k3m9q", "support:", "  - {id: s1, evidence: ev_p4n2xa}"),
+		file("ev_p4n2xa"),
+		file("ini_2m8vqe"),
+		file("task_9w4hzd", "relies_on: bel_7k3m9q", "part_of: ini_2m8vqe", "derived_from: dd_nope00"),
+	)
+	if !edge(t, g, "task_9w4hzd", "relies_on").Pinnable() {
+		t.Error("relies_on propagates, and a belief keeps revisions")
+	}
+	if edge(t, g, "task_9w4hzd", "part_of").Pinnable() {
+		t.Error("part_of doesn't propagate")
+	}
+	if edge(t, g, "task_9w4hzd", "derived_from").Pinnable() {
+		t.Error("a link to nothing can't be pinned")
+	}
+	// No sub-record edge in the registry propagates, so make one that would.
+	fromSub := &Edge{From: g.Node("bel_7k3m9q/s1"), Target: g.Node("bel_7k3m9q"), Def: registry.Edge{To: []string{"any"}, Propagates: true}}
+	if fromSub.Pinnable() {
+		t.Error("a sub-record's links are never pinned")
+	}
+}
+
+// stale is a belief at revision 2, and a task whose link pins it.
+func stale(t *testing.T, rev, fp string) *Edge {
+	g := load(t,
+		file("bel_7k3m9q", "claim: a claim", "revisions:", "  - {rev: 1}", "  - {rev: 2}"),
+		file("task_9w4hzd", "relies_on:", "  - {to: bel_7k3m9q, rev: "+rev+", fp: \""+fp+"\"}"),
+	)
+	return edge(t, g, "task_9w4hzd", "relies_on")
+}
+
+func TestEdgeStaleAndBehind(t *testing.T) {
+	current := load(t, file("bel_7k3m9q", "claim: a claim")).Node("bel_7k3m9q").Fingerprint().String()
+	for _, c := range []struct {
+		rev, fp string
+		stale   bool
+		behind  int
+	}{
+		{"2", current, false, 0},           // the current revision and meaning
+		{"1", current, true, 1},            // an older revision
+		{"2", "fp1:222222222222", true, 0}, // the meaning changed since
+	} {
+		e := stale(t, c.rev, c.fp)
+		if e.Stale() != c.stale || len(e.Behind()) != c.behind {
+			t.Errorf("rev %s, %s: stale %v, behind %d", c.rev, c.fp, e.Stale(), len(e.Behind()))
+		}
+	}
+	bare := load(t, file("bel_7k3m9q"), file("task_9w4hzd", "relies_on: [bel_7k3m9q, bel_nope00]"))
+	for _, e := range bare.Edges {
+		if e.Stale() || e.Behind() != nil {
+			t.Errorf("an unpinned link, or one to nothing, is never stale: %s", e.To)
+		}
+	}
+}
+
+// ---- File ----
+
+func TestFileAt(t *testing.T) {
+	f := load(t, file("bel_7k3m9q")).Files[0]
+	if f.At(3) != (diag.Pos{Path: "graph/belief/bel_7k3m9q.md", Line: 3}) {
+		t.Errorf("At(3) = %+v", f.At(3))
+	}
+}
+
+func TestFileMisplaced(t *testing.T) {
+	g, _ := loadFiles(t, map[string]string{"belief/bel_7k3m9q.md": file("bel_7k3m9q"), "question/bel_2wq8dn.md": file("bel_2wq8dn")})
+	if g.Node("bel_7k3m9q").File.Misplaced() || !g.Node("bel_2wq8dn").File.Misplaced() {
+		t.Error("a file is misplaced when its ID's prefix and its folder disagree")
 	}
 }

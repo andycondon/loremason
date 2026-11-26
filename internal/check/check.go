@@ -3,8 +3,9 @@
 // Loading the graph reports what keeps files, names and links out of it.
 // The rules here then check what's left: that each file is in the right
 // place, that each header has the shape its schema gives, that each link
-// points at something of a type its edge allows, and that no two records
-// look like the same thing.
+// points at something of a type its edge allows, that revisions and pins
+// are consistent and sealed revisions haven't changed, and that no two
+// records look like the same thing.
 package check
 
 import (
@@ -18,8 +19,9 @@ import (
 	"github.com/andycondon/loremason/internal/suggest"
 )
 
-// Result is what a check found.
+// Result is what a check found, and the graph it checked.
 type Result struct {
+	Graph       *graph.Graph
 	Records     int
 	Diagnostics diag.List
 }
@@ -36,17 +38,38 @@ func Run(root string, reg *registry.Registry) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &checker{reg: reg, g: g, ds: ds}
+	return Graph(g, ds, reg), nil
+}
+
+// Graph checks a loaded graph. loaded holds the diagnostics graph.Load
+// returned, which are included in the result.
+func Graph(g *graph.Graph, loaded diag.List, reg *registry.Registry) *Result {
+	c := &checker{reg: reg, g: g, ds: loaded}
 	for _, f := range g.Files {
 		c.placement(f)
 		c.shape(f)
+		c.revisionNumbers(f)
+		c.sealed(f)
 	}
 	for _, e := range g.Edges {
 		c.target(e)
+		c.revisionRefs(e)
 	}
 	c.duplicates()
 	c.ds.Sort()
-	return &Result{Records: len(g.Files), Diagnostics: c.ds}, nil
+	return &Result{Graph: g, Records: len(g.Files), Diagnostics: c.ds}
+}
+
+// Broken returns the paths of the files that have errors, not just
+// warnings. Tools that write leave these files alone.
+func (r *Result) Broken() map[string]bool {
+	broken := map[string]bool{}
+	for _, d := range r.Diagnostics {
+		if !d.Warning {
+			broken[d.Path] = true
+		}
+	}
+	return broken
 }
 
 // placement checks that the filename is an ID whose prefix matches the
@@ -67,7 +90,7 @@ func (c *checker) placement(f *graph.File) {
 
 // target checks that a link points at something, of a type its edge allows.
 func (c *checker) target(e *graph.Edge) {
-	n := c.g.Resolve(e.To)
+	n := e.Target
 	switch {
 	case n == nil:
 		c.ds.Errorf(e.At.Pos, "`%s` points at `%s`, which doesn't exist%s", e.At.Field, e.To, c.missingHint(e.To))
