@@ -86,7 +86,7 @@ func TestLoadWorkedExample(t *testing.T) {
 }
 
 func TestResolve(t *testing.T) {
-	g, _ := load(t, "validate/alias-resolves")
+	g, _ := load(t, "check/alias-resolves")
 	for in, want := range map[string]string{
 		"bel_7k3m9q":      "bel_7k3m9q",
 		"old/B-1":         "bel_7k3m9q", // an alias with a slash in it
@@ -114,7 +114,7 @@ func TestResolve(t *testing.T) {
 }
 
 func TestLookup(t *testing.T) {
-	g, _ := load(t, "validate/alias-resolves")
+	g, _ := load(t, "check/alias-resolves")
 	if n, err := g.Lookup("old/B-1@r1"); err != nil || n.ID != "bel_7k3m9q" {
 		t.Errorf("an alias with a revision: %v, %v", n, err)
 	}
@@ -129,7 +129,7 @@ func TestLookup(t *testing.T) {
 }
 
 func TestPins(t *testing.T) {
-	g, _ := load(t, "validate/pinned-links")
+	g, _ := load(t, "check/pinned-links")
 	var pins, vias int
 	for _, e := range g.Edges {
 		if e.Pin != nil {

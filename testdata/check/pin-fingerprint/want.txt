@@ -1,0 +1,1 @@
+graph/task/task_9w4hzd.md:6: error: `relies_on[0]`: the pin's fingerprint isn't the one recorded for revision 1 of bel_7k3m9q; write the link as just `bel_7k3m9q` and run `mason sync` to pin it again

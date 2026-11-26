@@ -1,8 +1,0 @@
-graph/belief/bel_000001.md:2: error: YAML anchors and aliases (& and *) aren't supported; quote the value if it's text
-graph/belief/bel_000002.md:7: error: `.inf` isn't a number a record can hold; put it in quotes if it's meant as text
-graph/belief/bel_000003.md:7: error: YAML merge keys (<<) aren't supported; write the fields out
-graph/belief/bel_000004.md:7: error: YAML tags such as !!binary aren't supported
-graph/belief/bel_000005.md:7: error: YAML tags such as !custom aren't supported
-graph/belief/bel_000007.md:7: error: unknown field `stauts`; did you mean `status`?
-8 records: 6 errors, 0 warnings
-exit 1

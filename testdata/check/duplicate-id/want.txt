@@ -1,0 +1,3 @@
+graph/task/bel_7k3m9q.md:1: error: `bel_7k3m9q` is also the ID of graph/belief/bel_7k3m9q.md
+graph/task/bel_7k3m9q.md:1: error: `bel_` is the prefix of type belief, so this file belongs in graph/belief/
+graph/task/bel_7k3m9q.md:8: error: `support[0].evidence` points at `bel_7k3m9q`, which is of type belief; it must point at evidence

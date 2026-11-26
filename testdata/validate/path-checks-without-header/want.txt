@@ -1,6 +1,0 @@
-graph/belief/notanid.md:1: error: the file must start with a YAML header between two `---` lines
-graph/belief/notanid.md:1: error: the filename must be an ID such as bel_7k3m9q.md
-graph/belief/zz_9w4hzd.md:1: error: no record type has the prefix `zz_`; records in this folder start with `bel_`
-graph/belief/zz_9w4hzd.md:1: error: the file must start with a YAML header between two `---` lines
-2 records: 4 errors, 0 warnings
-exit 1

@@ -1,6 +1,0 @@
-graph/evidence/ev_p4n2xa.md:5: error: `about[0]` is "bel_7k3m9q@r0"; it must be an ID such as bel_7k3m9q or bel_7k3m9q@r2, or a pinned link {to, rev, fp}
-graph/evidence/ev_p4n2xa.md:5: error: `about[1]`: `bel_7k3m9q@r12` names revision 12 of bel_7k3m9q, which has only revision 1
-graph/evidence/ev_p4n2xa.md:5: error: `about[2]`: `B-1@r2` names revision 2 of bel_7k3m9q, which has only revision 1
-graph/evidence/ev_p4n2xa.md:5: error: `about[5]` is "bel_7k3m9q@r1/s1"; it must be an ID such as bel_7k3m9q or bel_7k3m9q@r2, or a pinned link {to, rev, fp}
-2 records: 4 errors, 0 warnings
-exit 1

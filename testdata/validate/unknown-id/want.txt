@@ -1,7 +1,0 @@
-graph/decision/dec_6n1xtb.md:5: error: `chooses[0]` points at `q_3fz8km/o3`, which doesn't exist; `q_3fz8km` has o1, o2
-graph/decision/dec_6n1xtb.md:6: error: `relies_on[0]` points at `bel_7k3m9q/s1`, which doesn't exist; `bel_7k3m9q` has no entries to point at
-graph/task/task_9w4hzd.md:6: error: `relies_on[0]` points at `bel_7k3m9p`, which doesn't exist; did you mean `bel_7k3m9q`?
-graph/task/task_9w4hzd.md:7: error: `relies_on[1]` points at `bel_000000`, which doesn't exist
-graph/task/task_9w4hzd.md:8: error: `relies_on[2]`: `bel_7k3m9q@r2` names revision 2 of bel_7k3m9q, which has only revision 1
-4 records: 5 errors, 0 warnings
-exit 1

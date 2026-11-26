@@ -1,0 +1,4 @@
+graph/beleif:1: error: no record type has the folder `beleif`; did you mean `belief`?
+graph/belief/notes.txt:1: error: only record files (<id>.md) belong here
+graph/belief/old:1: error: records aren't kept in folders inside a type's folder
+graph/stray.md:1: error: records are kept in a folder named after their type, such as graph/belief/

@@ -1,3 +1,0 @@
-graph/belief/bel_7k3m9r.md:4: warning: same claim as bel_7k3m9q; if they're the same thing, use that record instead
-4 records: 0 errors, 1 warning
-exit 0
