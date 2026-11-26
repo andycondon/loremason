@@ -73,7 +73,8 @@ func Edit(data []byte) (*Header, error) {
 
 // Set replaces a field's lines with rendered ones, which must start with the
 // field's name and end with a newline. A field that isn't there yet goes
-// just before `created`, or at the end of the header.
+// just before `created` and any comments above it, or else at the end of the
+// header.
 func (h *Header) Set(field, rendered string) {
 	h.edits[field] = rendered
 }

@@ -40,7 +40,8 @@ func Run(root string, reg *registry.Registry) (*Result, error) {
 	return Graph(g, ds, reg), nil
 }
 
-// Graph checks a loaded graph. loaded is what loading it reported.
+// Graph checks a loaded graph. loaded holds the diagnostics graph.Load
+// returned, which are included in the result.
 func Graph(g *graph.Graph, loaded diag.List, reg *registry.Registry) *Result {
 	c := &checker{reg: reg, g: g, ds: loaded}
 	for _, f := range g.Files {
@@ -58,8 +59,8 @@ func Graph(g *graph.Graph, loaded diag.List, reg *registry.Registry) *Result {
 	return &Result{Records: len(g.Files), Diagnostics: c.ds}
 }
 
-// Broken lists the files that have errors (not just warnings). Tools that
-// write leave these alone.
+// Broken returns the paths of the files that have errors, not just
+// warnings. Tools that write leave these files alone.
 func (r *Result) Broken() map[string]bool {
 	broken := map[string]bool{}
 	for _, d := range r.Diagnostics {

@@ -61,10 +61,9 @@ func mapping(fields []KV, style yaml.Style) *yaml.Node {
 // Out writes a value again as it was read, comments included.
 func (v Value) Out() Out { return Out{v.node} }
 
-// WithCommentsOf carries the comments before and beside a value over to
-// what replaces it, so a note a person wrote by a link survives the link
-// being pinned. Comment lines after a value aren't carried: they stay in the
-// file where they are.
+// WithCommentsOf carries the comments before and beside v over to o, so a
+// comment by a link survives the link being pinned. Comment lines after v
+// aren't carried; they stay in the file where they are.
 func (o Out) WithCommentsOf(v Value) Out {
 	if v.node == nil {
 		return o
@@ -74,8 +73,8 @@ func (o Out) WithCommentsOf(v Value) Out {
 	return Out{&n}
 }
 
-// WithoutComments is the value with no comments, for keeping old wording
-// without the notes that were beside it.
+// WithoutComments returns the value with no comments, for keeping old
+// wording without the notes that were beside it.
 func (o Out) WithoutComments() Out {
 	return Out{withoutComments(o.node)}
 }
@@ -105,9 +104,9 @@ func Render(field string, value Out) string {
 	return render(&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: field}, value)
 }
 
-// Rewrite writes the field that holds v again, with a new value. Comments a
-// person wrote on the field's own line are kept: YAML attaches them to the
-// field's name, or for a one-line list or value, to the value.
+// Rewrite renders the field that holds v with a new value. Comments on the
+// field's own line are kept: YAML attaches them to the field's name, or, for
+// a one-line list or value, to the value.
 func (v Value) Rewrite(value Out) string {
 	key := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v.Path[len(v.Path)-1]}
 	if v.key != nil {
@@ -129,7 +128,7 @@ func render(key *yaml.Node, value Out) string {
 	return b.String()
 }
 
-// Quote writes text as a YAML value, with quotes when YAML needs them.
+// Quote returns s as YAML text, quoted only when YAML needs it.
 func Quote(s string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(Render("x", Str(s)), "x: "), "\n")
 }

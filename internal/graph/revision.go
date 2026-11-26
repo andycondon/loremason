@@ -20,7 +20,7 @@ type Revision struct {
 	Implicit bool // not written in the file yet; sync writes it
 }
 
-// KeptText is a field's kept wording when it's text, or "".
+// KeptText returns a field's kept wording when it's text, or "".
 func (r Revision) KeptText(field string) string {
 	w, ok := r.Kept[field]
 	if !ok {
@@ -91,11 +91,11 @@ func (r Revision) Out(n *Node) record.Out {
 }
 
 // KeepsWordingInline reports whether the record's old revisions keep their
-// wording in the file (short records), rather than a commit (long ones).
+// wording in the file, as short records do, rather than naming a commit.
 func (n *Node) KeepsWordingInline() bool { return n.File.Type.RevisionsInline }
 
-// Wording is the record's meaning as it is now, without comments: what a
-// revision keeps inline when the record is revised.
+// Wording returns the record's meaning fields as they are now, without
+// comments: what a revision keeps inline when the record is revised.
 func (n *Node) Wording() map[string]record.Out {
 	w := map[string]record.Out{}
 	for _, field := range n.File.Type.MeaningFields() {
@@ -109,8 +109,8 @@ func (n *Node) Wording() map[string]record.Out {
 	return w
 }
 
-// Fingerprint is the fingerprint of the record's meaning as it is now. It's
-// zero for sub-records, and for files that couldn't be read.
+// Fingerprint returns the fingerprint of the record's meaning as it is now.
+// It's zero for sub-records, and for files that couldn't be read.
 func (n *Node) Fingerprint() fingerprint.FP {
 	if n.IsSubrecord() || n.File.Record == nil {
 		return fingerprint.FP{}
@@ -124,8 +124,8 @@ func (n *Node) Fingerprint() fingerprint.FP {
 	return fingerprint.Of(fields, n.File.Record.Body, n.File.Type.BodyIsMeaning())
 }
 
-// KeptFingerprint is the fingerprint of a revision's kept wording. ok is
-// false when the revision doesn't keep all of its meaning inline.
+// KeptFingerprint returns the fingerprint of a revision's kept wording. ok
+// is false when the revision doesn't keep all of its meaning inline.
 func (n *Node) KeptFingerprint(r Revision) (fp fingerprint.FP, ok bool) {
 	fields := map[string]any{}
 	for _, name := range n.File.Type.MeaningFields() {
@@ -146,8 +146,8 @@ func (n *Node) KeptFingerprint(r Revision) (fp fingerprint.FP, ok bool) {
 	return fingerprint.Of(fields, body, n.File.Type.BodyIsMeaning()), true
 }
 
-// withoutRevisions writes references in a value without their @rN, so that
-// moving a link to a newer revision doesn't change what the record means.
+// withoutRevisions returns v with the @rN dropped from every reference, so
+// that moving a link to a newer revision doesn't change a fingerprint.
 func withoutRevisions(v any) any {
 	switch v := v.(type) {
 	case string:

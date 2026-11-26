@@ -65,9 +65,9 @@ type Edge struct {
 	Item   record.Value // the link as written: a reference, or a {to: …} map
 }
 
-// Pinnable reports whether sync should pin the link: its edge is pinned by
-// type, its target keeps revisions, and it's in a record's own fields (sub-
-// records' links are never pinned).
+// Pinnable reports whether sync should pin the link: the edge should pin
+// its target (registry.Edge.ShouldPin), and the link is in a record's own
+// fields, not a sub-record's.
 func (e *Edge) Pinnable() bool {
 	return e.Target != nil && !e.From.IsSubrecord() && e.Def.ShouldPin(e.Target.Kind)
 }
@@ -78,7 +78,8 @@ type Loc struct {
 	Field record.Path
 }
 
-// Node returns the node with an ID, or nil.
+// Node returns the node with an ID, or nil. It doesn't resolve aliases;
+// Resolve does.
 func (g *Graph) Node(id string) *Node { return g.nodes[id] }
 
 // Lookup parses s as a reference, such as bel_7k3m9q, an alias or
@@ -199,7 +200,7 @@ func (n *Node) Record() *Node {
 }
 
 // Stale reports whether a pinned link no longer matches its target: the
-// target has a newer revision, or its meaning changed.
+// target is at another revision, or its meaning changed since it was pinned.
 func (e *Edge) Stale() bool {
 	if e.Pin == nil || e.Target == nil || e.Target.Current() == nil {
 		return false
@@ -240,14 +241,15 @@ func (n *Node) Locals() []string {
 	return ids
 }
 
-// At is a line in the file.
+// At returns the position of a line in the file.
 func (f *File) At(line int) diag.Pos { return diag.Pos{Path: f.Path, Line: line} }
 
 // Misplaced reports whether the ID's prefix names a type other than the
 // folder's. The file is then checked against neither type's schema.
 func (f *File) Misplaced() bool { return f.Type != f.Folder }
 
-// Rejected reports whether the reader already reported a problem on a line.
+// Rejected reports whether reading the file already reported an error at
+// line, so a check doesn't report it twice.
 func (f *File) Rejected(line int) bool { return f.rejected[line] }
 
 // Identity is what makes two records look like the same thing, such as two

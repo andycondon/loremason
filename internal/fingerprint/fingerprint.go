@@ -3,12 +3,12 @@
 // any drift would look like every record changing:
 //
 //  1. Take the record's meaning fields; "body" stands for the body.
-//  2. Write them as compact JSON with sorted keys, in UTF-8, escaping only
-//     what JSON requires plus U+2028 and U+2029 (not <, > or &).
-//  3. Normalise the body: Windows line endings become Unix ones, trailing
+//  2. Normalise the body: Windows line endings become Unix ones, trailing
 //     spaces and tabs are removed from each line, runs of blank lines become
 //     one, and blank lines at the start and end are dropped. A lone \r is
 //     left as it is.
+//  3. Write the fields as compact JSON with sorted keys, in UTF-8, escaping
+//     only what JSON requires plus U+2028 and U+2029 (not <, > or &).
 //  4. Hash the result with SHA-256 and keep the first 12 hex characters.
 //
 // Writing IDs without their @rN is the caller's job: this package knows
@@ -40,7 +40,7 @@ type FP struct {
 
 var fpRE = regexp.MustCompile(`^fp([1-9][0-9]*):([0-9a-f]{12})$`)
 
-// Parse reads a fingerprint.
+// Parse reads a fingerprint written as fp1:3a9c0e1b77d2.
 func Parse(s string) (FP, error) {
 	m := fpRE.FindStringSubmatch(s)
 	if m == nil {
@@ -57,7 +57,7 @@ func (f FP) String() string {
 	return fmt.Sprintf("fp%d:%s", f.Method, f.Hex)
 }
 
-// IsZero reports whether f is no fingerprint at all.
+// IsZero reports whether f is the zero FP, meaning no fingerprint.
 func (f FP) IsZero() bool { return f == FP{} }
 
 // Of returns the fingerprint of a record's meaning: its meaning fields as
@@ -68,7 +68,7 @@ func Of(fields map[string]any, body string, hasBody bool) FP {
 	return FP{Method: Method, Hex: hex.EncodeToString(sum[:])[:12]}
 }
 
-// Canonical is the text that is hashed.
+// Canonical returns the bytes Of hashes: steps 1 to 3.
 func Canonical(fields map[string]any, body string, hasBody bool) []byte {
 	all := make(map[string]any, len(fields)+1)
 	for k, v := range fields {
@@ -87,8 +87,8 @@ func Canonical(fields map[string]any, body string, hasBody bool) []byte {
 	return bytes.TrimSuffix(b.Bytes(), []byte("\n"))
 }
 
-// NormalizeBody removes the differences in a body that don't change what it
-// says.
+// NormalizeBody does step 2: it removes the differences in a body that
+// don't change what it says.
 func NormalizeBody(body string) string {
 	body = strings.ReplaceAll(body, "\r\n", "\n")
 	var out []string

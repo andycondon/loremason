@@ -21,7 +21,7 @@ import (
 	"github.com/andycondon/loremason/internal/splice"
 )
 
-// Action is one thing a plan does to a file, said for people.
+// Action is one change a plan makes to a file, in plain words.
 type Action struct {
 	Path string
 	What string
@@ -29,7 +29,7 @@ type Action struct {
 
 func (a Action) String() string { return a.Path + ": " + a.What }
 
-// Plan is what sync, revise or a re-check would do.
+// Plan is what Sync, Revise or Recheck would change, ready for Apply.
 type Plan struct {
 	Actions  []Action
 	Warnings []Action // things done that a person should know about
@@ -39,8 +39,8 @@ type Plan struct {
 }
 
 // Broken is the set of files, by path, that have errors. Tools that write
-// leave them alone, so re-writing a field they can't read can't lose what a
-// person wrote.
+// leave them alone, since rewriting a file they couldn't fully read could
+// lose what's in it.
 type Broken map[string]bool
 
 // fileEdit is the new state of one file's tool-owned fields.
@@ -175,8 +175,8 @@ func allNonBreaking(revs []graph.Revision, after int) bool {
 // Revise plans `mason revise`. It keeps the current revision's wording (or,
 // for long records, the commit holding it) and opens a new revision. The
 // edit comes after, and the next sync records the new revision's
-// fingerprint. commit is the commit holding the file as it is now, or empty
-// when there isn't one.
+// fingerprint. commit holds the file as it is now, or is empty when there's
+// no such commit.
 func Revise(n *graph.Node, breaking bool, broken Broken, today, commit string) (*Plan, error) {
 	f := n.File
 	switch {
@@ -222,7 +222,7 @@ func Revise(n *graph.Node, breaking bool, broken Broken, today, commit string) (
 // Recheck records the outcome "still holds" for a stale link: its pin moves
 // to the target's current revision, with via naming the evidence that says
 // why. The record holding the link gets no new revision, so nothing built on
-// it is touched (early cutoff). The re-check skill calls this.
+// it is touched (early cutoff).
 func Recheck(e *graph.Edge, evidence *graph.Node) (*Plan, error) {
 	switch {
 	case e.Pin == nil || e.Target == nil:

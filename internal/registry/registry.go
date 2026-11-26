@@ -21,7 +21,7 @@ import (
 
 // Registry describes every record type.
 type Registry struct {
-	CommonEdges map[string]Edge  `yaml:"common_edges"`
+	CommonEdges map[string]Edge  `yaml:"common_edges"` // edges every record type has, such as mentions
 	Types       map[string]*Type `yaml:"types"`
 
 	byPrefix map[string]*Type
@@ -43,28 +43,27 @@ type Kind struct {
 // Type is one record type.
 type Type struct {
 	Kind            `yaml:",inline"`
-	Prefix          string           `yaml:"prefix"`
-	Layer           string           `yaml:"layer"`
-	RevisionsInline bool             `yaml:"revisions_inline"`
-	Meaning         []string         `yaml:"meaning"`
-	Subrecords      map[string]*Kind `yaml:"subrecords"` // by the field that lists them
-	Template        string           `yaml:"template"`
-	Body            string           `yaml:"body"`
+	Prefix          string           `yaml:"prefix"`           // the ID prefix: bel for bel_7k3m9q
+	Layer           string           `yaml:"layer"`            // knowing, committing or scope
+	RevisionsInline bool             `yaml:"revisions_inline"` // old wording is kept in the file, not left to git
+	Meaning         []string         `yaml:"meaning"`          // fields a fingerprint covers; "body" for the body
+	Subrecords      map[string]*Kind `yaml:"subrecords"`       // by the field that lists them
+	Template        string           `yaml:"template"`         // header lines `mason new` writes after id and title
+	Body            string           `yaml:"body"`             // the body `mason new` writes
 
 	Schema *jsonschema.Schema `yaml:"-"`
 }
 
 // Edge is a kind of link.
 type Edge struct {
-	To         []string `yaml:"to"`
-	Propagates bool     `yaml:"propagates"`
-	Pinned     *bool    `yaml:"pinned"`
+	To         []string `yaml:"to"`         // the types it may point at, or any
+	Propagates bool     `yaml:"propagates"` // a change in the target means the record needs a re-check
+	Pinned     *bool    `yaml:"pinned"`     // whether the link pins its target; nil means as Propagates
 }
 
 // ShouldPin reports whether a link of this edge to a node of kind target
-// records the target's revision and fingerprint. An edge is pinned when its
-// type says so, which by default is when it propagates; and only a target
-// that has revisions can be pinned.
+// records the target's revision and fingerprint: the edge is pinned, and the
+// target keeps revisions.
 func (e Edge) ShouldPin(target *Kind) bool {
 	pinned := e.Propagates
 	if e.Pinned != nil {
@@ -161,7 +160,8 @@ func (r *Registry) SubschemaAt(url string) *jsonschema.Schema {
 	return s
 }
 
-// Load returns the registry built into the program.
+// Load returns the registry built into the program. It panics if the
+// embedded schemas don't compile, which the tests rule out.
 func Load() *Registry { return load() }
 
 var load = sync.OnceValue(func() *Registry {

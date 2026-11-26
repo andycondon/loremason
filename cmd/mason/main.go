@@ -1,4 +1,5 @@
-// Command mason stores, checks and queries a loremason context graph.
+// Command mason creates and checks the records of a loremason context graph,
+// and keeps the links between them pinned.
 package main
 
 import (
@@ -78,7 +79,8 @@ func newFlags(stderr io.Writer) *flag.FlagSet {
 	return fs
 }
 
-// parse parses flags. done is true when the command should stop with code.
+// parse parses args into fs. When done is true the command should return
+// code: 0 after printing help, 2 for a bad flag.
 func parse(fs *flag.FlagSet, args []string) (code int, done bool) {
 	switch err := fs.Parse(args); err {
 	case nil:
@@ -90,9 +92,8 @@ func parse(fs *flag.FlagSet, args []string) (code int, done bool) {
 	}
 }
 
-// parseArgs parses flags that may come before or after the other
-// arguments, and returns the others. done is true when the command should
-// stop with code.
+// parseArgs is parse for commands that also take arguments, which may come
+// before or after the flags. It returns the arguments that aren't flags.
 func parseArgs(fs *flag.FlagSet, args []string) (rest []string, code int, done bool) {
 	for {
 		if code, done := parse(fs, args); done {
@@ -105,17 +106,20 @@ func parseArgs(fs *flag.FlagSet, args []string) (rest []string, code int, done b
 	}
 }
 
+// misuse reports a mistake in the arguments and returns exit code 2.
 func misuse(stderr io.Writer, format string, args ...any) int {
 	fmt.Fprintf(stderr, "mason: "+format+"; see mason --help\n", args...)
 	return 2
 }
 
+// fail reports an error and returns exit code 1.
 func fail(stderr io.Writer, err error) int {
 	fmt.Fprintf(stderr, "mason: %v\n", err)
 	return 1
 }
 
-// open finds the workspace and says so when it's pinned to another version.
+// open finds the workspace, and warns on stderr when it uses another
+// version of loremason.
 func open(stderr io.Writer) (*workspace.Workspace, error) {
 	w, err := workspace.Find(".", os.Getenv(workspace.Env))
 	if err != nil {

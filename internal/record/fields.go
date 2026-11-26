@@ -9,7 +9,7 @@ import (
 )
 
 // Path says where a value is in a header: field names and list indexes. It
-// prints the way a person would write it, such as support[0].direction.
+// prints as messages show it, such as support[0].direction.
 type Path []string
 
 // Field returns the path of a field inside the value at p.
@@ -49,8 +49,8 @@ type Value struct {
 	Path Path
 }
 
-// Line is where the map starts: line 1 for the header, since it opens the
-// file, and the entry's first line for an entry.
+// Line returns the line the map starts on: 1 for the header, whose opening
+// --- starts the file, or an entry's first line.
 func (m Map) Line() int {
 	if m.start > 0 || m.node == nil {
 		return max(m.start, 1)
@@ -92,8 +92,8 @@ func (m Map) Get(field string) (Value, bool) {
 	return Value{}, false
 }
 
-// KeyLine is the line a field is written on, or the map's own line when the
-// field isn't there.
+// KeyLine returns the line a field's name is on, or the map's own line when
+// the field isn't there.
 func (m Map) KeyLine(field string) int {
 	if key, _ := m.find(field); key != nil {
 		return key.Line
@@ -132,7 +132,7 @@ func (m Map) find(field string) (key, value *yaml.Node) {
 	return nil, nil
 }
 
-// Line is where the value is written.
+// Line returns the line the value starts on.
 func (v Value) Line() int { return v.node.Line }
 
 // Text returns the value when it's text. A date such as 2026-11-22 counts

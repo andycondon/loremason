@@ -74,8 +74,8 @@ func render(t *registry.Type, rid, title, today string) string {
 	return b.String()
 }
 
-// slug turns a title into a kebab-case name. A title with no letters or
-// digits it can use gets one made from the ID, so it can't clash.
+// slug turns a title into a kebab-case name for a template's {slug}. A
+// title with no ASCII letters or digits uses the ID instead.
 func slug(title, rid string) string {
 	words := strings.FieldsFunc(strings.ToLower(title), func(r rune) bool {
 		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
