@@ -3,7 +3,13 @@ package main
 import (
 	"bytes"
 	"testing"
+
+	"github.com/andycondon/loremason/internal/testws"
 )
+
+// These tests cover the wiring: that each command calls the domain, prints
+// what it returns, and exits with the right code. The rules are tested in
+// their own packages, and parsing, help and exit codes in package cli.
 
 func mason(args ...string) (code int, stdout, stderr string) {
 	var out, errb bytes.Buffer
@@ -11,8 +17,23 @@ func mason(args ...string) (code int, stdout, stderr string) {
 	return code, out.String(), errb.String()
 }
 
-// Parsing, help and exit codes are package cli's, and tested there. This is
-// mason's own help, which is part of its documentation.
+// newWorkspace makes a workspace with records, and points mason at it.
+func newWorkspace(t *testing.T, records map[string]string) *testws.Workspace {
+	t.Helper()
+	useVersion(t, testws.Version)
+	w := testws.New(t, records)
+	t.Setenv("LOREMASON_WORKSPACE", w.Root)
+	return w
+}
+
+func useVersion(t *testing.T, v string) {
+	t.Helper()
+	old := Version
+	Version = v
+	t.Cleanup(func() { Version = old })
+}
+
+// This is mason's own help, which is part of its documentation.
 const help = "mason creates and checks the records of a context graph, and keeps the links\n" +
 	"between them pinned.\n" +
 	"\n" +

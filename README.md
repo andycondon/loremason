@@ -54,7 +54,7 @@ See [docs/development.md](docs/development.md) for how the code is organised and
 
 ```sh
 go test ./...                # run the tests
-go test ./cmd/mason -update  # rewrite the expected output of the validate fixtures
+go test ./internal/check -update  # rewrite the expected diagnostics of the check fixtures
 go run ./cmd/mason --version # run without installing
 go install ./cmd/mason       # install from a clone
 ```

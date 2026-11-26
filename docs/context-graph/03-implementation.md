@@ -396,7 +396,7 @@ Only the task appears. The plan and steps aren't stale: their pins point at the 
 
 At no point did a person see a flag. This example leaves out part 1's decision, which also relies on the belief. Its link would go stale in step 3 as well, and because the decision is `accepted`, its re-check would come to a person as a drafted change, never as a bare warning (part 1, section 4).
 
-This walk-through runs as tests (`cmd/mason/belief_change_test.go`).
+This walk-through runs as tests (`internal/pinning/belief_change_test.go`).
 
 ## 10. Can safely come later
 

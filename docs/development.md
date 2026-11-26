@@ -19,6 +19,7 @@ internal/diag/      errors and warnings, each at a place in a file
 internal/workspace/ finding the workspace and reading its config
 internal/id/        making and recognising IDs
 internal/suggest/   "did you mean"
+internal/testws/    workspaces for tests
 schema/             types.yaml and one JSON Schema per record type, embedded
 testdata/           workspaces the tests load
 ```
@@ -52,10 +53,11 @@ When a rule is also stated in a schema, a test keeps the two in agreement, as `T
 
 ## Tests
 
-- **Fixture workspaces.** Each folder in `testdata/validate/` is a small workspace for one rule, with `want.txt` holding the exact output and exit code. To add a rule, add a fixture. To accept a wording change, run `go test ./cmd/mason -update` and review the diff.
-- **The worked example.** `testdata/worked-example/` is the design's worked example as records, and it must always validate clean.
+- **Test a rule in its own package.** Check rules are tested in `check`, pinning in `pinning`, parsing and help in `cli`. The command's tests in `cmd/mason` cover only the wiring: that each command calls the domain, prints what it returns and exits with the right code, with one test per path. If a command test is the only thing proving a rule, the test is in the wrong place.
+- **Fixture workspaces.** Each folder in `testdata/check/` is a small workspace for one check rule, with `want.txt` holding exactly the diagnostics it reports. To add a rule, add a fixture. To accept a wording change, run `go test ./internal/check -update` and review the diff.
+- **The worked example.** `testdata/worked-example/` is the design's worked example as records, and it must always check clean. The design's "a belief changes" walk-through runs as tests in `pinning`.
+- **Workspaces in tests.** `internal/testws` writes records into a temporary workspace and reads, edits and loads them, so tests in every package set up the same way.
 - **Tests that can't pass by accident.** A test that loads a workspace fails if the workspace has no records, so a wrong path can't pass as an empty graph.
-- **Domain functions have their own tests** (`graph`, `registry`, `record`), not only the command's.
 
 Run `go vet ./... && go test -race ./...` before committing. CI runs the same, plus `gofmt`.
 
