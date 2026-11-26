@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/andycondon/loremason/internal/id"
+	"github.com/andycondon/loremason/internal/suggest"
 	"github.com/andycondon/loremason/schema"
 )
 
@@ -69,13 +70,19 @@ func (t *Type) Folder() string { return strings.ReplaceAll(t.Name, "_", "-") }
 // Validate checks a record's fields, as plain values, against the type's schema.
 func (t *Type) Validate(fields map[string]any) error { return t.Schema.Validate(fields) }
 
-// Lookup returns a type by its name or its folder's name, so design_doc and
-// design-doc both work; nil when there's none.
-func (r *Registry) Lookup(name string) *Type {
+// Find returns a type by its name or its folder's name, so design_doc and
+// design-doc both work. When there's none, the error suggests what was meant.
+func (r *Registry) Find(name string) (*Type, error) {
 	if t := r.Types[name]; t != nil {
-		return t
+		return t, nil
 	}
-	return r.byFolder[name]
+	if t := r.byFolder[name]; t != nil {
+		return t, nil
+	}
+	if s := suggest.Near(name, r.Names()); s != "" {
+		return nil, fmt.Errorf("unknown record type `%s`; did you mean `%s`?", name, s)
+	}
+	return nil, fmt.Errorf("unknown record type `%s`; the types are %s", name, strings.Join(r.Names(), ", "))
 }
 
 // TypeOfID returns the type an ID's prefix names, or nil when the text isn't

@@ -69,6 +69,7 @@ func TestNewMistakes(t *testing.T) {
 		"the types are activity,": {"new", "xyzzyplugh", "--title", "X"},
 		"needs --title":           {"new", "belief"},
 		"one line of text":        {"new", "belief", "--title", "a\nb"},
+		"a title must be":         {"new", "belief", "--title", "   "},
 		"isn't valid UTF-8":       {"new", "belief", "--title", "bad \xff byte"},
 		"takes one record type":   {"new", "belief", "--title", "two", "words"},
 		"unknown command `nwe`":   {"nwe"},

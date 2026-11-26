@@ -79,3 +79,20 @@ func TestRegistryAndSchemasAgree(t *testing.T) {
 		}
 	}
 }
+
+func TestFind(t *testing.T) {
+	r := Load()
+	for _, name := range []string{"design_doc", "design-doc"} {
+		if typ, err := r.Find(name); err != nil || typ.Name != "design_doc" {
+			t.Errorf("Find(%q) = %v, %v", name, typ, err)
+		}
+	}
+	for name, want := range map[string]string{
+		"beleif":     "did you mean `belief`?",
+		"xyzzyplugh": "the types are activity, actor,",
+	} {
+		if _, err := r.Find(name); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Find(%q): %v", name, err)
+		}
+	}
+}

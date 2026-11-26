@@ -96,10 +96,13 @@ func fail(stderr io.Writer, err error) int {
 // open finds the workspace and says so when it's pinned to another version.
 func open(stderr io.Writer) (*workspace.Workspace, error) {
 	w, err := workspace.Find(".", os.Getenv(workspace.Env))
-	if err == nil && w.Config.Version != Version {
-		fmt.Fprintf(stderr, "mason: warning: this is mason %s, but the workspace uses %s\n", Version, w.Config.Version)
+	if err != nil {
+		return nil, err
 	}
-	return w, err
+	if err := w.CheckVersion(Version); err != nil {
+		fmt.Fprintf(stderr, "mason: warning: %v\n", err)
+	}
+	return w, nil
 }
 
 func runValidate(args []string, stdout, stderr io.Writer) int {

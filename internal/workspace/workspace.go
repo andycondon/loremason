@@ -54,6 +54,15 @@ func Find(dir, override string) (*Workspace, error) {
 	}
 }
 
+// CheckVersion says when the workspace is pinned to a loremason version
+// other than the one running.
+func (w *Workspace) CheckVersion(running string) error {
+	if w.Config.Version != running {
+		return fmt.Errorf("this is mason %s, but the workspace uses %s", running, w.Config.Version)
+	}
+	return nil
+}
+
 func isMarked(dir string) bool {
 	info, err := os.Stat(filepath.Join(dir, marker))
 	return err == nil && info.IsDir()
