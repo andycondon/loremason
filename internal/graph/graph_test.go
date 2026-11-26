@@ -56,18 +56,18 @@ func TestLoadWorkedExample(t *testing.T) {
 		t.Errorf("%d files", len(g.Files))
 	}
 	bel := g.Node("bel_7k3m9q")
-	if bel == nil || bel.Type != "belief" || strings.Join(bel.Locals(), ",") != "s1,s2" {
+	if bel == nil || bel.Kind.Name != "belief" || strings.Join(bel.Locals(), ",") != "s1,s2" {
 		t.Fatalf("belief: %+v", bel)
 	}
 	s2 := bel.Child("s2")
-	if s2.ID != "bel_7k3m9q/s2" || s2.Type != "support_link" || s2.Parent != bel || !s2.IsSubrecord() || s2.List != "support" {
+	if s2.ID != "bel_7k3m9q/s2" || s2.Kind.Name != "support_link" || s2.Parent != bel || !s2.IsSubrecord() {
 		t.Errorf("sub-record: %+v", s2)
 	}
 	// Every edge resolves, and the ones out of the belief's sub-records start there.
 	var fromSub int
 	for _, e := range g.Edges {
 		n := g.Resolve(e.To)
-		if n == nil || !e.Def.Allows(n.Type) {
+		if n == nil || !e.Def.Allows(n.Kind) {
 			t.Errorf("%s %s -> %s doesn't resolve to an allowed type", e.From.ID, e.Name, e.To)
 		}
 		if e.From.Parent == bel {

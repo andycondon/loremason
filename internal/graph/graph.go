@@ -20,8 +20,9 @@ type Graph struct {
 	aliases map[string]*Node
 }
 
-// File is one record file. Its record is a Node even when the file can't be
-// read, under the ID its filename gives, so links to it still resolve.
+// File is where a record is written, and how reading it went. The record
+// itself is its Node, which exists even when the file can't be read, under
+// the ID its filename gives, so links to it still resolve.
 type File struct {
 	Path   string         // relative to the workspace, with forward slashes
 	Type   *registry.Type // from the ID's prefix when that's known, or else the folder
@@ -34,12 +35,11 @@ type File struct {
 
 // Node is a record, or a sub-record kept in a list inside one.
 type Node struct {
-	ID       string // bel_7k3m9q, or bel_7k3m9q/s1 for a sub-record
-	Type     string // a record type, or a sub-record type such as support_link
+	ID       string         // bel_7k3m9q, or bel_7k3m9q/s1 for a sub-record
+	Kind     *registry.Kind // its record type, or its kind of sub-record
 	File     *File
-	Fields   record.Map // the header, or a sub-record's entry
+	Fields   record.Map // the header, or a sub-record's entry; none when the file couldn't be read
 	Parent   *Node      // the record holding a sub-record; nil for records
-	List     string     // for a sub-record, the field holding it, such as support
 	Local    string     // a sub-record's own id, such as s1
 	Children []*Node    // a record's sub-records, in file order
 }
@@ -120,15 +120,6 @@ func (g *Graph) Names() []string {
 // IsSubrecord reports whether the node lives inside another record.
 func (n *Node) IsSubrecord() bool { return n.Parent != nil }
 
-// EdgeDefs returns the edges the node's fields may hold: its type's, or for
-// a sub-record, those of its kind of entry.
-func (n *Node) EdgeDefs() map[string]registry.Edge {
-	if n.IsSubrecord() {
-		return n.File.Type.Subrecords[n.List].Edges
-	}
-	return n.File.Type.Edges
-}
-
 // Child returns a sub-record by its local id, or nil.
 func (n *Node) Child(local string) *Node {
 	for _, c := range n.Children {
@@ -151,14 +142,6 @@ func (n *Node) Locals() []string {
 // At is a line in the file.
 func (f *File) At(line int) diag.Pos { return diag.Pos{Path: f.Path, Line: line} }
 
-// Header returns the file's fields; none when it couldn't be read.
-func (f *File) Header() record.Map {
-	if f.Record == nil {
-		return record.Map{}
-	}
-	return f.Record.Header
-}
-
 // Misplaced reports whether the ID's prefix names a type other than the
 // folder's. The file is then checked against neither type's schema.
 func (f *File) Misplaced() bool { return f.Type != f.Folder }
@@ -169,25 +152,25 @@ func (f *File) Rejected(line int) bool { return f.rejected[line] }
 // Identity is what makes two records look like the same thing, such as two
 // artifacts with the same url.
 type Identity struct {
-	Key    string   // the type, then each identity field ignoring case and spacing
-	Fields []string // the type's identity fields
+	Key    string   // the kind, then each identity field ignoring case and spacing
+	Fields []string // the kind's identity fields
 	At     diag.Pos // where the first of them is written
 }
 
-// Identity returns the record's identity. ok is false when its type has no
+// Identity returns the node's identity. ok is false when its kind has no
 // identity fields, or one of them is empty.
-func (f *File) Identity() (id Identity, ok bool) {
-	fields := f.Type.Identity
+func (n *Node) Identity() (id Identity, ok bool) {
+	fields := n.Kind.Identity
 	if len(fields) == 0 {
 		return Identity{}, false
 	}
-	parts := []string{f.Type.Name}
+	parts := []string{n.Kind.Name}
 	for _, field := range fields {
-		v := strings.ToLower(strings.Join(strings.Fields(f.Header().Text(field)), " "))
+		v := strings.ToLower(strings.Join(strings.Fields(n.Fields.Text(field)), " "))
 		if v == "" {
 			return Identity{}, false
 		}
 		parts = append(parts, v)
 	}
-	return Identity{Key: strings.Join(parts, "\x00"), Fields: fields, At: f.At(f.Header().KeyLine(fields[0]))}, true
+	return Identity{Key: strings.Join(parts, "\x00"), Fields: fields, At: n.File.At(n.Fields.KeyLine(fields[0]))}, true
 }

@@ -28,19 +28,25 @@ type Registry struct {
 	compiler *jsonschema.Compiler
 }
 
+// Kind is what a node in the graph can be: a record type, or a kind of
+// sub-record such as support_link.
+type Kind struct {
+	Name     string          `yaml:"type"`     // a record type's name comes from its key in types.yaml
+	Edges    map[string]Edge `yaml:"edges"`    // the links its fields may hold; a record type's include the common ones
+	Identity []string        `yaml:"identity"` // fields that suggest two records are the same thing
+}
+
 // Type is one record type.
 type Type struct {
-	Name            string               `yaml:"-"`
-	Prefix          string               `yaml:"prefix"`
-	Layer           string               `yaml:"layer"`
-	Revisable       bool                 `yaml:"revisable"`
-	RevisionsInline bool                 `yaml:"revisions_inline"`
-	Meaning         []string             `yaml:"meaning"`
-	Identity        []string             `yaml:"identity"`
-	Edges           map[string]Edge      `yaml:"edges"` // including the common ones
-	Subrecords      map[string]Subrecord `yaml:"subrecords"`
-	Template        string               `yaml:"template"`
-	Body            string               `yaml:"body"`
+	Kind            `yaml:",inline"`
+	Prefix          string           `yaml:"prefix"`
+	Layer           string           `yaml:"layer"`
+	Revisable       bool             `yaml:"revisable"`
+	RevisionsInline bool             `yaml:"revisions_inline"`
+	Meaning         []string         `yaml:"meaning"`
+	Subrecords      map[string]*Kind `yaml:"subrecords"` // by the field that lists them
+	Template        string           `yaml:"template"`
+	Body            string           `yaml:"body"`
 
 	Schema *jsonschema.Schema `yaml:"-"`
 }
@@ -52,15 +58,9 @@ type Edge struct {
 	Pinned     *bool    `yaml:"pinned"`
 }
 
-// Allows reports whether the edge may point at the named type.
-func (e Edge) Allows(target string) bool {
-	return slices.Contains(e.To, "any") || slices.Contains(e.To, target)
-}
-
-// Subrecord is a kind of record kept in a list inside another.
-type Subrecord struct {
-	Type  string          `yaml:"type"`
-	Edges map[string]Edge `yaml:"edges"`
+// Allows reports whether the edge may point at a node of kind k.
+func (e Edge) Allows(k *Kind) bool {
+	return slices.Contains(e.To, "any") || slices.Contains(e.To, k.Name)
 }
 
 // Folder is the folder under graph/ that holds the type's records.

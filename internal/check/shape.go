@@ -57,7 +57,7 @@ type failure struct {
 
 func (c *checker) schemaError(f *graph.File, e *jsonschema.ValidationError) {
 	fl := failure{at: record.Path(e.InstanceLocation)}
-	fl.pos = f.At(f.Record.Line(fl.at))
+	fl.pos = f.At(f.Node.Fields.LineOf(fl.at))
 	if f.Rejected(fl.pos.Line) {
 		return // the reader has already reported this value
 	}
@@ -66,7 +66,7 @@ func (c *checker) schemaError(f *graph.File, e *jsonschema.ValidationError) {
 	}
 	if k, ok := e.ErrorKind.(*kind.AdditionalProperties); ok {
 		for _, name := range k.Properties {
-			c.ds.Errorf(f.At(f.Record.Line(fl.at.Field(name))), "%s", unknownField(fl, name))
+			c.ds.Errorf(f.At(f.Node.Fields.LineOf(fl.at.Field(name))), "%s", unknownField(fl, name))
 		}
 		return
 	}
@@ -181,18 +181,4 @@ func wrongType(fl failure, k *kind.Type) string {
 	default:
 		return fmt.Sprintf("`%s` is %s; it must be %s", fl.at, typeNames[k.Got], want)
 	}
-}
-
-// typeNames are JSON's type names in plain words.
-var typeNames = map[string]string{
-	"array": "a list", "object": "a map", "string": "text", "integer": "a whole number",
-	"number": "a number", "boolean": "true or false", "null": "empty",
-}
-
-// andList joins names as "a, b and c".
-func andList(names []string) string {
-	if len(names) < 2 {
-		return strings.Join(names, "")
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }

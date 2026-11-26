@@ -68,7 +68,7 @@ func Parse(data []byte) (*Record, []*Error) {
 	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
 		return fail(1, "the header must be a list of `field: value` lines")
 	}
-	r := &Record{Header: Map{node: doc.Content[0]}, Body: string(body)}
+	r := &Record{Header: Map{node: doc.Content[0], start: 1}, Body: string(body)}
 	var c converter
 	r.Data, _ = c.value(doc.Content[0]).(map[string]any)
 	return r, c.errs
@@ -151,28 +151,4 @@ func (c *converter) value(n *yaml.Node) any {
 	}
 	c.errorf(n, "YAML tags such as %s aren't supported", n.Tag)
 	return nil
-}
-
-// Line finds the line of the value at a path, or of the nearest thing
-// around it that's there. A field's line is the line its name is on.
-func (r *Record) Line(p Path) int {
-	n, line := r.Header.node, 1
-	for _, part := range p {
-		var next *yaml.Node
-		switch n.Kind {
-		case yaml.MappingNode:
-			if key, value := (Map{node: n}).find(part); key != nil {
-				next, line = value, key.Line
-			}
-		case yaml.SequenceNode:
-			if i, err := strconv.Atoi(part); err == nil && i >= 0 && i < len(n.Content) {
-				next, line = n.Content[i], n.Content[i].Line
-			}
-		}
-		if next == nil {
-			break
-		}
-		n = next
-	}
-	return line
 }

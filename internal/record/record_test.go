@@ -18,10 +18,10 @@ func TestParse(t *testing.T) {
 		if want := strings.ReplaceAll("\nBody\n---\nmore\n", "\n", eol); r.Body != want {
 			t.Errorf("body is %q", r.Body)
 		}
-		if got := r.Line(Path{"support", "1", "rev"}); got != 7 {
+		if got := r.Header.LineOf(Path{"support", "1", "rev"}); got != 7 {
 			t.Errorf("rev is on line %d", got)
 		}
-		if got := r.Line(Path{"support", "1", "nope"}); got != 6 {
+		if got := r.Header.LineOf(Path{"support", "1", "nope"}); got != 6 {
 			t.Errorf("a missing field points at line %d", got)
 		}
 	}
@@ -52,7 +52,7 @@ func TestFields(t *testing.T) {
 		t.Fatal(errs)
 	}
 	h := r.Header
-	if h.Text("id") != "bel_7k3m9q" || h.Text("nope") != "" || h.KeyLine("support") != 4 || h.KeyLine("nope") != 2 {
+	if h.Text("id") != "bel_7k3m9q" || h.Text("nope") != "" || h.KeyLine("support") != 4 || h.KeyLine("nope") != 1 {
 		t.Error("field lookups are wrong")
 	}
 	single, _ := h.Get("relies_on")

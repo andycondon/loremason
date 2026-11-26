@@ -37,8 +37,9 @@ func (p Path) String() string {
 // list such as a belief's support. The zero Map has no fields, so a file
 // that couldn't be read can still be asked about its fields.
 type Map struct {
-	node *yaml.Node
-	Path Path
+	node  *yaml.Node
+	start int // the header's first line, the opening ---; 0 for entries
+	Path  Path
 }
 
 // Value is one field's value, and where it is.
@@ -47,18 +48,45 @@ type Value struct {
 	Path Path
 }
 
-// Line is where the map starts.
+// Line is where the map starts: line 1 for the header, since it opens the
+// file, and the entry's first line for an entry.
 func (m Map) Line() int {
-	if m.node == nil {
-		return 1
+	if m.start > 0 || m.node == nil {
+		return max(m.start, 1)
 	}
 	return m.node.Line
+}
+
+// LineOf finds the line of the value at a path inside the map, or of the
+// nearest thing around it that's there. A field's line is the line its name
+// is on, so a missing field inside an entry points at the entry.
+func (m Map) LineOf(p Path) int {
+	n, line := m.node, m.Line()
+	for _, part := range p {
+		var next *yaml.Node
+		switch {
+		case n == nil:
+		case n.Kind == yaml.MappingNode:
+			if key, value := (Map{node: n}).find(part); key != nil {
+				next, line = value, key.Line
+			}
+		case n.Kind == yaml.SequenceNode:
+			if i, err := strconv.Atoi(part); err == nil && i >= 0 && i < len(n.Content) {
+				next, line = n.Content[i], n.Content[i].Line
+			}
+		}
+		if next == nil {
+			break
+		}
+		n = next
+	}
+	return line
 }
 
 // Get returns a field's value.
 func (m Map) Get(field string) (Value, bool) {
 	if key, value := m.find(field); key != nil {
-		return Value{value, m.Path.Field(field)}, true
+		return Value{node: value, Path: m.Path.Field(field)}, true
 	}
 	return Value{}, false
 }
@@ -119,7 +147,7 @@ func (v Value) Map() (Map, bool) {
 	if v.node == nil || v.node.Kind != yaml.MappingNode {
 		return Map{}, false
 	}
-	return Map{v.node, v.Path}, true
+	return Map{node: v.node, Path: v.Path}, true
 }
 
 // Items returns a list's items. A value that isn't a list is its own only
@@ -133,10 +161,19 @@ func (v Value) Items() []Value {
 	}
 	items := make([]Value, len(v.node.Content))
 	for i, n := range v.node.Content {
-		items[i] = Value{n, v.Path.Index(i)}
+		items[i] = Value{node: n, Path: v.Path.Index(i)}
 	}
 	return items
 }
 
 // Decode stores the value in out, as yaml.Unmarshal would.
 func (v Value) Decode(out any) error { return v.node.Decode(out) }
+
+// Quote writes text as a YAML value, with quotes when YAML needs them.
+func Quote(s string) string {
+	out, err := yaml.Marshal(s)
+	if err != nil {
+		panic(err) // a string always marshals
+	}
+	return strings.TrimSuffix(string(out), "\n")
+}

@@ -9,9 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/andycondon/loremason/internal/id"
+	"github.com/andycondon/loremason/internal/record"
 	"github.com/andycondon/loremason/internal/registry"
 )
 
@@ -43,9 +42,9 @@ func Create(root string, t *registry.Type, title string, today time.Time) (strin
 // render writes a new record: id, title, the type's template, created, and
 // the type's body.
 func render(t *registry.Type, rid, title, today string) string {
-	fill := strings.NewReplacer("{title}", quote(title), "{slug}", quote(slug(title, rid)), "{today}", today)
+	fill := strings.NewReplacer("{title}", record.Quote(title), "{slug}", record.Quote(slug(title, rid)), "{today}", today)
 	var b strings.Builder
-	fmt.Fprintf(&b, "---\nid: %s\ntitle: %s\n%screated: %s\n---\n", rid, quote(title), fill.Replace(t.Template), today)
+	fmt.Fprintf(&b, "---\nid: %s\ntitle: %s\n%screated: %s\n---\n", rid, record.Quote(title), fill.Replace(t.Template), today)
 	if t.Body != "" {
 		b.WriteString("\n" + t.Body)
 	}
@@ -62,13 +61,4 @@ func slug(title, rid string) string {
 		return strings.ReplaceAll(rid, "_", "-")
 	}
 	return strings.Join(words, "-")
-}
-
-// quote writes text as a YAML value, with quotes when YAML needs them.
-func quote(s string) string {
-	out, err := yaml.Marshal(s)
-	if err != nil {
-		panic(err) // a string always marshals
-	}
-	return strings.TrimSuffix(string(out), "\n")
 }

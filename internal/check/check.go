@@ -60,8 +60,8 @@ func (c *checker) placement(f *graph.File) {
 	} else if f.Misplaced() {
 		c.ds.Errorf(f.At(1), "`%s_` is the prefix of type %s, so this file belongs in graph/%s/", prefix, t.Name, t.Folder())
 	}
-	if got := f.Header().Text("id"); got != "" && got != rid {
-		c.ds.Errorf(f.At(f.Header().KeyLine("id")), "the id `%s` doesn't match the filename `%s.md`", got, rid)
+	if got := f.Node.Fields.Text("id"); got != "" && got != rid {
+		c.ds.Errorf(f.At(f.Node.Fields.KeyLine("id")), "the id `%s` doesn't match the filename `%s.md`", got, rid)
 	}
 }
 
@@ -71,8 +71,8 @@ func (c *checker) target(e *graph.Edge) {
 	switch {
 	case n == nil:
 		c.ds.Errorf(e.At.Pos, "`%s` points at `%s`, which doesn't exist%s", e.At.Field, e.To, c.missingHint(e.To))
-	case !e.Def.Allows(n.Type):
-		c.ds.Errorf(e.At.Pos, "`%s` points at `%s`, which is of type %s; it must point at %s", e.At.Field, e.To, n.Type, strings.Join(e.Def.To, " or "))
+	case !e.Def.Allows(n.Kind):
+		c.ds.Errorf(e.At.Pos, "`%s` points at `%s`, which is of type %s; it must point at %s", e.At.Field, e.To, n.Kind.Name, orList(e.Def.To))
 	}
 }
 
@@ -95,7 +95,7 @@ func (c *checker) missingHint(r graph.Ref) string {
 func (c *checker) duplicates() {
 	first := map[string]*graph.File{}
 	for _, f := range c.g.Files {
-		id, ok := f.Identity()
+		id, ok := f.Node.Identity()
 		if !ok {
 			continue
 		}

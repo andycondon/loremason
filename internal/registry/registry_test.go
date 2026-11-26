@@ -19,7 +19,7 @@ func TestRegistryAndSchemasAgree(t *testing.T) {
 	for name, typ := range r.Types {
 		known = append(known, name)
 		for _, sub := range typ.Subrecords {
-			known = append(known, sub.Type)
+			known = append(known, sub.Name)
 		}
 	}
 	checkTargets := func(where string, edges map[string]Edge) {

@@ -20,9 +20,10 @@ import (
 // read the files, index the records and their sub-records, index aliases,
 // then read the edges (which needs every name indexed first).
 //
-// Problems that keep a file, name or link out of the graph are returned as
-// diagnostics; the graph holds everything else. Whether the links point at
-// the right things is for the caller to check.
+// The line between Load and the checks: Load reports what keeps a file,
+// name or link out of the graph (a folder no type has, a second record with
+// the same ID, an alias already taken). Whatever made it into the graph but
+// is wrong, such as a link to the wrong type, is for the checks to find.
 func Load(root string, reg *registry.Registry) (*Graph, diag.List, error) {
 	l := &loader{reg: reg, g: &Graph{nodes: map[string]*Node{}, aliases: map[string]*Node{}}}
 	if err := l.readAll(filepath.Join(root, Dir)); err != nil {
@@ -123,7 +124,7 @@ func (l *loader) read(p, rel string) {
 	if t := l.reg.TypeOfID(rid); t != nil {
 		f.Type = t
 	}
-	f.Node = &Node{ID: rid, Type: f.Type.Name, File: f}
+	f.Node = &Node{ID: rid, Kind: &f.Type.Kind, File: f}
 	l.g.Files = append(l.g.Files, f)
 
 	data, err := os.ReadFile(p)
@@ -137,7 +138,9 @@ func (l *loader) read(p, rel string) {
 		l.ds.Errorf(f.At(e.Line), "%s", e.Msg)
 		f.rejected[e.Line] = true
 	}
-	f.Node.Fields = f.Header()
+	if rec != nil {
+		f.Node.Fields = rec.Header
+	}
 }
 
 // addNodes indexes a file's record and its sub-records.
@@ -157,7 +160,7 @@ func (l *loader) addNodes(f *File) {
 			case n.Child(local) != nil:
 				l.ds.Errorf(f.At(entry.KeyLine("id")), "two entries have the id `%s`", local)
 			default:
-				c := &Node{ID: SubrecordID(n.ID, local), Type: f.Type.Subrecords[field].Type, File: f, Fields: entry, Parent: n, List: field, Local: local}
+				c := &Node{ID: SubrecordID(n.ID, local), Kind: f.Type.Subrecords[field], File: f, Fields: entry, Parent: n, Local: local}
 				n.Children = append(n.Children, c)
 				if l.g.nodes[c.ID] == nil { // a duplicate record's sub-records still resolve
 					l.g.nodes[c.ID] = c
@@ -169,7 +172,7 @@ func (l *loader) addNodes(f *File) {
 
 // addAliases indexes a record's other names.
 func (l *loader) addAliases(f *File) {
-	aliases, _ := f.Header().Get("aliases")
+	aliases, _ := f.Node.Fields.Get("aliases")
 	for _, item := range aliases.Items() {
 		alias, ok := item.Text()
 		if !ok || alias == "" {
@@ -189,7 +192,7 @@ func (l *loader) addAliases(f *File) {
 // or a list of them, and each link is a reference, or {to: …} with perhaps a
 // pin. Values of the wrong shape are skipped; the schema check reports them.
 func (l *loader) addEdges(from *Node) {
-	defs := from.EdgeDefs()
+	defs := from.Kind.Edges
 	for _, name := range slices.Sorted(maps.Keys(defs)) {
 		value, _ := from.Fields.Get(name)
 		for _, item := range value.Items() {
