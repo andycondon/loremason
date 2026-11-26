@@ -19,8 +19,9 @@ import (
 	"github.com/andycondon/loremason/internal/suggest"
 )
 
-// Result is what a check found.
+// Result is what a check found, and the graph it checked.
 type Result struct {
+	Graph       *graph.Graph
 	Records     int
 	Diagnostics diag.List
 }
@@ -56,7 +57,7 @@ func Graph(g *graph.Graph, loaded diag.List, reg *registry.Registry) *Result {
 	}
 	c.duplicates()
 	c.ds.Sort()
-	return &Result{Records: len(g.Files), Diagnostics: c.ds}
+	return &Result{Graph: g, Records: len(g.Files), Diagnostics: c.ds}
 }
 
 // Broken returns the paths of the files that have errors, not just

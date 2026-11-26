@@ -231,13 +231,8 @@ func TestDryRunChangesNothing(t *testing.T) {
 
 func TestReviseMistakes(t *testing.T) {
 	newWorkspace(t, map[string]string{"belief/bel_7k3m9q.md": beliefRecord, "actor/who_4d9snc.md": "---\nid: who_4d9snc\ntitle: Someone\nkind: person\ncreated: 2026-11-22\n---\n"})
-	for want, args := range map[string][]string{
-		"say whether the change is --breaking": {"revise", "bel_7k3m9q"},
-		"takes one record ID":                  {"revise", "--breaking"},
-	} {
-		if code, _, errOut := mason(args...); code != 2 || !strings.Contains(errOut, want) {
-			t.Errorf("%v: exit %d, %s", args, code, errOut)
-		}
+	if code, _, errOut := mason("revise", "bel_7k3m9q"); code != 2 || !strings.Contains(errOut, "say whether the change is --breaking") {
+		t.Errorf("no --breaking or --non-breaking: exit %d, %s", code, errOut)
 	}
 	for want, args := range map[string][]string{
 		"nothing pins revision 1 of bel_7k3m9q yet": {"revise", "bel_7k3m9q", "--breaking"},

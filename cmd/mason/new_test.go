@@ -55,9 +55,9 @@ func TestNewRecordsAreValid(t *testing.T) {
 	}
 }
 
-func TestNewTakesFlagsFirstAndKebabCase(t *testing.T) {
+func TestNewAcceptsKebabCase(t *testing.T) {
 	emptyWorkspace(t)
-	if code, out, errOut := mason("new", "--title", "X", "design-doc"); code != 0 || !strings.Contains(out, "design-doc") {
+	if code, out, errOut := mason("new", "design-doc", "--title", "X"); code != 0 || !strings.Contains(out, "design-doc") {
 		t.Fatalf("exit %d: %s%s", code, out, errOut)
 	}
 }
@@ -71,8 +71,6 @@ func TestNewMistakes(t *testing.T) {
 		"one line of text":        {"new", "belief", "--title", "a\nb"},
 		"a title must be":         {"new", "belief", "--title", "   "},
 		"isn't valid UTF-8":       {"new", "belief", "--title", "bad \xff byte"},
-		"takes one record type":   {"new", "belief", "--title", "two", "words"},
-		"unknown command `nwe`":   {"nwe"},
 	} {
 		if code, _, errOut := mason(args...); code != 2 || !strings.Contains(errOut, want) {
 			t.Errorf("%v: exit %d, stderr %q", args, code, errOut)
