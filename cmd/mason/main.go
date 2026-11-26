@@ -24,6 +24,9 @@ Usage:
 Commands:
   validate                     check every record in the workspace
   new <type> --title <title>   create a record and print its path
+  sync [--dry-run]             pin links and record fingerprints
+  revise <id> --breaking|--non-breaking
+                               open a new revision before changing a record's meaning
 
 The workspace is the nearest folder, here or above, with a .loremason folder.
 Set LOREMASON_WORKSPACE to use another.
@@ -60,6 +63,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runValidate(rest, stdout, stderr)
 	case "new":
 		return runNew(rest, stdout, stderr)
+	case "sync":
+		return runSync(rest, stdout, stderr)
+	case "revise":
+		return runRevise(rest, stdout, stderr)
 	}
 	return misuse(stderr, "unknown command `%s`", name)
 }

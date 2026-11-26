@@ -37,7 +37,12 @@ func Run(root string, reg *registry.Registry) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &checker{reg: reg, g: g, ds: ds}
+	return Graph(g, ds, reg), nil
+}
+
+// Graph checks a loaded graph. loaded is what loading it reported.
+func Graph(g *graph.Graph, loaded diag.List, reg *registry.Registry) *Result {
+	c := &checker{reg: reg, g: g, ds: loaded}
 	for _, f := range g.Files {
 		c.placement(f)
 		c.shape(f)
@@ -50,7 +55,19 @@ func Run(root string, reg *registry.Registry) (*Result, error) {
 	}
 	c.duplicates()
 	c.ds.Sort()
-	return &Result{Records: len(g.Files), Diagnostics: c.ds}, nil
+	return &Result{Records: len(g.Files), Diagnostics: c.ds}
+}
+
+// Broken lists the files that have errors (not just warnings). Tools that
+// write leave these alone.
+func (r *Result) Broken() map[string]bool {
+	broken := map[string]bool{}
+	for _, d := range r.Diagnostics {
+		if !d.Warning {
+			broken[d.Path] = true
+		}
+	}
+	return broken
 }
 
 // placement checks that the filename is an ID whose prefix matches the
