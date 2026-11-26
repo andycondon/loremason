@@ -251,8 +251,8 @@ fp1:3a9c0e1b77d2
 The **canonical form** is fixed precisely, because any drift would look like every record changing:
 
 1. Take the record's meaning fields from the registry. `body` stands for the body.
-2. Write the fields as compact JSON with sorted keys, in UTF-8.
-3. Normalise the body: Windows line endings become Unix ones, trailing spaces are removed from each line, runs of blank lines become one, and blank lines at the start and end are dropped.
+2. Write the fields as compact JSON with sorted keys, in UTF-8. Characters are written as themselves, except what JSON itself requires to be escaped (quotes, backslashes, control characters) and the line and paragraph separators U+2028 and U+2029, written as `\u2028` and `\u2029`. `<`, `>` and `&` are written as themselves.
+3. Normalise the body: Windows line endings (`\r\n`) become Unix ones, trailing spaces and tabs are removed from each line, runs of blank lines become one, and blank lines at the start and end are dropped. A line holding only spaces counts as blank. A lone `\r` is left as it is.
 4. Write IDs inside fields bare, without `@rN`.
 5. Hash the result with SHA-256 and keep the first 12 hex characters.
 

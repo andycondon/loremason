@@ -3,10 +3,12 @@
 // any drift would look like every record changing:
 //
 //  1. Take the record's meaning fields; "body" stands for the body.
-//  2. Write them as compact JSON with sorted keys, in UTF-8.
+//  2. Write them as compact JSON with sorted keys, in UTF-8, escaping only
+//     what JSON requires plus U+2028 and U+2029 (not <, > or &).
 //  3. Normalise the body: Windows line endings become Unix ones, trailing
 //     spaces and tabs are removed from each line, runs of blank lines become
-//     one, and blank lines at the start and end are dropped.
+//     one, and blank lines at the start and end are dropped. A lone \r is
+//     left as it is.
 //  4. Hash the result with SHA-256 and keep the first 12 hex characters.
 //
 // Writing IDs without their @rN is the caller's job: this package knows

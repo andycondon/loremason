@@ -88,3 +88,26 @@ func TestBrokenFilesAndLinksToThemAreSkipped(t *testing.T) {
 		t.Errorf("actions:\n%s\nskipped: %v", actions(p), p.Skipped)
 	}
 }
+
+func TestApplyRefusesAFileThatChangedAndWritesNothing(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{"requirement/req_5txk3a.md": requirement("non_breaking"), "task/task_9w4hzd.md": task}
+	for rel, text := range files {
+		p := filepath.Join(root, "graph", rel)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(text), 0o644)
+	}
+	g, _, err := graph.Load(root, registry.Load())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := Sync(g, nil, "2026-11-25") // writes to both files
+	changed := filepath.Join(root, "graph", "task", "task_9w4hzd.md")
+	os.WriteFile(changed, []byte(task+"\nEdited meanwhile.\n"), 0o644)
+	if err := Apply(root, p); err == nil || !strings.Contains(err.Error(), "changed after it was read") {
+		t.Fatalf("got %v", err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(root, "graph", "requirement", "req_5txk3a.md")); string(data) != files["requirement/req_5txk3a.md"] {
+		t.Error("another file was written before the refusal")
+	}
+}

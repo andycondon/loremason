@@ -101,3 +101,21 @@ func TestEditRejectsWhatItCantRead(t *testing.T) {
 		}
 	}
 }
+
+func TestByteOrderMarkIsKept(t *testing.T) {
+	h, err := Edit([]byte("\ufeff---\nid: x\nrelies_on: [a]\n---\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Set("relies_on", "relies_on:\n  - b\n")
+	if got := string(h.Bytes()); got != "\ufeff---\nid: x\nrelies_on:\n  - b\n---\n" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestNewFieldGoesAboveTheCommentOnCreated(t *testing.T) {
+	src := "---\nid: x\n# when it was written\ncreated: 2026-11-22\n---\n"
+	if got := edit(t, src, map[string]string{"revisions": "revisions: []\n"}); got != "---\nid: x\nrevisions: []\n# when it was written\ncreated: 2026-11-22\n---\n" {
+		t.Errorf("got %q", got)
+	}
+}

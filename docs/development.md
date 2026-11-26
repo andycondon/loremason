@@ -36,6 +36,8 @@ Start reading at `internal/graph/graph.go`, then `load.go`, then `internal/check
 - References (`bel_7k3m9q/s1@r2`) are read and written only in `graph/ref.go`.
 - The file layout (`graph/<folder>/<id>.md`) lives only in `graph/layout.go`.
 - Field paths (`support[0].direction`) are written only by `record.Path`.
+- A revision entry is read and written only in `graph/revision.go`, and a pinned link (`{to, rev, fp, via}`) only in `graph/pin.go`. Tools decide what they say; those files decide how it's written.
+- Whether a file is safe to write is decided once, by `check` (`Result.Broken`), and every writing tool takes that set.
 
 When a rule is also stated in a schema, a test keeps the two in agreement, as `TestParseRefAgreesWithTheSchema` does.
 

@@ -59,6 +59,14 @@ func TestCanonical(t *testing.T) {
 	}
 }
 
+// The escaping section 5 states, so a change of JSON library can't slip by.
+func TestCanonicalEscaping(t *testing.T) {
+	got := string(Canonical(map[string]any{"t": "q\"b\\c\u2028d\x01<>&é"}, "", false))
+	if want := `{"t":"q\"b\\c\u2028d\u0001<>&é"}`; got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+}
+
 func TestParse(t *testing.T) {
 	fp, err := Parse("fp1:3a9c0e1b77d2")
 	if err != nil || fp.Method != 1 || fp.Hex != "3a9c0e1b77d2" || fp.String() != "fp1:3a9c0e1b77d2" {

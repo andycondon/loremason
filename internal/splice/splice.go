@@ -19,7 +19,8 @@ import (
 
 // Header is a record file being edited.
 type Header struct {
-	lines  []string // the whole file, split after each newline
+	bom    string   // a byte order mark the file starts with, kept as it was
+	lines  []string // the whole file after any byte order mark, split after each newline
 	close  int      // index of the header's closing --- line
 	fields map[string]span
 	order  []string // fields in file order
@@ -33,7 +34,12 @@ type span struct{ start, end int }
 
 // Edit reads a record file for editing.
 func Edit(data []byte) (*Header, error) {
-	h := &Header{lines: strings.SplitAfter(string(data), "\n"), fields: map[string]span{}, edits: map[string]string{}}
+	h := &Header{fields: map[string]span{}, edits: map[string]string{}}
+	text := string(data)
+	if rest, ok := strings.CutPrefix(text, "\ufeff"); ok {
+		h.bom, text = "\ufeff", rest
+	}
+	h.lines = strings.SplitAfter(text, "\n")
 	if len(h.lines) == 0 || !isFence(h.lines[0]) {
 		return nil, errors.New("the file doesn't start with a header")
 	}
@@ -86,7 +92,11 @@ func (h *Header) Bytes() []byte {
 		}
 		at := h.close
 		if s, ok := h.fields["created"]; ok {
+			// Above the comment lines that head created, which belong to it.
 			at = s.start
+			for at > 1 && strings.HasPrefix(strings.TrimSpace(h.lines[at-1]), "#") {
+				at--
+			}
 		}
 		changes = append(changes, change{at, at, text})
 	}
@@ -109,6 +119,7 @@ func (h *Header) Bytes() []byte {
 		lines[c.start+strings.Count(strings.TrimSuffix(text, eol), eol)] += eol
 	}
 	var b bytes.Buffer
+	b.WriteString(h.bom)
 	for _, l := range lines {
 		b.WriteString(l)
 	}
