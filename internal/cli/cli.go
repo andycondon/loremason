@@ -31,9 +31,10 @@ type App struct {
 type Command struct {
 	Name    string
 	Summary string   // one line, shown in the app's help and the command's
-	Args    []string // the arguments it takes, by name, such as "record ID"; it takes exactly these, unless Variadic
+	Args    []string // the arguments it takes, by name, such as "record ID"
 	// Variadic makes the last of Args take one or more values, such as
-	// "words", instead of exactly one. The action gets them all in args.
+	// "words", instead of exactly one. Without it the command takes exactly
+	// the arguments in Args. The action gets all the values in args.
 	Variadic bool
 	// Setup declares the command's flags and returns what it does. The
 	// action reads the flags' values through the variables Setup made.

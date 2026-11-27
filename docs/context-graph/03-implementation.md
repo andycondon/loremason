@@ -307,13 +307,14 @@ erDiagram
     text id FK
   }
   nodes_fts {
+    text id
     text title
     text body
   }
 ```
 
 - **`nodes`** has one row per record and sub-record. Sub-records such as `bel_7k3m9q/s1` get their own rows so that edges like `undercuts` can point at them.
-- **`edges`** has one row per link, including a containment link, named `subrecord_of`, from each sub-record to the record holding it. Containment doesn't propagate, and `mason show` leaves it out: it lists a sub-record's own links with the record's, marked with the sub-record's local name. Whether a link comes from `extra:` (an experimental link) isn't stored yet; no query needs it. Reverse links aren't stored; a query reads `edges` from the other side.
+- **`edges`** has one row per link that reaches a record, including a containment link, named `subrecord_of`, from each sub-record to the record holding it. Containment doesn't propagate, and `mason show` leaves it out: it lists a sub-record's own links with the record's, marked with the sub-record's local name. Whether a link comes from `extra:` (an experimental link) isn't stored yet; no query needs it. Reverse links aren't stored; a query reads `edges` from the other side.
 - **`nodes_fts`** is SQLite's built-in full-text search (FTS5). It lets a person or agent find "the belief about non-UTF-8 files" from plain words.
 - **`aliases`** maps each alias a record has had to its ID, so `show` and `dependents` accept an old one.
 - A **`meta`** table records what the index was built from: the loremason version, the fingerprint method, the index's schema version, a hash of `types.yaml`, and the files' signature.
@@ -330,8 +331,8 @@ Following links is done in Go, not in SQL. `mason dependents` loads the links th
 
 | Command | Answers |
 |---|---|
-| `mason find <words>` | Which records match these words? Takes one or more words, unquoted if you like. Shows titles, types and statuses. |
-| `mason show <id>` | One record, with every link shown as its title rather than its ID, and links pointing at it. |
+| `mason find <words>` | Which records match these words? Takes one or more words, unquoted if you like. Shows each record's ID, type, status and title. |
+| `mason show <id>` | One record's text, with its links out and the links pointing at it, each showing the record at the other end by ID, type, status and title. |
 | `mason dependents <id>` | What is built on this, directly and further down? Follows links that propagate, with each record's depth; a record that only mentions this one isn't listed. |
 | `mason stale` | Which links need a re-check, grouped by the record that changed? |
 | `mason reopened` | Which commitments rely on a belief that has fallen? |

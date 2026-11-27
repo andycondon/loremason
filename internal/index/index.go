@@ -8,7 +8,8 @@
 // workspace at once: each builds into its own temporary file and renames it
 // into place, and any of the results is as good as another. Whether a link
 // is stale or reopens a commitment is decided in package graph and stored;
-// the queries here only select and join.
+// the queries here read what is stored, and walk the stored links to find
+// dependents.
 //
 // The design is in docs/context-graph/03-implementation.md, section 6.
 package index
@@ -57,17 +58,18 @@ type Index struct {
 
 // Meta is what an index records about how it was built.
 type Meta struct {
-	Version           string // the loremason version in the workspace's config, not the index's layout
+	Version           string // the workspace config's loremason version
 	Schema            int    // SchemaVersion, the version of the index's tables
-	Types             string // a hash of the embedded schema/types.yaml, so a change to the record types rebuilds
+	Types             string // a hash of the embedded schema/types.yaml
 	FingerprintMethod int    // fingerprint.Method
 	Signature         string // of the files under graph/; see Signature
-	Problems          int    // errors found loading and checking, not counting warnings
+	Problems          int    // errors found loading and checking, not warnings
 }
 
 // Open returns the index of the workspace at root, building it first when
-// there is none or the files under graph/, the loremason version or the
-// fingerprint method differ from what it was built from. It also writes
+// there is none, it can't be read, or what it was built from differs from
+// what is there now: the files under graph/, the loremason version, the
+// fingerprint method, SchemaVersion or the record types. It also writes
 // .loremason/.gitignore when that is missing, so the index isn't committed.
 func Open(root string, reg *registry.Registry) (*Index, error) {
 	ws, err := workspace.Find(root, root)
@@ -255,9 +257,9 @@ func Signature(root string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// writeIgnore writes .loremason/.gitignore, covering the index and every
-// temporary or journal file beside it but not config.yaml, unless
-// the file is already there.
+// writeIgnore writes .loremason/.gitignore, unless it is already there. It
+// covers the index and every temporary or journal file beside it, but not
+// config.yaml.
 func writeIgnore(root string) error {
 	p := filepath.Join(root, dir, ".gitignore")
 	if _, err := os.Stat(p); err == nil {

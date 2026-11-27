@@ -33,8 +33,8 @@ type Link struct {
 // Detail is everything stored about one record.
 type Detail struct {
 	Summary
-	Header string // the record's header as JSON, "" when its file couldn't be read
-	Body   string
+	Header string // the record's header as JSON; "" for a sub-record, or when its file couldn't be read
+	Body   string // "" for a sub-record, or when its file couldn't be read
 	Out    []Link // links the record and its sub-records make, by field then target; a sub-record's carry its Local name
 	In     []Link // links to the record, by field then source
 }
@@ -348,7 +348,8 @@ func (x *Index) Dependents(id string) ([]Dependent, error) {
 }
 
 // Stale returns the records that have changed since links were written
-// against them, one group each by ID, with the links that are out of date.
+// against them, one group per record by ID, with the links that are out of
+// date.
 func (x *Index) Stale() ([]StaleGroup, error) {
 	rows, err := x.db.Query(`SELECT t.id, t.type, t.title, t.status, COALESCE(t.revision, 0),
 		e.name, e.pinned_rev, e.pinned_fp, s.id, s.type, s.title, s.status

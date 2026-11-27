@@ -132,7 +132,8 @@ func (t *Type) statuses() []string {
 	return out
 }
 
-// checkStatuses reports a fallen or closed status the type's schema doesn't allow.
+// checkStatuses reports a fallen or closed status the type's schema doesn't
+// allow.
 func (t *Type) checkStatuses() error {
 	for _, k := range []struct {
 		key  string

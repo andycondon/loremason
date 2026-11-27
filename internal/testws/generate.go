@@ -69,7 +69,7 @@ type commitment struct {
 
 const idAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
 
-// share is each type's part of the records, in percent; the shares sum to 100.
+// shares is each type's part of the records, in percent; the shares sum to 100.
 var shares = []struct {
 	kind string
 	pct  int

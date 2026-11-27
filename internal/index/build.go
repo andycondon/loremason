@@ -46,12 +46,15 @@ CREATE VIRTUAL TABLE nodes_fts USING fts5(id UNINDEXED, title, body);
 // reports the sub-record's links with the record instead.
 const Containment = "subrecord_of"
 
-// Build writes an index of g to path. Everything is written, in one
-// transaction, to a new temporary file beside path (named so .gitignore
-// covers it), and the file is then renamed into place, so a reader never
-// sees half an index. Builds running at once each have their own file; the
-// last to finish is the one left. Records and their
-// sub-records each get a row in nodes, links and containment a row in edges.
+// Build writes an index of g, recording m, to path. Everything is written,
+// in one transaction, to a new temporary file beside path (named so
+// .gitignore covers it), and the file is then renamed into place, so a
+// reader never sees half an index. Builds running at once each have their
+// own file; the last to finish is the one left. Each record and sub-record
+// gets a row in nodes, and each record in nodes_fts for text search. Each
+// alias gets a row in aliases. Each link that reaches a record, and each
+// sub-record's containment in its record, gets a row in edges. A second file
+// with an ID the graph already has is left out.
 func Build(path string, g *graph.Graph, m Meta) (err error) {
 	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
