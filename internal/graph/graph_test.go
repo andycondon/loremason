@@ -278,6 +278,18 @@ func TestEdgeReopensWhenABeliefHasFallen(t *testing.T) {
 	}
 }
 
+func TestEdgeFromAClosedCommitmentDoesNotReopen(t *testing.T) {
+	for status, want := range map[string]bool{"rejected": false, "deprecated": false, "superseded": false, "accepted": true} {
+		g := load(t,
+			file("bel_7k3m9q", "status: incorrect"),
+			file("task_p4n2xa", "status: "+status, "relies_on: [bel_7k3m9q]"),
+		)
+		if got := reopens(t, g, "task_p4n2xa", "relies_on"); got != want {
+			t.Errorf("a %s task relying on an incorrect belief: reopens = %v", status, got)
+		}
+	}
+}
+
 func TestEdgeReopensNothingElse(t *testing.T) {
 	g := load(t,
 		file("bel_7k3m9q", "status: withdrawn"),

@@ -218,12 +218,14 @@ func (e *Edge) Stale() bool {
 }
 
 // Reopens reports whether the link reopens its source: it propagates, its
-// source is a record in the committing layer, and its target's status is one
+// source is a record in the committing layer that is still in force (not
+// closed, as a rejected or superseded one is), and its target's status is one
 // that the target's type lists as fallen. A target that no longer holds for
 // another reason, such as a withdrawn belief, reopens nothing.
 func (e *Edge) Reopens() bool {
 	return e.Def.Propagates && e.Target != nil &&
 		e.From.Layer() == registry.Committing &&
+		!e.From.Type().IsClosed(e.From.Status()) &&
 		e.Target.Type().IsFallen(e.Target.Status())
 }
 

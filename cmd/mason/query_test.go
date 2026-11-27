@@ -100,6 +100,8 @@ func TestReopened(t *testing.T) {
 	newWorkspace(t, map[string]string{
 		"belief/bel_7k3m9q.md": strings.Replace(testws.Belief, "status: held", "status: incorrect", 1),
 		"task/task_9w4hzd.md":  task,
+		// the same task, turned down: it isn't listed
+		"task/task_2b4cdf.md": strings.NewReplacer("task_9w4hzd", "task_2b4cdf", "status: accepted", "status: rejected").Replace(task),
 	})
 	code, out, errOut := mason("reopened")
 	if code != 0 || errOut != "" || out != "task_9w4hzd  task  accepted  Do it  rests on  bel_7k3m9q  validate and encodings  (incorrect)\n" {

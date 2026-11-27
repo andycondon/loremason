@@ -54,6 +54,7 @@ type Type struct {
 	Layer           string           `yaml:"layer"`            // Knowing, Committing or Scope
 	RevisionsInline bool             `yaml:"revisions_inline"` // old wording is kept in the file, not left to git
 	Meaning         []string         `yaml:"meaning"`          // fields a fingerprint covers; "body" for the body
+	Closed          []string         `yaml:"closed"`           // statuses meaning the record is no longer in force; each is one of the schema's statuses
 	Fallen          []string         `yaml:"fallen"`           // statuses meaning the record no longer holds; each is one of the schema's statuses
 	Subrecords      map[string]*Kind `yaml:"subrecords"`       // by the field that lists them
 	Template        string           `yaml:"template"`         // header lines `mason new` writes after id and title
@@ -108,6 +109,10 @@ func (t *Type) BodyIsMeaning() bool { return slices.Contains(t.Meaning, "body") 
 // commitment relying on a record in it needs another look.
 func (t *Type) IsFallen(status string) bool { return slices.Contains(t.Fallen, status) }
 
+// IsClosed reports whether status is one the type lists as closed, so a
+// record in it is no longer in force and a fallen target doesn't reopen it.
+func (t *Type) IsClosed(status string) bool { return slices.Contains(t.Closed, status) }
+
 // statuses lists the values the type's schema allows for status, or nil when
 // it has no status or doesn't list them.
 func (t *Type) statuses() []string {
@@ -127,11 +132,16 @@ func (t *Type) statuses() []string {
 	return out
 }
 
-// checkFallen reports a fallen status the type's schema doesn't allow.
-func (t *Type) checkFallen() error {
-	for _, f := range t.Fallen {
-		if !slices.Contains(t.statuses(), f) {
-			return fmt.Errorf("types.yaml: %s lists `%s` as fallen, but its schema has no such status", t.Name, f)
+// checkStatuses reports a fallen or closed status the type's schema doesn't allow.
+func (t *Type) checkStatuses() error {
+	for _, k := range []struct {
+		key  string
+		list []string
+	}{{"fallen", t.Fallen}, {"closed", t.Closed}} {
+		for _, st := range k.list {
+			if !slices.Contains(t.statuses(), st) {
+				return fmt.Errorf("types.yaml: %s lists `%s` as %s, but its schema has no such status", t.Name, st, k.key)
+			}
 		}
 	}
 	return nil
@@ -258,7 +268,7 @@ func parse() (*Registry, error) {
 		if t.Schema, err = r.compiler.Compile(schema.BaseURL + t.Folder() + ".json"); err != nil {
 			return nil, err
 		}
-		if err := t.checkFallen(); err != nil {
+		if err := t.checkStatuses(); err != nil {
 			return nil, err
 		}
 	}

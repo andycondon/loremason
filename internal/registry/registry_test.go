@@ -94,25 +94,49 @@ func TestTypeFallen(t *testing.T) {
 
 func TestTypeCheckFallen(t *testing.T) {
 	belief, task := *typ(t, "belief"), *typ(t, "task")
-	if err := belief.checkFallen(); err != nil {
+	if err := belief.checkStatuses(); err != nil {
 		t.Errorf("belief's own fallen statuses: %v", err)
 	}
 	belief.Fallen = []string{"incorrect", "gone"}
-	if err := belief.checkFallen(); err == nil || !strings.Contains(err.Error(), "`gone`") {
+	if err := belief.checkStatuses(); err == nil || !strings.Contains(err.Error(), "`gone`") {
 		t.Errorf("a status the schema lacks: %v", err)
 	}
 	task.Fallen = []string{"rejected"} // task's status comes from a shared definition
-	if err := task.checkFallen(); err != nil {
+	if err := task.checkStatuses(); err != nil {
 		t.Errorf("a status through a $ref: %v", err)
 	}
 	task.Fallen = []string{"held"}
-	if err := task.checkFallen(); err == nil {
+	if err := task.checkStatuses(); err == nil {
 		t.Error("held isn't a task status")
 	}
 	finding := *typ(t, "finding") // no status at all
 	finding.Fallen = []string{"incorrect"}
-	if err := finding.checkFallen(); err == nil {
+	if err := finding.checkStatuses(); err == nil {
 		t.Error("a type with no status can't have a fallen one")
+	}
+}
+
+func TestTypeClosed(t *testing.T) {
+	task := typ(t, "task")
+	for status, want := range map[string]bool{"rejected": true, "deprecated": true, "superseded": true, "accepted": false, "": false} {
+		if task.IsClosed(status) != want {
+			t.Errorf("IsClosed(%q) = %v", status, !want)
+		}
+	}
+	if typ(t, "belief").IsClosed("withdrawn") || typ(t, "step").IsClosed("rejected") {
+		t.Error("a type with no closed statuses has none closed")
+	}
+}
+
+func TestTypeCheckClosed(t *testing.T) {
+	task := *typ(t, "task")
+	if err := task.checkStatuses(); err != nil {
+		t.Errorf("task's own closed statuses: %v", err)
+	}
+	task.Closed = []string{"rejected", "gone"}
+	want := "types.yaml: task lists `gone` as closed, but its schema has no such status"
+	if err := task.checkStatuses(); err == nil || err.Error() != want {
+		t.Errorf("a closed status the schema lacks: %v", err)
 	}
 }
 
