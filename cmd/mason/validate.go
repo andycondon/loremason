@@ -4,9 +4,9 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/andycondon/loremason/internal/check"
 	"github.com/andycondon/loremason/internal/cli"
-	"github.com/andycondon/loremason/internal/registry"
+	"github.com/andycondon/loremason/internal/diag"
+	"github.com/andycondon/loremason/internal/page"
 )
 
 var validateCmd = &cli.Command{
@@ -15,20 +15,29 @@ var validateCmd = &cli.Command{
 	Setup:   func(*flag.FlagSet) cli.Action { return validate },
 }
 
-// validate prints what the check found, and fails when it found errors.
+// validate prints what the check found, and what is wrong with the generated
+// pages, and fails when it found errors.
 func validate(env *cli.Env, _ []string) error {
 	w, err := open(env)
 	if err != nil {
 		return err
 	}
-	res, err := check.Run(w.Root, registry.Load())
+	res, x, err := load(w.Root)
 	if err != nil {
 		return err
 	}
-	for _, d := range res.Diagnostics {
+	defer x.Close()
+	_, pageProblems, err := page.Plan(w.Root, x)
+	if err != nil {
+		return err
+	}
+	all := append(diag.List{}, res.Diagnostics...)
+	all = append(all, pageProblems...)
+	all.Sort()
+	for _, d := range all {
 		fmt.Fprintln(env.Stdout, d)
 	}
-	errs, warnings := res.Diagnostics.Count()
+	errs, warnings := all.Count()
 	fmt.Fprintf(env.Stdout, "%s: %s, %s\n", plural(res.Records, "record"), plural(errs, "error"), plural(warnings, "warning"))
 	if errs > 0 {
 		return cli.ErrFailed

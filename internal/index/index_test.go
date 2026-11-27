@@ -3,6 +3,7 @@ package index
 import (
 	"database/sql"
 	"errors"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -10,10 +11,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 
+	"github.com/andycondon/loremason/internal/check"
 	"github.com/andycondon/loremason/internal/fingerprint"
 	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/internal/testws"
+	"github.com/andycondon/loremason/schema"
 )
 
 // ---- Open ----
@@ -144,6 +148,143 @@ func TestOpenRebuildsForAnOlderIndexSchemaOrChangedTypes(t *testing.T) {
 		if x = open(t, w); x.Rebuilt() {
 			t.Errorf("after the rebuild for %s the index should be current", name)
 		}
+	}
+}
+
+// withSchemaFiles makes typesHash read files instead of the embedded schema
+// until the test ends.
+func withSchemaFiles(t *testing.T, files fs.FS) {
+	t.Helper()
+	old := schemaFiles
+	schemaFiles = files
+	t.Cleanup(func() { schemaFiles = old })
+}
+
+// copySchema copies the embedded schema files, so a test can change one.
+func copySchema(t *testing.T) fstest.MapFS {
+	t.Helper()
+	files := fstest.MapFS{}
+	err := fs.WalkDir(schema.FS, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(schema.FS, p)
+		files[p] = &fstest.MapFile{Data: data}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+func TestTypesHashCoversEverySchemaFile(t *testing.T) {
+	files := copySchema(t)
+	withSchemaFiles(t, files)
+	base := typesHash()
+	if typesHash() != base {
+		t.Fatal("the hash should be stable")
+	}
+	var jsons int
+	for name := range files {
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		jsons++
+		was := files[name].Data
+		// The same length, so only the bytes differ.
+		files[name] = &fstest.MapFile{Data: append(append([]byte{}, was[:len(was)-1]...), was[len(was)-1]^1)}
+		if typesHash() == base {
+			t.Errorf("a changed byte in %s doesn't change the hash", name)
+		}
+		files[name] = &fstest.MapFile{Data: was}
+	}
+	if jsons == 0 {
+		t.Fatal("no JSON schema files found")
+	}
+	files["added.json"] = &fstest.MapFile{Data: []byte("{}")}
+	if typesHash() == base {
+		t.Error("an added file doesn't change the hash")
+	}
+}
+
+func TestOpenRebuildsWhenASchemaFileChanges(t *testing.T) {
+	w := newWS(t, map[string]string{"belief/bel_7k3m9q.md": testws.Belief})
+	open(t, w).Close()
+	if x := open(t, w); x.Rebuilt() {
+		t.Fatal("nothing changed")
+	}
+
+	files := copySchema(t)
+	data := files["task.json"].Data
+	files["task.json"] = &fstest.MapFile{Data: append(append([]byte{}, data...), '\n')}
+	withSchemaFiles(t, files)
+	if x := open(t, w); !x.Rebuilt() {
+		t.Error("a changed schema file should make the next open rebuild")
+	}
+}
+
+// ---- FromCheck ----
+
+func TestFromCheckBuildsOnceThenReusesACurrentIndex(t *testing.T) {
+	w := newWS(t, map[string]string{"belief/bel_7k3m9q.md": testws.Belief})
+	sig, err := Signature(w.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := check.Run(w.Root, registry.Load())
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, err := FromCheck(w.Root, res, sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !x.Rebuilt() {
+		t.Error("the first FromCheck should build the index")
+	}
+	if got, err := x.Show("bel_7k3m9q"); err != nil || got.Title != "validate and encodings" {
+		t.Errorf("built from the result: %+v, %v", got, err)
+	}
+	x.Close()
+	if _, err := os.Stat(filepath.Join(w.Root, ".loremason", ".gitignore")); err != nil {
+		t.Errorf("FromCheck should write the .gitignore as Open does: %v", err)
+	}
+
+	// The index is current, so the result isn't read: nil would panic if it were.
+	x, err = FromCheck(w.Root, nil, sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer x.Close()
+	if x.Rebuilt() {
+		t.Error("the second FromCheck should reuse the index")
+	}
+	// Open sees the same index, so the two share what they build.
+	if y := open(t, w); y.Rebuilt() {
+		t.Error("Open should reuse the index FromCheck built")
+	}
+}
+
+func TestFromCheckWithAnOldSignatureMakesTheNextOpenRebuild(t *testing.T) {
+	w := newWS(t, map[string]string{"belief/bel_7k3m9q.md": testws.Belief})
+	sig, err := Signature(w.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := check.Run(w.Root, registry.Load())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A file edited while the command ran.
+	edit(t, w, "belief/bel_7k3m9q.md", "validate and encodings", "validate and encoding")
+	x, err := FromCheck(w.Root, res, sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x.Close()
+	if y := open(t, w); !y.Rebuilt() {
+		t.Error("the signature taken before the load is old, so the next open should rebuild")
 	}
 }
 
@@ -366,5 +507,24 @@ func TestProblemsOfACleanWorkspace(t *testing.T) {
 	x := open(t, workedExample(t))
 	if x.Problems() != 0 {
 		t.Errorf("Problems = %d, want 0", x.Problems())
+	}
+}
+
+func TestConnectOpensARelativePath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "x.db"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	db, err := connect(filepath.Join(".", "sub", "..", "x.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE t (a)`); err != nil {
+		t.Fatalf("a relative path with .. should open the file: %v", err)
+	}
+	if info, err := os.Stat(filepath.Join(dir, "x.db")); err != nil || info.Size() == 0 {
+		t.Errorf("the table wasn't written to ./x.db: %v", err)
 	}
 }

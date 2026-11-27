@@ -229,6 +229,80 @@ func (e *Edge) Reopens() bool {
 		e.Target.Type().IsFallen(e.Target.Status())
 }
 
+// Settles reports whether the link settles its target: its edge lists the
+// source's status as one that settles, such as an accepted decision
+// answering a question.
+func (e *Edge) Settles() bool { return slices.Contains(e.Def.Settles, e.From.Status()) }
+
+// Pending reports whether the link is an answer still waiting: its edge
+// lists the source's status as pending, such as a proposed decision
+// answering a question.
+func (e *Edge) Pending() bool { return slices.Contains(e.Def.Pending, e.From.Status()) }
+
+// Attr returns a text field of a link written as a map, such as role on
+// involves, or "" when the link is a plain reference or has no such field.
+func (e *Edge) Attr(name string) string {
+	m, ok := e.Item.Map()
+	if !ok {
+		return ""
+	}
+	return m.Text(name)
+}
+
+// Progress returns the node's progress: the header's, or else the default its
+// type's schema declares (todo for a task). It's "" for a sub-record, which
+// gets no default, and for a node whose type has no progress field.
+func (n *Node) Progress() string {
+	if p := n.Fields.Text("progress"); p != "" {
+		return p
+	}
+	if n.IsSubrecord() {
+		return ""
+	}
+	return n.Type().Default("progress")
+}
+
+// Settled reports whether the node needs no more answering: it is dropped (it
+// has a dropped field), or a link to it settles it. It is asked of any node;
+// for a question, open means not settled.
+func (n *Node) Settled() bool {
+	if _, dropped := n.Fields.Get("dropped"); dropped {
+		return true
+	}
+	for _, e := range n.Incoming {
+		if e.Settles() {
+			return true
+		}
+	}
+	return false
+}
+
+// Members returns the records that belong to an initiative, sorted by ID:
+// those whose part_of links lead to it, directly or through other records
+// (a step through its plan, a requirement through its PRD), and their
+// sub-records. The initiative itself isn't one. A cycle of part_of links
+// ends.
+func (g *Graph) Members(ini *Node) []*Node {
+	seen := map[*Node]bool{ini: true}
+	var out []*Node
+	queue := []*Node{ini}
+	for len(queue) > 0 {
+		n := queue[0]
+		queue = queue[1:]
+		for _, e := range n.Incoming {
+			if e.Name != "part_of" || e.From.IsSubrecord() || seen[e.From] {
+				continue
+			}
+			seen[e.From] = true
+			out = append(out, e.From)
+			out = append(out, e.From.Children...)
+			queue = append(queue, e.From)
+		}
+	}
+	slices.SortFunc(out, func(a, b *Node) int { return strings.Compare(a.ID, b.ID) })
+	return out
+}
+
 // Behind returns the target's revisions after the one the link pins.
 func (e *Edge) Behind() []Revision {
 	if e.Pin == nil || e.Target == nil {

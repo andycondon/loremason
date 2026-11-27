@@ -140,6 +140,76 @@ func TestTypeCheckClosed(t *testing.T) {
 	}
 }
 
+func TestTypeCheckEdgeStatuses(t *testing.T) {
+	// withEdge returns a copy of a type whose answers edge is changed by set.
+	withEdge := func(name string, set func(*Edge)) *Type {
+		c := *typ(t, name)
+		c.Edges = map[string]Edge{}
+		for k, e := range typ(t, name).Edges {
+			c.Edges[k] = e
+		}
+		e := c.Edges["answers"]
+		set(&e)
+		c.Edges["answers"] = e
+		return &c
+	}
+	for _, name := range []string{"decision", "belief"} {
+		if err := typ(t, name).checkStatuses(); err != nil {
+			t.Errorf("%s's own settles and pending statuses: %v", name, err)
+		}
+	}
+	for _, c := range []struct{ key, want string }{
+		{"settles", "types.yaml: the answers edge of decision lists `gone` as settles, but its schema has no such status"},
+		{"pending", "types.yaml: the answers edge of decision lists `gone` as pending, but its schema has no such status"},
+	} {
+		d := withEdge("decision", func(e *Edge) {
+			if c.key == "settles" {
+				e.Settles = []string{"accepted", "gone"}
+			} else {
+				e.Pending = []string{"gone"}
+			}
+		})
+		if err := d.checkStatuses(); err == nil || err.Error() != c.want {
+			t.Errorf("an unknown status in %s: %v", c.key, err)
+		}
+	}
+	// The statuses are the source's: held is a belief's, not a decision's.
+	if err := withEdge("decision", func(e *Edge) { e.Settles = []string{"held"} }).checkStatuses(); err == nil {
+		t.Error("held isn't a decision status")
+	}
+	if err := withEdge("belief", func(e *Edge) { e.Settles = []string{"accepted"} }).checkStatuses(); err == nil {
+		t.Error("accepted isn't a belief status")
+	}
+}
+
+func TestTypeEdgeSettlesAndPending(t *testing.T) {
+	dec, bel := typ(t, "decision").Edges["answers"], typ(t, "belief").Edges["answers"]
+	if !slices.Equal(dec.Settles, []string{"accepted"}) || !slices.Equal(dec.Pending, []string{"proposed", "leaning"}) {
+		t.Errorf("a decision's answers: settles %v, pending %v", dec.Settles, dec.Pending)
+	}
+	if !slices.Equal(bel.Settles, []string{"held"}) || len(bel.Pending) != 0 {
+		t.Errorf("a belief's answers: settles %v, pending %v", bel.Settles, bel.Pending)
+	}
+}
+
+func TestTypeDefault(t *testing.T) {
+	task := typ(t, "task")
+	for _, c := range []struct {
+		typ   *Type
+		field string
+		want  string
+	}{
+		{task, "progress", "todo"},
+		{task, "status", ""},  // a field with no default
+		{task, "nothing", ""}, // no such field
+		{typ(t, "belief"), "progress", ""},
+	} {
+		if got := c.typ.Default(c.field); got != c.want {
+			t.Errorf("%s Default(%q) = %q, want %q", c.typ.Name, c.field, got, c.want)
+		}
+	}
+}
+
 func TestEveryTypeHasAKnownLayer(t *testing.T) {
 	for name, typ := range Load().Types {
 		if !slices.Contains([]string{Knowing, Committing, Scope}, typ.Layer) {

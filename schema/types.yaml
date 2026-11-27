@@ -18,6 +18,11 @@
 #                   them reopens the committing record. Optional.
 # closed            Statuses (from the type's schema) that mean the record is no longer in force.
 #                   A committing record in one of them isn't reopened by a fallen target. Optional.
+# settles           On an edge: statuses of the source (from its type's schema) at which the link
+#                   settles its target. A record with an incoming link that settles it is settled;
+#                   an open question is one that isn't. Optional.
+# pending           On an edge: statuses of the source (from its type's schema) at which the link is
+#                   an answer still waiting to settle its target. Optional.
 # subrecords        Header field holding a list of sub-records, each with its own short id.
 # template          Header lines `mason new` writes after id and title. {title}, {slug} and {today} are replaced.
 # body              Body `mason new` writes.
@@ -88,7 +93,7 @@ types:
     identity: [claim]
     fallen: [incorrect, insufficient]
     edges:
-      answers: {to: [question], propagates: false}
+      answers: {to: [question], propagates: false, settles: [held]}
     subrecords:
       support:
         type: support_link
@@ -189,7 +194,7 @@ types:
     meaning: [title, criteria, confirmation, body]
     edges:
       part_of: {to: [initiative], propagates: false}
-      answers: {to: [question], propagates: false}
+      answers: {to: [question], propagates: false, settles: [accepted], pending: [proposed, leaning]}
       chooses: {to: [option], propagates: false}
       decided_by: {to: [actor], propagates: false}
       consults: {to: [actor], propagates: false}
@@ -231,9 +236,11 @@ types:
       part_of: {to: [initiative], propagates: false}
       implements: {to: [requirement], propagates: true}
       derived_from: {to: [design_doc], propagates: true}
+      blocked_by: {to: [any], propagates: false}
       relies_on: {to: [belief], propagates: true}
     template: |
       status: proposed
+      progress: todo
       part_of: []
       implements: []
       derived_from: []

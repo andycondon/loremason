@@ -366,3 +366,144 @@ func TestEdgeToASubRecordReopensOnlyWhenItHasFallen(t *testing.T) {
 		t.Error("a link to a sub-record that has fallen doesn't reopen")
 	}
 }
+
+// ---- Node: progress ----
+
+func TestNodeProgress(t *testing.T) {
+	g := load(t,
+		file("task_p4n2xa"),                          // no progress: the schema's default
+		file("task_k3m9qr", "progress: in_progress"), // its own
+		file("bel_7k3m9q"),                           // a type with no progress field
+	)
+	for id, want := range map[string]string{"task_p4n2xa": "todo", "task_k3m9qr": "in_progress", "bel_7k3m9q": ""} {
+		if got := g.Node(id).Progress(); got != want {
+			t.Errorf("Progress of %s = %q, want %q", id, got, want)
+		}
+	}
+}
+
+func TestNodeProgressOfASubRecord(t *testing.T) {
+	g := load(t, file("bel_7k3m9q", "support:\n  - {id: s1}"))
+	if got := g.Node("bel_7k3m9q/s1").Progress(); got != "" {
+		t.Errorf("Progress of a sub-record = %q", got)
+	}
+}
+
+// ---- Node and Edge: settling a question ----
+
+// answered loads the records and a question, and returns the question.
+func answered(t *testing.T, records ...string) *Node {
+	t.Helper()
+	g := load(t, append(records, file("q_2wq8dn", "question: Which?"))...)
+	return g.Node("q_2wq8dn")
+}
+
+func TestNodeSettled(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		records []string
+		want    bool
+	}{
+		{"nothing answers it", nil, false},
+		{"an accepted decision", []string{file("dec_9w4hzd", "status: accepted", "answers: [q_2wq8dn]")}, true},
+		{"a held belief", []string{file("bel_7k3m9q", "status: held", "answers: [q_2wq8dn]")}, true},
+		{"only a leaning decision", []string{file("dec_9w4hzd", "status: leaning", "answers: [q_2wq8dn]")}, false},
+		{"only a proposed decision", []string{file("dec_9w4hzd", "status: proposed", "answers: [q_2wq8dn]")}, false},
+		{"a superseded decision", []string{file("dec_9w4hzd", "status: superseded", "answers: [q_2wq8dn]")}, false},
+		{"a withdrawn belief", []string{file("bel_7k3m9q", "status: withdrawn", "answers: [q_2wq8dn]")}, false},
+	} {
+		if got := answered(t, c.records...).Settled(); got != c.want {
+			t.Errorf("%s: Settled = %v", c.name, got)
+		}
+	}
+	g := load(t, file("q_2wq8dn", "question: Which?", "dropped: No longer needed"))
+	if !g.Node("q_2wq8dn").Settled() {
+		t.Error("a dropped question is settled")
+	}
+}
+
+func TestEdgeSettlesAndPendingPerStatus(t *testing.T) {
+	for _, c := range []struct {
+		id, status       string
+		settles, pending bool
+	}{
+		{"dec_9w4hzd", "proposed", false, true},
+		{"dec_9w4hzd", "leaning", false, true},
+		{"dec_9w4hzd", "accepted", true, false},
+		{"dec_9w4hzd", "rejected", false, false},
+		{"dec_9w4hzd", "deprecated", false, false},
+		{"dec_9w4hzd", "superseded", false, false},
+		{"bel_7k3m9q", "held", true, false},
+		{"bel_7k3m9q", "incorrect", false, false},
+		{"bel_7k3m9q", "withdrawn", false, false},
+	} {
+		g := load(t, file("q_2wq8dn", "question: Which?"), file(c.id, "status: "+c.status, "answers: [q_2wq8dn]"))
+		e := edge(t, g, c.id, "answers")
+		if e.Settles() != c.settles || e.Pending() != c.pending {
+			t.Errorf("%s %s: settles %v, pending %v", c.id, c.status, e.Settles(), e.Pending())
+		}
+	}
+	g := load(t, file("task_p4n2xa", "status: accepted"), file("dec_9w4hzd", "status: accepted", "mentions: [task_p4n2xa]"))
+	if e := edge(t, g, "dec_9w4hzd", "mentions"); e.Settles() || e.Pending() {
+		t.Error("an edge that lists no statuses settles and pends nothing")
+	}
+}
+
+// ---- Edge: attributes ----
+
+func TestEdgeAttr(t *testing.T) {
+	g := load(t,
+		file("who_4rt8kc"),
+		file("who_9m2xqd"),
+		file("ini_c5d7ab", "slug: s", "purpose: P", "goals: [G]",
+			"involves:\n  - {to: who_4rt8kc, role: sponsor}\n  - who_9m2xqd"),
+	)
+	var got []string
+	for _, e := range g.Edges {
+		if e.Name == "involves" {
+			got = append(got, e.To.Name+"="+e.Attr("role")+"/"+e.Attr("nothing"))
+		}
+	}
+	if want := []string{"who_4rt8kc=sponsor/", "who_9m2xqd=/"}; !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// ---- Graph: members ----
+
+func TestGraphMembers(t *testing.T) {
+	g := load(t,
+		file("ini_c5d7ab", "slug: s", "purpose: P", "goals: [G]"),
+		file("ini_h8c1rt", "slug: t", "purpose: P", "goals: [G]"),
+		file("prd_3vb6ne", "part_of: [ini_c5d7ab]"),
+		file("req_m2xqd9", "statement: S", "part_of: [prd_3vb6ne]"), // through the PRD
+		file("task_p4n2xa", "part_of: [ini_c5d7ab]"),
+		file("plan_k3m9qr", "part_of: [ini_c5d7ab]"),
+		file("step_t6w8yb", "part_of: [plan_k3m9qr]"), // through the plan
+		file("q_2wq8dn", "question: Which?", "part_of: [ini_c5d7ab]", "options:\n  - {id: o1, title: One}"),
+		file("task_zzzzzz", "part_of: [ini_h8c1rt]"), // another initiative's
+		file("bel_7k3m9q"), // part of nothing
+	)
+	want := []string{"plan_k3m9qr", "prd_3vb6ne", "q_2wq8dn", "q_2wq8dn/o1", "req_m2xqd9", "step_t6w8yb", "task_p4n2xa"}
+	if got := ids(g.Members(g.Node("ini_c5d7ab"))); !slices.Equal(got, want) {
+		t.Errorf("members = %v, want %v", got, want)
+	}
+	if got := ids(g.Members(g.Node("ini_h8c1rt"))); !slices.Equal(got, []string{"task_zzzzzz"}) {
+		t.Errorf("members of the other = %v", got)
+	}
+}
+
+func TestGraphMembersEndsOnACycle(t *testing.T) {
+	g := load(t,
+		file("ini_c5d7ab", "slug: s", "purpose: P", "goals: [G]"),
+		file("prd_3vb6ne", "part_of: [ini_c5d7ab]"),
+		file("req_m2xqd9", "statement: S", "part_of: [prd_3vb6ne]"),
+	)
+	// The PRD may only be part of an initiative, so make a cycle by hand.
+	req := g.Node("req_m2xqd9")
+	req.Incoming = append(req.Incoming, &Edge{From: g.Node("prd_3vb6ne"), Name: "part_of", Target: req})
+	want := []string{"prd_3vb6ne", "req_m2xqd9"}
+	if got := ids(g.Members(g.Node("ini_c5d7ab"))); !slices.Equal(got, want) {
+		t.Errorf("members = %v, want %v", got, want)
+	}
+}

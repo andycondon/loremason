@@ -3,11 +3,15 @@
 // holds the graph, what the checks found (as a count), and a signature of
 // the files it was built from. It is rebuilt from graph/ whenever the files,
 // the loremason version, the fingerprint method, the index's own table layout
-// (SchemaVersion) or the record types (types.yaml) have changed, so there is
-// no incremental update to get wrong. Several processes may open the same
-// workspace at once: each builds into its own temporary file and renames it
-// into place, and any of the results is as good as another. Whether a link
-// is stale or reopens a commitment is decided in package graph and stored;
+// (SchemaVersion) or the record types (every embedded schema file) have
+// changed, so there is no incremental update to get wrong. Several processes
+// may open the same workspace at once: each builds into its own temporary
+// file and renames it into place, and any of the results is as good as
+// another. When .loremason can't be written to (a read-only checkout), the
+// index is built in a temporary file outside the workspace, again on every
+// open, and removed on Close. Whether a link is stale or reopens a
+// commitment, a task's progress, whether a question is settled, and which
+// records belong to an initiative are decided in package graph and stored;
 // the queries here read what is stored, and walk the stored links to find
 // dependents.
 //
@@ -26,6 +30,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	_ "modernc.org/sqlite" // the pure-Go SQLite driver
 
@@ -47,20 +52,21 @@ const (
 // the tables or what is stored in them change, so older indexes are rebuilt.
 // It isn't the loremason version in the workspace's config; that is
 // Meta.Version.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // Index is an open index. Close it when done.
 type Index struct {
 	db       *sql.DB
 	problems int
 	rebuilt  bool
+	temp     string // an index built outside the workspace, removed on Close; "" otherwise
 }
 
 // Meta is what an index records about how it was built.
 type Meta struct {
 	Version           string // the workspace config's loremason version
 	Schema            int    // SchemaVersion, the version of the index's tables
-	Types             string // a hash of the embedded schema/types.yaml
+	Types             string // a hash of every embedded schema file, types.yaml and the JSON schemas
 	FingerprintMethod int    // fingerprint.Method
 	Signature         string // of the files under graph/; see Signature
 	Problems          int    // errors found loading and checking, not warnings
@@ -69,42 +75,91 @@ type Meta struct {
 // Open returns the index of the workspace at root, building it first when
 // there is none, it can't be read, or what it was built from differs from
 // what is there now: the files under graph/, the loremason version, the
-// fingerprint method, SchemaVersion or the record types. It also writes
-// .loremason/.gitignore when that is missing, so the index isn't committed.
+// fingerprint method, SchemaVersion or the record types (any embedded schema
+// file). It also writes .loremason/.gitignore when that is missing, so the
+// index isn't committed. When that file or the index can't be written in
+// .loremason, the index is built in a temporary file outside the workspace
+// instead, and Close removes it.
 func Open(root string, reg *registry.Registry) (*Index, error) {
-	ws, err := workspace.Find(root, root)
-	if err != nil {
-		return nil, err
-	}
-	if err := writeIgnore(root); err != nil {
-		return nil, err
-	}
 	sig, err := Signature(root)
 	if err != nil {
 		return nil, err
 	}
+	return openWith(root, sig, func() (*check.Result, error) { return check.Run(root, reg) })
+}
+
+// FromCheck opens the index of the workspace at root for a command that has
+// already loaded and checked the graph, as Open does, but builds a stale
+// index from res instead of loading the graph again. sig is the Signature
+// taken before the graph was loaded, so a file edited while the command runs
+// makes the next open rebuild. res is only read when the index has to be
+// built.
+func FromCheck(root string, res *check.Result, sig string) (*Index, error) {
+	return openWith(root, sig, func() (*check.Result, error) { return res, nil })
+}
+
+// openWith returns the index of the workspace at root for the files signed sig,
+// building it from what load returns when it is out of date.
+func openWith(root, sig string, load func() (*check.Result, error)) (*Index, error) {
+	ws, err := workspace.Find(root, root)
+	if err != nil {
+		return nil, err
+	}
+	ignoreErr := writeIgnore(root)
 	want := Meta{Version: ws.Config.Version, Schema: SchemaVersion, Types: typesHash(), FingerprintMethod: fingerprint.Method, Signature: sig}
 	path := filepath.Join(root, dir, fileName)
 
-	rebuilt := false
+	rebuilt, temp := false, ""
 	got, ok := readMeta(path)
 	if !ok || !got.sameBuild(want) {
-		res, err := check.Run(root, reg)
+		res, err := load()
 		if err != nil {
 			return nil, err
 		}
 		errs, _ := res.Diagnostics.Count()
 		want.Problems = errs
-		if err := Build(path, res.Graph, want); err != nil {
+		if ignoreErr == nil {
+			err = Build(path, res.Graph, want)
+		}
+		if ignoreErr != nil || notWritable(err) {
+			path, err = buildOutside(res, want)
+			temp = path
+		}
+		if err != nil {
 			return nil, err
 		}
 		got, rebuilt = want, true
 	}
 	db, err := openDB(path)
 	if err != nil {
+		if temp != "" {
+			os.Remove(temp)
+		}
 		return nil, err
 	}
-	return &Index{db: db, problems: got.Problems, rebuilt: rebuilt}, nil
+	return &Index{db: db, problems: got.Problems, rebuilt: rebuilt, temp: temp}, nil
+}
+
+// notWritable reports whether err says a file couldn't be created because
+// of permissions or a read-only file system.
+func notWritable(err error) bool {
+	return errors.Is(err, fs.ErrPermission) || errors.Is(err, syscall.EROFS)
+}
+
+// buildOutside builds the index in a new temporary file outside the
+// workspace, and returns its path.
+func buildOutside(res *check.Result, m Meta) (string, error) {
+	f, err := os.CreateTemp("", "loremason-index-*.db")
+	if err != nil {
+		return "", err
+	}
+	path := f.Name()
+	f.Close()
+	if err := Build(path, res.Graph, m); err != nil {
+		os.Remove(path)
+		return "", err
+	}
+	return path, nil
 }
 
 // sameBuild reports whether an index with m was built the way want says,
@@ -114,25 +169,50 @@ func (m Meta) sameBuild(want Meta) bool {
 	return m == want
 }
 
-// typesHash returns a hash of the embedded record types.
+// schemaFiles is where the record types are read from; a test stands in
+// others.
+var schemaFiles fs.FS = schema.FS
+
+// typesHash returns a hash of the embedded record types: the name and bytes
+// of every file in the schema folder (types.yaml and the JSON schemas), in
+// name order. A field added to one record type's schema changes it as much
+// as an edit to types.yaml.
 func typesHash() string {
-	data, err := schema.FS.ReadFile("types.yaml")
+	h := sha256.New()
+	err := fs.WalkDir(schemaFiles, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(schemaFiles, p)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(h, "%s\t%d\n", p, len(data))
+		h.Write(data)
+		return nil
+	})
 	if err != nil {
-		panic("the embedded types.yaml is missing: " + err.Error()) // the tests rule this out
+		panic("the embedded schema can't be read: " + err.Error()) // the tests rule this out
 	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(h.Sum(nil))
 }
 
-// Close closes the index.
-func (x *Index) Close() error { return x.db.Close() }
+// Close closes the index, and removes it when it was built outside the
+// workspace.
+func (x *Index) Close() error {
+	err := x.db.Close()
+	if x.temp != "" {
+		os.Remove(x.temp)
+	}
+	return err
+}
 
 // Problems returns the number of errors found loading and checking the
 // workspace when the index was built. A query warns when it isn't zero.
 func (x *Index) Problems() int { return x.problems }
 
-// Rebuilt reports whether Open built the index, rather than finding it
-// current.
+// Rebuilt reports whether opening built the index (Open or FromCheck),
+// rather than finding it current.
 func (x *Index) Rebuilt() bool { return x.rebuilt }
 
 // probeFTS5 reports why the SQLite build can't do full-text search, or nil.
@@ -154,8 +234,12 @@ func errNoFTS5(cause error) error {
 // another process holds before it gives up.
 const busyTimeout = 10000
 
-// connect opens an SQLite file that waits busyTimeout for locks.
+// connect opens an SQLite file that waits busyTimeout for locks. A relative
+// path is made absolute first, since a file: URI can't hold one with "..".
 func connect(path string) (*sql.DB, error) {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
 	u := url.URL{Scheme: "file", Path: path, RawQuery: "_pragma=busy_timeout(" + strconv.Itoa(busyTimeout) + ")"}
 	return sql.Open("sqlite", u.String())
 }
@@ -228,6 +312,7 @@ func readMeta(path string) (m Meta, ok bool) {
 
 // Signature summarises every file under root's graph/ folder: its path,
 // size and modification time. An added, edited or deleted file changes it.
+// It is "" when there is no graph/ folder.
 func Signature(root string) (string, error) {
 	base, err := filepath.EvalSymlinks(filepath.Join(root, graph.Dir))
 	if errors.Is(err, fs.ErrNotExist) {

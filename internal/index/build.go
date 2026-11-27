@@ -18,6 +18,8 @@ CREATE TABLE nodes (
 	type TEXT NOT NULL,
 	title TEXT NOT NULL,
 	status TEXT NOT NULL,
+	progress TEXT NOT NULL,
+	settled INTEGER NOT NULL,
 	revision INTEGER,
 	fingerprint TEXT NOT NULL,
 	path TEXT NOT NULL,
@@ -33,7 +35,22 @@ CREATE TABLE edges (
 	pinned_fp TEXT NOT NULL,
 	propagates INTEGER NOT NULL,
 	stale INTEGER NOT NULL,
-	reopens INTEGER NOT NULL
+	reopens INTEGER NOT NULL,
+	settles INTEGER NOT NULL,
+	pending INTEGER NOT NULL,
+	role TEXT NOT NULL
+);
+CREATE TABLE members (
+	initiative TEXT NOT NULL,
+	id TEXT NOT NULL,
+	PRIMARY KEY (initiative, id)
+);
+CREATE INDEX members_id ON members (id);
+CREATE TABLE initiatives (
+	id TEXT PRIMARY KEY,
+	slug TEXT NOT NULL,
+	purpose TEXT NOT NULL,
+	goals TEXT NOT NULL
 );
 CREATE INDEX edges_dst ON edges (dst);
 CREATE INDEX edges_src ON edges (src);
@@ -51,10 +68,14 @@ const Containment = "subrecord_of"
 // .gitignore covers it), and the file is then renamed into place, so a
 // reader never sees half an index. Builds running at once each have their
 // own file; the last to finish is the one left. Each record and sub-record
-// gets a row in nodes, and each record in nodes_fts for text search. Each
+// gets a row in nodes, with the progress and whether it is settled as the
+// graph works them out, and each record in nodes_fts for text search. Each
 // alias gets a row in aliases. Each link that reaches a record, and each
-// sub-record's containment in its record, gets a row in edges. A second file
-// with an ID the graph already has is left out.
+// sub-record's containment in its record, gets a row in edges, with whether
+// it is stale, reopens its source, settles its target or is a pending
+// answer, and its role. Each initiative gets a row in initiatives and a row
+// in members for each record in it. A second file with an ID the graph
+// already has is left out.
 func Build(path string, g *graph.Graph, m Meta) (err error) {
 	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
@@ -84,6 +105,8 @@ func Build(path string, g *graph.Graph, m Meta) (err error) {
 	return os.Rename(tmp, path)
 }
 
+// write puts the tables, the meta rows and everything in g into db, in one
+// transaction.
 func write(db *sql.DB, g *graph.Graph, m Meta) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -116,6 +139,9 @@ func write(db *sql.DB, g *graph.Graph, m Meta) error {
 	if err := w.edges(); err != nil {
 		return err
 	}
+	if err := w.initiatives(); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -130,7 +156,7 @@ type writer struct {
 func (w *writer) canonical(n *graph.Node) bool { return w.g.Node(n.ID) == n }
 
 func (w *writer) nodes() error {
-	node, err := w.tx.Prepare(`INSERT INTO nodes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	node, err := w.tx.Prepare(`INSERT INTO nodes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -165,7 +191,7 @@ func (w *writer) nodes() error {
 			if v := n.Fingerprint(); !v.IsZero() {
 				fp = v.String()
 			}
-			if _, err := node.Exec(n.ID, n.Kind.Name, title, n.Status(), rev, fp, n.File.Path, header, body); err != nil {
+			if _, err := node.Exec(n.ID, n.Kind.Name, title, n.Status(), n.Progress(), n.Settled(), rev, fp, n.File.Path, header, body); err != nil {
 				return err
 			}
 			if !n.IsSubrecord() {
@@ -198,7 +224,7 @@ func (w *writer) aliases() error {
 // edges writes every link that reaches a record, with the answers the graph
 // gives for it, and the containment of each sub-record.
 func (w *writer) edges() error {
-	ins, err := w.tx.Prepare(`INSERT INTO edges VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	ins, err := w.tx.Prepare(`INSERT INTO edges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -215,7 +241,7 @@ func (w *writer) edges() error {
 				fp = e.Pin.FP.String()
 			}
 		}
-		if _, err := ins.Exec(e.From.ID, e.Target.ID, e.Name, rev, fp, e.Def.Propagates, e.Stale(), e.Reopens()); err != nil {
+		if _, err := ins.Exec(e.From.ID, e.Target.ID, e.Name, rev, fp, e.Def.Propagates, e.Stale(), e.Reopens(), e.Settles(), e.Pending(), e.Attr("role")); err != nil {
 			return err
 		}
 	}
@@ -227,7 +253,52 @@ func (w *writer) edges() error {
 			if !w.canonical(c) {
 				continue
 			}
-			if _, err := ins.Exec(c.ID, f.Node.ID, Containment, nil, "", false, false, false); err != nil {
+			if _, err := ins.Exec(c.ID, f.Node.ID, Containment, nil, "", false, false, false, false, false, ""); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// initiatives writes each initiative's slug, purpose and goals, and the
+// records in it, as the graph works them out.
+func (w *writer) initiatives() error {
+	ini, err := w.tx.Prepare(`INSERT INTO initiatives VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer ini.Close()
+	member, err := w.tx.Prepare(`INSERT INTO members VALUES (?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer member.Close()
+	for _, f := range w.g.Files {
+		n := f.Node
+		if n.Kind.Name != "initiative" || !w.canonical(n) {
+			continue
+		}
+		goals := []string{} // a list even when there are none
+		if v, ok := n.Fields.Get("goals"); ok {
+			for _, item := range v.Items() {
+				if s, ok := item.Text(); ok {
+					goals = append(goals, s)
+				}
+			}
+		}
+		data, err := json.Marshal(goals)
+		if err != nil {
+			return fmt.Errorf("%s: %w", f.Path, err)
+		}
+		if _, err := ini.Exec(n.ID, n.Fields.Text("slug"), n.Fields.Text("purpose"), string(data)); err != nil {
+			return err
+		}
+		for _, m := range w.g.Members(n) {
+			if !w.canonical(m) {
+				continue
+			}
+			if _, err := member.Exec(n.ID, m.ID); err != nil {
 				return err
 			}
 		}

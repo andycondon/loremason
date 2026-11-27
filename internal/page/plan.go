@@ -1,0 +1,323 @@
+package page
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
+	"syscall"
+
+	"github.com/andycondon/loremason/internal/diag"
+	"github.com/andycondon/loremason/internal/index"
+)
+
+// AttributesPath is the file where `mason sync` keeps the line that marks the
+// pages as generated, so GitHub collapses them in pull request diffs. The
+// file is in the subfolder, which leaves the workspace's own .gitattributes
+// to its user, and any other line in it is the user's too.
+const AttributesPath = "initiatives/.gitattributes"
+
+// attributesLine is the one line of AttributesPath that `mason sync` owns.
+const attributesLine = "*/README.md linguist-generated=true"
+
+// Action is one file `mason sync` would write or delete, said in plain words.
+type Action struct {
+	Path string // relative to the workspace, with forward slashes
+	What string // what is done, or for a skipped page, why it isn't
+}
+
+func (a Action) String() string { return a.Path + ": " + a.What }
+
+// Changes is what `mason sync` would do to the generated pages, ready for
+// Apply. (The type isn't called Plan because the function that makes it is.)
+type Changes struct {
+	Actions []Action
+	Skipped []Action // pages left alone, each with the reason
+
+	changes []change
+}
+
+// change is one file to write, or to delete when remove is set.
+type change struct {
+	path   string
+	data   []byte
+	remove bool
+}
+
+// Empty reports whether the plan writes or deletes nothing. Skipped pages
+// don't count: they are left alone.
+func (p *Changes) Empty() bool { return len(p.Actions) == 0 }
+
+// kebab is what a slug looks like. A slug that isn't is left to the schema
+// check, and gets no page, so it can never name a path outside initiatives/.
+var kebab = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+// Plan compares the README of every initiative, and the attributes file,
+// with what is under root, and returns what `mason sync` would write or
+// delete and what `mason validate` reports.
+//
+//   - A page is written only when there is no file or the file has Marker as
+//     a whole line within its first MarkerLines lines. A page without it is
+//     hand-written: it is skipped and reported.
+//   - Line endings don't count: a page whose only difference from the
+//     rendered one is CRLF against LF is current.
+//   - A page that isn't a regular file (README.md is a folder, or the
+//     initiative's folder is a file) is skipped and reported.
+//   - A generated page whose initiative is gone, or has another slug, is
+//     deleted and reported. When the index had problems loading records, an
+//     initiative may be missing only because its record is broken, so no
+//     page is deleted or reported as an orphan.
+//   - Two initiatives with one slug get no page, and are reported and
+//     skipped. A generated page already there is left as it is.
+//   - The attributes file must hold the line `*/README.md
+//     linguist-generated=true`, once any initiative has a page. It is written
+//     when it is missing, and the line is appended when the file lacks it,
+//     keeping every other byte. A file with the line is left alone.
+//
+// Every diagnostic names the file and says to run `mason sync`, or what to do
+// by hand. The error is for what can't be read. The diagnostics are errors,
+// so `mason validate` fails until `mason sync` has been run.
+func Plan(root string, x *index.Index) (*Changes, diag.List, error) {
+	p := &Changes{}
+	var ds diag.List
+	slugs, err := slugs(x)
+	if err != nil {
+		return nil, nil, err
+	}
+	pages := 0
+	for _, slug := range slices.Sorted(mapKeys(slugs)) {
+		ids := slugs[slug]
+		page := Path(slug)
+		if len(ids) > 1 {
+			why := fmt.Sprintf("more than one initiative is called `%s` (%s), so it gets no page; give each its own slug", slug, strings.Join(ids, ", "))
+			ds.Errorf(diag.Pos{Path: page, Line: 1}, "%s", why)
+			p.Skipped = append(p.Skipped, Action{page, "skipped, since " + why})
+			continue
+		}
+		pages++
+		o, err := x.Overview(slug)
+		if err != nil {
+			return nil, nil, err
+		}
+		want := README(o)
+		full := filepath.Join(root, filepath.FromSlash(page))
+		if info, err := os.Stat(full); (err == nil && !info.Mode().IsRegular()) || errors.Is(err, syscall.ENOTDIR) {
+			why := fmt.Sprintf("`%s` is not a regular file, or is inside something that is not a folder, so it gets no page; move or delete it, then run `mason sync`", page)
+			ds.Errorf(diag.Pos{Path: page, Line: 1}, "%s", why)
+			p.Skipped = append(p.Skipped, Action{page, "skipped, since " + why})
+			continue
+		}
+		got, err := os.ReadFile(full)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			ds.Errorf(diag.Pos{Path: page, Line: 1}, "is missing; run `mason sync`")
+			p.write(page, want, "write the page")
+		case err != nil:
+			return nil, nil, err
+		case !hasMarker(got):
+			ds.Errorf(diag.Pos{Path: page, Line: 1}, "is hand-written, not generated by mason, so `mason sync` leaves it alone; move or delete it, then run `mason sync`")
+			p.Skipped = append(p.Skipped, Action{page, "skipped, since it is hand-written, not generated by mason; move or delete it, then run `mason sync`"})
+		case !bytes.Equal(lf(got), want):
+			line, what := firstDifference(lf(got), want)
+			ds.Errorf(diag.Pos{Path: page, Line: line}, "is out of date: %s; run `mason sync`", what)
+			p.write(page, want, "rewrite the page")
+		}
+	}
+	if x.Problems() == 0 {
+		if err := p.orphans(root, slugs, &ds); err != nil {
+			return nil, nil, err
+		}
+	}
+	if pages > 0 {
+		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(AttributesPath)))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, nil, err
+		}
+		if !hasLine(got, attributesLine) {
+			ds.Errorf(diag.Pos{Path: AttributesPath, Line: 1}, "should have the line `%s`, to mark the pages as generated; run `mason sync`", attributesLine)
+			p.write(AttributesPath, withLine(got, attributesLine), "add the line that marks the pages as generated")
+		}
+	}
+	ds.Sort()
+	slices.SortStableFunc(p.Actions, func(a, b Action) int { return strings.Compare(a.Path, b.Path) })
+	slices.SortStableFunc(p.Skipped, func(a, b Action) int { return strings.Compare(a.Path, b.Path) })
+	slices.SortStableFunc(p.changes, func(a, b change) int { return strings.Compare(a.path, b.path) })
+	return p, ds, nil
+}
+
+// write plans writing a file.
+func (p *Changes) write(path string, data []byte, what string) {
+	p.Actions = append(p.Actions, Action{path, what})
+	p.changes = append(p.changes, change{path: path, data: data})
+}
+
+// orphans plans deleting the generated pages under initiatives/ that no
+// initiative owns. A page without the marker isn't ours, so it stays.
+func (p *Changes) orphans(root string, slugs map[string][]string, ds *diag.List) error {
+	found, err := filepath.Glob(filepath.Join(root, "initiatives", "*", "README.md"))
+	if err != nil {
+		return err
+	}
+	for _, f := range found {
+		rel, err := filepath.Rel(root, f)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		slug := filepath.Base(filepath.Dir(f))
+		if _, owned := slugs[slug]; owned {
+			continue
+		}
+		if info, err := os.Stat(f); err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		data, err := os.ReadFile(f)
+		if err != nil {
+			return err
+		}
+		if !hasMarker(data) {
+			continue
+		}
+		ds.Errorf(diag.Pos{Path: rel, Line: 1}, "is generated, but no initiative has the slug `%s`; run `mason sync` to delete it", slug)
+		p.Actions = append(p.Actions, Action{rel, fmt.Sprintf("delete the page, since no initiative has the slug `%s`", slug)})
+		p.changes = append(p.changes, change{path: rel, remove: true})
+	}
+	return nil
+}
+
+// slugs returns the IDs of the initiatives with each slug that can name a
+// page, by slug.
+func slugs(x *index.Index) (map[string][]string, error) {
+	all, err := x.Initiatives()
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]string{}
+	for _, s := range all {
+		if kebab.MatchString(s.Slug) {
+			out[s.Slug] = append(out[s.Slug], s.ID)
+		}
+	}
+	return out, nil
+}
+
+func mapKeys[V any](m map[string]V) func(yield func(string) bool) {
+	return func(yield func(string) bool) {
+		for k := range m {
+			if !yield(k) {
+				return
+			}
+		}
+	}
+}
+
+// MarkerLines is how far down a page Marker may be, counting from line 1, for
+// the page to be taken as generated. A page quoting the marker further down
+// is hand-written. README puts the marker on line 3, so the rest leaves room
+// for a merge conflict above it.
+const MarkerLines = 10
+
+// lf returns text with CRLF line endings changed to LF, so a page checked
+// out with the other kind is still the same page.
+func lf(text []byte) []byte { return bytes.ReplaceAll(text, []byte("\r\n"), []byte("\n")) }
+
+// hasMarker reports whether Marker is a whole line of the page, within its
+// first MarkerLines lines. Line endings don't matter.
+func hasMarker(page []byte) bool {
+	for i, l := range strings.Split(string(lf(page)), "\n") {
+		if i >= MarkerLines {
+			return false
+		}
+		if l == Marker {
+			return true
+		}
+	}
+	return false
+}
+
+// hasLine reports whether a line of the file is exactly line. Line endings
+// don't matter.
+func hasLine(file []byte, line string) bool {
+	return slices.Contains(strings.Split(string(lf(file)), "\n"), line)
+}
+
+// withLine returns the file with line added at the end, as a line of its own.
+// Every byte already there is kept.
+func withLine(file []byte, line string) []byte {
+	out := slices.Clone(file)
+	if len(out) > 0 && out[len(out)-1] != '\n' {
+		out = append(out, '\n')
+	}
+	return append(out, line+"\n"...)
+}
+
+// firstDifference returns the number of the first line where got differs
+// from want, and what the two have there.
+func firstDifference(got, want []byte) (int, string) {
+	g, w := strings.Split(string(got), "\n"), strings.Split(string(want), "\n")
+	for i := 0; i < max(len(g), len(w)); i++ {
+		switch {
+		case i >= len(w):
+			return i + 1, fmt.Sprintf("line %d should not be there", i+1)
+		case i >= len(g):
+			return i + 1, fmt.Sprintf("line %d is missing, and should read `%s`", i+1, w[i])
+		case g[i] != w[i]:
+			return i + 1, fmt.Sprintf("line %d reads `%s`, and should read `%s`", i+1, g[i], w[i])
+		}
+	}
+	return 1, "it differs"
+}
+
+// Apply writes and deletes what the plan says under root. Each file is
+// replaced in one step, so a failure can't leave half of a page. A folder is
+// made when a page is the first file in it.
+func (p *Changes) Apply(root string) error {
+	for _, c := range p.changes {
+		full := filepath.Join(root, filepath.FromSlash(c.path))
+		if c.remove {
+			if err := os.Remove(full); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			return err
+		}
+		if err := writeFile(full, c.data); err != nil {
+			return fmt.Errorf("%s: %w", c.path, err)
+		}
+	}
+	return nil
+}
+
+// writeFile replaces a file in one step: it writes a new hidden file beside
+// it, with a name of its own so that writers at the same time don't meet, and
+// renames that over it. The hidden file is removed when anything fails.
+func writeFile(path string, data []byte) (err error) {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer func() {
+		if err != nil {
+			os.Remove(tmp)
+		}
+	}()
+	if _, err = f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	if err = os.Chmod(tmp, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}

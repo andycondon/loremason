@@ -170,6 +170,12 @@ task:
 - **Meaning fields** are the ones a fingerprint covers (section 5).
 - **Identity fields** let `validate` warn that a new record looks like an existing one and suggest using that instead. This mainly helps sources: two `artifact` records with the same URL are probably the same thing.
 - **`propagates`** says whether a change in the target means this record needs a re-check. Part 1, section 3.2 lists those edges. Writing it down per edge type is how the "per-edge propagation" in part 1, section 8 starts.
+- **Statuses with a meaning** are data too, each list checked against the type's schema:
+  - `fallen` lists a type's statuses that mean the record no longer holds;
+  - `closed` lists the statuses that mean a commitment is no longer in force (section 6);
+  - on an `answers` edge, `settles` lists the source's statuses in which it settles the question (a decision at `accepted`, a belief at `held`), and `pending` lists those in which it is an answer still waiting (a decision at `proposed` or `leaning`).
+
+**Where work stands is separate from how settled it is.** A task's `status` says how settled the commitment is. Its `progress` says where the work is: `todo` (the default, so a task without the field is `todo`), `in_progress`, `blocked` or `done`. A blocked task can name what it waits on in `blocked_by`, a list of links to any record. A question has no status: it is open until an answer settles it, or until it is marked `dropped:` with the reason. Answering a question never edits it. Neither progress nor dropping is part of a record's meaning, so neither makes a link stale.
 
 **Strict fields, plus a free-form area.** A field the schema doesn't list is an error, and `validate` suggests the closest known one ("unknown field `relies_om`; did you mean `relies_on`?"). Edge names follow the same rule. Anything can go under `extra:` without being checked:
 
@@ -273,7 +279,7 @@ Pins, `via` links and re-check evidence all live in record files, never only in 
 
 ## 6. The index
 
-`index.db` is a SQLite database (a database kept in a single file). `mason` is written in Go and includes SQLite through a pure-Go driver, so it stays one binary with nothing else to install. The index is rebuilt from `graph/` whenever the files have changed since the last build: the index keeps a signature of every file's path, size and modification time, so an added, edited or deleted file is noticed. It's also rebuilt when the loremason version or fingerprint method has changed, when the index's own table layout has (a schema version number in the code), or when `types.yaml` has (the index keeps a hash of it). Several `mason` commands starting at once on a stale index each build into their own temporary file and rename it into place, so none of them sees half an index and none fails. A full rebuild of 5,000 records took about a third of a second in a test, so there's no incremental update to get wrong.
+`index.db` is a SQLite database (a database kept in a single file). `mason` is written in Go and includes SQLite through a pure-Go driver, so it stays one binary with nothing else to install. The index is rebuilt from `graph/` whenever the files have changed since the last build: the index keeps a signature of every file's path, size and modification time, so an added, edited or deleted file is noticed. It's also rebuilt when the loremason version or fingerprint method has changed, when the index's own table layout has (a schema version number in the code), or when the record types have (`types.yaml` and the JSON schemas; the index keeps a hash of them). When `.loremason` can't be written to (a read-only checkout), the index is built in a temporary file outside the workspace on every command, and removed when the command ends. Several `mason` commands starting at once on a stale index each build into their own temporary file and rename it into place, so none of them sees half an index and none fails. A full rebuild of 5,000 records took about a third of a second in a test, so there's no incremental update to get wrong.
 
 ```mermaid
 erDiagram
@@ -281,11 +287,15 @@ erDiagram
   nodes ||--o{ edges : "dst"
   nodes ||--|| nodes_fts : "searched by"
   nodes ||--o{ aliases : "id"
+  nodes ||--o{ members : "belongs to"
+  nodes ||--o| initiatives : "is"
   nodes {
     text id PK
     text type
     text title
     text status
+    text progress "computed"
+    bool settled "computed"
     int revision
     text fingerprint "current, computed"
     text path
@@ -301,6 +311,19 @@ erDiagram
     bool propagates
     bool stale "computed"
     bool reopens "computed"
+    bool settles "computed"
+    bool pending "computed"
+    text role
+  }
+  members {
+    text initiative FK
+    text id FK
+  }
+  initiatives {
+    text id PK
+    text slug
+    text purpose
+    json goals
   }
   aliases {
     text alias PK
@@ -317,9 +340,13 @@ erDiagram
 - **`edges`** has one row per link that reaches a record, including a containment link, named `subrecord_of`, from each sub-record to the record holding it. Containment doesn't propagate, and `mason show` leaves it out: it lists a sub-record's own links with the record's, marked with the sub-record's local name. Whether a link comes from `extra:` (an experimental link) isn't stored yet; no query needs it. Reverse links aren't stored; a query reads `edges` from the other side.
 - **`nodes_fts`** is SQLite's built-in full-text search (FTS5). It lets a person or agent find "the belief about non-UTF-8 files" from plain words.
 - **`aliases`** maps each alias a record has had to its ID, so `show` and `dependents` accept an old one.
-- A **`meta`** table records what the index was built from: the loremason version, the fingerprint method, the index's schema version, a hash of `types.yaml`, and the files' signature.
+- **`members`** lists the records in each initiative, sub-records included. A record is in an initiative when following `part_of` from it reaches the initiative, so requirements are in it through their PRD and steps through their plan.
+- **`initiatives`** holds each initiative's slug, purpose and goals, for `mason where` and the generated README.
+- A **`meta`** table records what the index was built from: the loremason version, the fingerprint method, the index's schema version, a hash of the record types (`types.yaml` and the JSON schemas), and the files' signature.
 
 **The rules are computed once, in Go, and stored.** Whether a link is stale (its pin no longer matches the target's current revision and fingerprint) and whether it reopens a commitment are worked out by the same code `sync` and `validate` use, and written to `edges.stale` and `edges.reopens`. The queries only select on those columns, so a rule has one home and `stale` can never disagree with `sync`.
+
+The same goes for where work stands: a task's progress (with its default), whether a node is settled (dropped, or settled by an incoming `answers` link), whether each `answers` link settles or is pending, and each initiative's members are worked out in Go and stored, and `mason where` only selects.
 
 A link **reopens** its source when it propagates, its source is a commitment still in force, and its target's status is one its type marks as fallen. Which statuses count as fallen is data, declared in `types.yaml` beside each type's statuses: for a belief, `incorrect` and `insufficient`. Which statuses close a commitment is data too (for commitments, `rejected`, `deprecated` and `superseded`), so a commitment already turned down or replaced isn't listed again. A belief that is withdrawn reopens nothing.
 
@@ -336,7 +363,7 @@ Following links is done in Go, not in SQL. `mason dependents` loads the links th
 | `mason dependents <id>` | What is built on this, directly and further down? Follows links that propagate, with each record's depth; a record that only mentions this one isn't listed. |
 | `mason stale` | Which links need a re-check, grouped by the record that changed? |
 | `mason reopened` | Which commitments rely on a belief that has fallen? |
-| `mason where <initiative>` | The "where are we" view: work in progress, open questions, recent decisions. |
+| `mason where <initiative>` | The "where are we" view of an initiative, named by slug, ID or alias: tasks in progress, blocked tasks with what they wait on, open questions with their pending answers, and the links from the initiative's records (and their sub-records) that need a re-check, grouped by the record that changed. |
 
 Queries print plain text, one stable line per result, which people and agents both read. Structured output can come with the MCP server (section 10).
 
@@ -346,14 +373,15 @@ Writing commands are kept separate and few. `mason new <type>` creates a record 
 
 ## 7. Generated pages
 
-An initiative's pages are built from the records linked to it and written to `initiatives/<name>/`:
+Each initiative's `README.md` is built from the records in it and written to `initiatives/<slug>/README.md`, so browsing an initiative on GitHub still starts there. It shows the title, purpose, goals and body of the `initiative` record, who is involved and their roles, and the initiative's design docs, PRDs and tasks. Each is linked by title to its record file and shows its status, and a task its progress. Closed records stay listed, because the page is the list of what exists.
 
-| Page | Contents |
-|---|---|
-| `README.md` | Title, purpose and goals from the `initiative` record. Who is involved and their roles. The initiative's design docs, PRD and tasks, each linked by title. |
-| `where.md` | The `mason where` view: in progress, blocked, open questions, leanings waiting for a decision, anything stale or reopened. |
+After its title, the page has a hidden marker line (line 3) and a visible line saying it's generated and from which record. It's a read-only snapshot: nothing reads it back except to compare it with a fresh render. Its rules:
+- **Kept current.** `mason sync` regenerates it, and `validate` fails when it no longer matches the records, so a hand edit can't quietly drift.
+- **Committed.** It's marked generated in `initiatives/.gitattributes`, where `sync` keeps its one line (`*/README.md linguist-generated=true`) and leaves every other line alone, so GitHub collapses it in pull request diffs. A merge conflict in it is resolved by running `sync`.
+- **Stable.** It renders the same bytes from the same records on any day: it holds no dates.
+- **Never over a person's work.** `sync` writes only a page with no file yet or with its marker among the first ten lines. A hand-written `README.md` is left alone and reported, and `sync` exits with failure until it is moved. A generated page whose initiative is gone is deleted, unless the records had errors, since a broken record may be the missing initiative. Two initiatives with the same slug get no page.
 
-Each page opens with a line saying it's generated and from what. The pages are committed, so they read well on GitHub and in pull requests. `mason sync` regenerates them, and `validate` fails if one is out of date, so a hand edit can't quietly drift. The folder name comes from the initiative's `slug` field.
+There is no committed `where.md`. A copy of the `mason where` view would change with nearly every record change, conflict across branches and be read stale, while the command answers fresh. Writing its output to a file can come later, and so can a UI over the same queries.
 
 ## 8. Moving today's initiatives
 
@@ -368,7 +396,7 @@ Before loremason, each initiative was a folder holding JSON logs, markdown findi
 | `findings/` | `finding` records with their prose unchanged, plus an `activity` for the session that wrote each one. |
 | `tasks/`, `plans/` | `task` and `plan` records. Old plans keep their steps in the body; only new plans get `step` records. |
 | `quizzes/` | An `artifact` for the conversation, plus evidence quoting the answers. |
-| Scratchpad (`CONTEXT.md`) | Not migrated as a record. Its useful content becomes questions, beliefs or leanings by hand, and `where.md` replaces it. |
+| Scratchpad (`CONTEXT.md`) | Not migrated as a record. Its useful content becomes questions, beliefs or leanings by hand, and `mason where` answers what it used to. |
 
 **Old IDs keep working.** Each migrated record lists its old ID in `aliases` (`search-redesign/F-002`). So old references in prose still resolve through `mason show`, and nothing has to be rewritten at once.
 

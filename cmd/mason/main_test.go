@@ -43,13 +43,14 @@ const help = "mason creates and checks the records of a context graph, keeps the
 	"Commands:\n" +
 	"  validate     check every record in the workspace\n" +
 	"  new          create a record and print its path\n" +
-	"  sync         pin links and record fingerprints\n" +
+	"  sync         pin links, record fingerprints and regenerate the pages\n" +
 	"  revise       open a new revision before changing a record's meaning\n" +
 	"  find         list the records whose title or body has all of the words\n" +
 	"  show         print a record's text and its links in both directions\n" +
 	"  dependents   list the records that rely on a record, directly or through others\n" +
 	"  stale        list the records that changed since links were pinned to them\n" +
 	"  reopened     list the commitments resting on a belief that has fallen\n" +
+	"  where        show where an initiative stands\n" +
 	"\n" +
 	"Run `mason <command> --help` for a command's arguments and flags.\n" +
 	"\n" +
