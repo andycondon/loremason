@@ -199,11 +199,11 @@ A link appears in one of two forms:
 | **Bare** | `relies_on: [bel_7k3m9q]` | What a person or agent writes. Also every link that doesn't propagate (`part_of` an initiative, `mentions`, `answers`). |
 | **Pinned** | `{to: bel_7k3m9q, rev: 1, fp: "fp1:3a9c0e1b77d2"}` | What a link that propagates becomes. It records the target's revision and fingerprint at the moment the link was made or last checked. |
 
-**People never type fingerprints.** They write bare links, and `mason sync` pins each new link that propagates to its target's current state. A bare link that propagates is valid but not yet watched, so it can never be stale. `mason sync` runs as part of the skills that write records, so in practice links are pinned within the same change.
+**People never type fingerprints.** They write bare links, and `mason sync` pins each new link that propagates, and each new evidence `from` a document, to its target's current state. A bare link that propagates is valid but not yet watched, so it can never be stale. `mason sync` runs as part of the skills that write records, so in practice links are pinned within the same change.
 
 A pinned link can carry one more field: `via: ev_…`. It names the evidence recording the last re-check that concluded "still holds" (section 5), so the reason for a re-pin is one click away.
 
-Some edges never propagate. `part_of` to an initiative, `involves`, `interested_in`, `answers` and `mentions` are always bare. Evidence `from` a document (a finding, design doc, PRD or plan) is pinned, so the quote can always be traced to the exact revision it came from, but it doesn't propagate: revising a document doesn't make its old quotes wrong.
+Some edges never propagate. `part_of` to an initiative, `involves`, `interested_in`, `answers` and `mentions` are always bare. Evidence `from` a document (a finding, design doc, PRD or plan) is pinned, so the quote can be traced to the revision it was taken from, but it doesn't propagate and it doesn't seal that revision (section 5): revising a document doesn't make its old quotes wrong.
 
 ## 5. Revisions, fingerprints and re-checks
 
@@ -228,19 +228,28 @@ revisions:
 - **For long documents, the old text stays in git.** That covers findings, design docs, PRDs, tasks, plans and decisions. Their entries hold a `commit` instead of the old text, so a file doesn't fill up with old drafts. Staleness never needs the old text, only the fingerprints, which are always in the file.
 - **A record with no `revisions` list is at revision 1.** That's how a new record starts, so `@r1` can be named straight away. `mason sync` writes the entry, with its date and fingerprint.
 
-### Drafting stays cheap: a revision is sealed when something pins it
+### Drafting stays cheap: a revision is sealed when something propagating pins it
 
-Until another record pins a revision, it can be edited freely. `mason sync` keeps its recorded fingerprint up to date, and no new revision is made.
+Until another record pins a revision with a link that propagates, it can be edited freely. `mason sync` keeps its recorded fingerprint up to date, and no new revision is made.
 
-**The first pin seals the revision.** After that, a change of substance needs a new revision. **The revision comes first, then the edit:**
+**A pin seals a revision only when its link propagates.** The first such pin seals it. After that, a change of substance needs a new revision. **The revision comes first, then the edit:**
 
 1. `mason revise <id> --breaking` (or `--non-breaking`) keeps the current wording inline, or for long records the commit that holds it, and opens the next revision. It needs one of the two flags, so an agent never meets a prompt.
 2. Edit the record.
-3. `mason sync` records the new revision's fingerprint, since nothing pins it yet.
+3. `mason sync` records the new revision's fingerprint, since no propagating link pins it yet.
 
 Doing it in that order means the old wording is always still in the file when it's kept, with no need for git. If someone changes a sealed record's substance without a revision, `validate` fails and says to undo the change, run `mason revise`, then make it again. `revise` refuses to run in that state, so the changed wording can't be kept by mistake as the old one.
 
-This is what keeps the structure out of the way while ideas are forming. A design doc, finding or plan can go through many drafts in a day. Revisions only start once other work is built on it.
+**Quotes don't seal.** The one pinned link that doesn't propagate is evidence `from` a document. Its pin records the revision and fingerprint at the moment of quoting, and that's all it does:
+
+- It doesn't seal the revision, so the document stays free to edit. `mason sync` keeps refreshing the unsealed revision's fingerprint as before.
+- It's never stale, and `sync` never moves it forward.
+- Its fingerprint isn't checked against the revision's, since the revision may have moved on.
+- The quote stays traceable. The evidence holds the verbatim text, and the pin's revision plus git history (the document as it was when the evidence was written) show where it came from.
+
+The seal exists so that a change reaches the work built on it. A quote doesn't need that, because it doesn't propagate and already holds its text. Findings keep evolving after someone quotes them, so sealing on a quote would get in the way of ideation.
+
+This is what keeps the structure out of the way while ideas are forming. A design doc, finding or plan can go through many drafts in a day. Revisions only start once other work is built on it through a link that propagates.
 
 Status changes and new support links are never substance. They're edited in place, and git keeps their history.
 
@@ -376,14 +385,14 @@ Queries print plain text, one stable line per result, which people and agents bo
 
 Writing commands are kept separate and few. `mason new <type>` creates a record with a fresh ID, `mason revise <id>` makes a new revision, and `mason sync` fills pins, refreshes unsealed fingerprints, re-pins across non-breaking revisions and regenerates views. `validate` only reads, and fails on any error.
 
-`mason sync` works in a fixed order, because a pin seals the revision it names: first it writes revision 1 where it's missing, then it records fingerprints of revisions nothing pins yet, then it pins bare links, then it re-pins across non-breaking revisions. It leaves a file with errors alone and says so, because re-writing a link list it can't read could lose what a person wrote. `mason sync --dry-run` says what it would do. Rewritten fields always take one form: links as a block list of `{to, rev, fp, via}` maps, revisions as a block list of maps. Every other line keeps its bytes, comments and spacing.
+`mason sync` works in a fixed order, because a propagating pin seals the revision it names: first it writes revision 1 where it's missing, then it records fingerprints of revisions no propagating link pins yet, then it pins bare links, then it re-pins across non-breaking revisions. It leaves a file with errors alone and says so, because re-writing a link list it can't read could lose what a person wrote. `mason sync --dry-run` says what it would do. Rewritten fields always take one form: links as a block list of `{to, rev, fp, via}` maps, revisions as a block list of maps. Every other line keeps its bytes, comments and spacing.
 
-**Sessions attach what they write to an activity.** Knowledge belongs to no initiative (part 1, section 3.4), so a finding's trail to its initiative goes through the activity of the session that wrote it. `mason new` attaches that activity itself, so nobody has to remember to. The session is named by environment variables:
+**Sessions attach what they write to an activity.** Knowledge belongs to no initiative (part 1, section 3.4), so a finding's trail to its initiative goes through the activity of the session that wrote it. `mason new` attaches that activity itself for findings and evidence, so nobody has to remember to. The session is named by environment variables:
 - `LOREMASON_SESSION` is any key the harness gives the session, such as an agent's session ID set by a session-start hook.
 - `LOREMASON_INITIATIVE` names the initiative by slug, ID or alias, as `mason where` accepts.
 - `LOREMASON_ACTOR` is optional, and names who the activity is `associated_with`.
 
-When `mason new` creates a record whose type has a `generated_by` edge to `activity`, it attaches the session's activity, creating it on first use. The rule comes from the types, so a design doc, PRD or plan written in a session traces to it too. A new activity is `part_of` the initiative, has a `started_at`, is `associated_with` the actor when one is given, and holds the key in its `session` field.
+When `mason new` creates a finding or a piece of evidence, it attaches the session's activity, creating it on first use. These are the knowledge with no other path to its initiative. Design docs, PRDs and plans are commitments, already `part_of` the initiative. They have a `generated_by` link that can be filled in by hand, but `mason new` doesn't fill it. A new activity is `part_of` the initiative, has a `started_at`, is `associated_with` the actor when one is given, and holds the key in its `session` field.
 - **One activity per session.** Its ID is derived from the session key, so concurrent commands find the same file and never create two. A command that finds the file already there uses it, and a file whose `session` doesn't match the key is an error. `validate` warns when two activities claim one session, since `session` is the activity's identity field.
 - **Without a session, nothing fails.** The record is created unattached and `mason` prints a one-line note saying so. `validate` doesn't warn about an unattached document, so a hand-written finding stays free.
 - **A session with no initiative** is a usage error when its activity doesn't exist yet, naming `LOREMASON_INITIATIVE`. Once the activity exists, the initiative is read from it.
@@ -477,7 +486,7 @@ None of these changes the file format. Each can be added without rewriting recor
 | **meaning fields** | The fields a fingerprint covers. A change elsewhere is formatting or metadata. |
 | **identity fields** | Fields that suggest two records are the same thing, such as an artifact's URL. |
 | **bare link / pinned link** | A link as written, or with the target's revision and fingerprint recorded. |
-| **sealed** | A revision that something has pinned. From then on, a change of substance needs a new revision. |
+| **sealed** | A revision that a link that propagates has pinned. A quote's pin (evidence `from` a document) doesn't seal. From then on, a change of substance needs a new revision. |
 | **canonical form** | The exact text a fingerprint is computed from, fixed so that the same meaning always gives the same fingerprint. |
 | **`via`** | On a pinned link: the evidence recording the re-check that last re-pinned it. |
 | **generated page** | A page built from records, committed, and never edited by hand. |
