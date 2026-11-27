@@ -273,13 +273,14 @@ Pins, `via` links and re-check evidence all live in record files, never only in 
 
 ## 6. The index
 
-`index.db` is a SQLite database (a database kept in a single file). `mason` is written in Go and includes SQLite through a pure-Go driver, so it stays one binary with nothing else to install. The index is rebuilt from `graph/` whenever a query finds files newer than the last build. A full rebuild of 5,000 records took about a third of a second in a test, so there's no incremental update to get wrong.
+`index.db` is a SQLite database (a database kept in a single file). `mason` is written in Go and includes SQLite through a pure-Go driver, so it stays one binary with nothing else to install. The index is rebuilt from `graph/` whenever the files have changed since the last build: the index keeps a signature of every file's path, size and modification time, so an added, edited or deleted file is noticed. It's also rebuilt when the loremason version or fingerprint method has changed, when the index's own table layout has (a schema version number in the code), or when `types.yaml` has (the index keeps a hash of it). Several `mason` commands starting at once on a stale index each build into their own temporary file and rename it into place, so none of them sees half an index and none fails. A full rebuild of 5,000 records took about a third of a second in a test, so there's no incremental update to get wrong.
 
 ```mermaid
 erDiagram
   nodes ||--o{ edges : "src"
   nodes ||--o{ edges : "dst"
   nodes ||--|| nodes_fts : "searched by"
+  nodes ||--o{ aliases : "id"
   nodes {
     text id PK
     text type
@@ -294,45 +295,50 @@ erDiagram
   edges {
     text src FK
     text dst FK
-    text type
+    text name "the field the link is written in"
     int pinned_rev
     text pinned_fp
     bool propagates
-    bool experimental "from extra:"
+    bool stale "computed"
+    bool reopens "computed"
+  }
+  aliases {
+    text alias PK
+    text id FK
   }
   nodes_fts {
+    text id
     text title
     text body
   }
 ```
 
 - **`nodes`** has one row per record and sub-record. Sub-records such as `bel_7k3m9q/s1` get their own rows so that edges like `undercuts` can point at them.
-- **`edges`** has one row per link, including links implied by containment (an option `part_of` its question). Reverse links aren't stored; a query reads `edges` from the other side.
+- **`edges`** has one row per link that reaches a record, including a containment link, named `subrecord_of`, from each sub-record to the record holding it. Containment doesn't propagate, and `mason show` leaves it out: it lists a sub-record's own links with the record's, marked with the sub-record's local name. Whether a link comes from `extra:` (an experimental link) isn't stored yet; no query needs it. Reverse links aren't stored; a query reads `edges` from the other side.
 - **`nodes_fts`** is SQLite's built-in full-text search (FTS5). It lets a person or agent find "the belief about non-UTF-8 files" from plain words.
-- A **`meta`** table records the loremason version and the fingerprint method used to build the index.
+- **`aliases`** maps each alias a record has had to its ID, so `show` and `dependents` accept an old one.
+- A **`meta`** table records what the index was built from: the loremason version, the fingerprint method, the index's schema version, a hash of `types.yaml`, and the files' signature.
 
-Staleness falls out of a join:
+**The rules are computed once, in Go, and stored.** Whether a link is stale (its pin no longer matches the target's current revision and fingerprint) and whether it reopens a commitment are worked out by the same code `sync` and `validate` use, and written to `edges.stale` and `edges.reopens`. The queries only select on those columns, so a rule has one home and `stale` can never disagree with `sync`.
 
-```sql
--- every pinned link whose target has moved on
-SELECT e.src, e.dst, e.pinned_rev, n.revision
-FROM edges e JOIN nodes n ON n.id = e.dst
-WHERE e.propagates AND e.pinned_fp IS NOT NULL
-  AND e.pinned_fp <> n.fingerprint;
-```
+A link **reopens** its source when it propagates, its source is a commitment still in force, and its target's status is one its type marks as fallen. Which statuses count as fallen is data, declared in `types.yaml` beside each type's statuses: for a belief, `incorrect` and `insufficient`. Which statuses close a commitment is data too (for commitments, `rejected`, `deprecated` and `superseded`), so a commitment already turned down or replaced isn't listed again. A belief that is withdrawn reopens nothing.
 
-Invalidation is a second query: commitments whose `relies_on` targets a belief that is `incorrect` or `insufficient`. Recursive queries (SQL's `WITH RECURSIVE`) are used only to explain, such as tracing a stale step back to the belief that started it. They're never used to mark a whole chain stale.
+Following links is done in Go, not in SQL. `mason dependents` loads the links that propagate once and walks them breadth-first, remembering each record it has seen, so a record is listed once at its shortest depth and a cycle or a densely linked graph costs one visit per record. (A recursive SQL query, `WITH RECURSIVE`, visits every path, and the number of paths grows explosively.) Walks like this are used to follow and explain, such as listing everything built on a record. They're never used to mark a whole chain stale.
+
+**A graph with errors still answers.** The index holds everything that loads, and each query warns that the graph has errors and that `mason validate` will list them. An agent fixing an error can still query its way around it.
 
 **Named queries** are the everyday interface, the same for people and agents:
 
 | Command | Answers |
 |---|---|
-| `mason find <words>` | Which records match these words? Shows titles, types and statuses. |
-| `mason show <id>` | One record, with every link shown as its title rather than its ID, and links pointing at it. |
-| `mason dependents <id>` | What is built on this, directly and further down? |
+| `mason find <words>` | Which records match these words? Takes one or more words, unquoted if you like. Shows each record's ID, type, status and title. |
+| `mason show <id>` | One record's text, with its links out and the links pointing at it, each showing the record at the other end by ID, type, status and title. |
+| `mason dependents <id>` | What is built on this, directly and further down? Follows links that propagate, with each record's depth; a record that only mentions this one isn't listed. |
 | `mason stale` | Which links need a re-check, grouped by the record that changed? |
 | `mason reopened` | Which commitments rely on a belief that has fallen? |
 | `mason where <initiative>` | The "where are we" view: work in progress, open questions, recent decisions. |
+
+Queries print plain text, one stable line per result, which people and agents both read. Structured output can come with the MCP server (section 10).
 
 Writing commands are kept separate and few. `mason new <type>` creates a record with a fresh ID, `mason revise <id>` makes a new revision, and `mason sync` fills pins, refreshes unsealed fingerprints, re-pins across non-breaking revisions and regenerates views. `validate` only reads, and fails on any error.
 

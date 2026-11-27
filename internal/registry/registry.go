@@ -19,6 +19,13 @@ import (
 	"github.com/andycondon/loremason/schema"
 )
 
+// The layers a type can belong to.
+const (
+	Knowing    = "knowing"
+	Committing = "committing"
+	Scope      = "scope"
+)
+
 // Registry describes every record type.
 type Registry struct {
 	CommonEdges map[string]Edge  `yaml:"common_edges"` // edges every record type has, such as mentions
@@ -44,9 +51,11 @@ type Kind struct {
 type Type struct {
 	Kind            `yaml:",inline"`
 	Prefix          string           `yaml:"prefix"`           // the ID prefix: bel for bel_7k3m9q
-	Layer           string           `yaml:"layer"`            // knowing, committing or scope
+	Layer           string           `yaml:"layer"`            // Knowing, Committing or Scope
 	RevisionsInline bool             `yaml:"revisions_inline"` // old wording is kept in the file, not left to git
 	Meaning         []string         `yaml:"meaning"`          // fields a fingerprint covers; "body" for the body
+	Closed          []string         `yaml:"closed"`           // statuses meaning the record is no longer in force; each is one of the schema's statuses
+	Fallen          []string         `yaml:"fallen"`           // statuses meaning the record no longer holds; each is one of the schema's statuses
 	Subrecords      map[string]*Kind `yaml:"subrecords"`       // by the field that lists them
 	Template        string           `yaml:"template"`         // header lines `mason new` writes after id and title
 	Body            string           `yaml:"body"`             // the body `mason new` writes
@@ -95,6 +104,49 @@ func (t *Type) MeaningFields() []string {
 // BodyIsMeaning reports whether a fingerprint covers the body, as for
 // documents, rather than only header fields, as for beliefs.
 func (t *Type) BodyIsMeaning() bool { return slices.Contains(t.Meaning, "body") }
+
+// IsFallen reports whether status is one the type lists as fallen, so a
+// commitment relying on a record in it needs another look.
+func (t *Type) IsFallen(status string) bool { return slices.Contains(t.Fallen, status) }
+
+// IsClosed reports whether status is one the type lists as closed, so a
+// record in it is no longer in force and a fallen target doesn't reopen it.
+func (t *Type) IsClosed(status string) bool { return slices.Contains(t.Closed, status) }
+
+// statuses lists the values the type's schema allows for status, or nil when
+// it has no status or doesn't list them.
+func (t *Type) statuses() []string {
+	s := t.Schema.Properties["status"]
+	for s != nil && s.Enum == nil {
+		s = s.Ref
+	}
+	if s == nil {
+		return nil
+	}
+	var out []string
+	for _, v := range s.Enum.Values {
+		if str, ok := v.(string); ok {
+			out = append(out, str)
+		}
+	}
+	return out
+}
+
+// checkStatuses reports a fallen or closed status the type's schema doesn't
+// allow.
+func (t *Type) checkStatuses() error {
+	for _, k := range []struct {
+		key  string
+		list []string
+	}{{"fallen", t.Fallen}, {"closed", t.Closed}} {
+		for _, st := range k.list {
+			if !slices.Contains(t.statuses(), st) {
+				return fmt.Errorf("types.yaml: %s lists `%s` as %s, but its schema has no such status", t.Name, st, k.key)
+			}
+		}
+	}
+	return nil
+}
 
 // Validate checks a record's fields, as plain values, against the type's schema.
 func (t *Type) Validate(fields map[string]any) error { return t.Schema.Validate(fields) }
@@ -215,6 +267,9 @@ func parse() (*Registry, error) {
 		}
 		r.byPrefix[t.Prefix], r.byFolder[t.Folder()] = t, t
 		if t.Schema, err = r.compiler.Compile(schema.BaseURL + t.Folder() + ".json"); err != nil {
+			return nil, err
+		}
+		if err := t.checkStatuses(); err != nil {
 			return nil, err
 		}
 	}

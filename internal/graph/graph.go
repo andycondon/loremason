@@ -191,6 +191,15 @@ func (n *Node) PinnedBy(rev int) []string {
 	return ids
 }
 
+// Type returns the record type of the node's record.
+func (n *Node) Type() *registry.Type { return n.Record().File.Type }
+
+// Layer returns the layer of the node's record: knowing, committing or scope.
+func (n *Node) Layer() string { return n.Type().Layer }
+
+// Status returns the header's status, or "" when there isn't one.
+func (n *Node) Status() string { return n.Fields.Text("status") }
+
 // Record returns the record a node belongs to: itself, or its parent.
 func (n *Node) Record() *Node {
 	if n.Parent != nil {
@@ -206,6 +215,18 @@ func (e *Edge) Stale() bool {
 		return false
 	}
 	return e.Pin.Rev != e.Target.Current().Rev || e.Pin.FP != e.Target.Fingerprint()
+}
+
+// Reopens reports whether the link reopens its source: it propagates, its
+// source is a record in the committing layer that is still in force (not
+// closed, as a rejected or superseded one is), and its target's status is one
+// that the target's type lists as fallen. A target that no longer holds for
+// another reason, such as a withdrawn belief, reopens nothing.
+func (e *Edge) Reopens() bool {
+	return e.Def.Propagates && e.Target != nil &&
+		e.From.Layer() == registry.Committing &&
+		!e.From.Type().IsClosed(e.From.Status()) &&
+		e.Target.Type().IsFallen(e.Target.Status())
 }
 
 // Behind returns the target's revisions after the one the link pins.

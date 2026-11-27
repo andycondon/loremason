@@ -9,6 +9,7 @@ cmd/mason/          the commands: each calls the domain and prints what it retur
 internal/cli/       commands, flags, help and exit codes; knows nothing about loremason
 internal/graph/     the model: Graph, File, Node, Edge, Ref, Pin; Load and Create
 internal/check/     rules over a loaded graph
+internal/index/     a SQLite index of the graph, rebuilt when the files change, and the queries over it
 internal/pinning/  sync and revise: plan the changes, then apply them
 internal/fingerprint/ the fp1 method, pure functions
 internal/splice/   rewrite the header fields tools own; leave every other byte
@@ -78,8 +79,7 @@ A comment is checked like code: it must be true of the code as it is now.
 
 Each milestone, or each task within one, goes through the same steps:
 
-1. **Code model first.** Write down the new types, the package each lives in, and the methods callers will use. A person reviews it before any code is written. Acceptance criteria that only describe output can be met by code with no model at all.
-2. **Say where each criterion is proven.** Each acceptance criterion names the package whose tests prove it. A command criterion is only for wiring.
-3. **Build** against the model. Report any departure from it, and why.
-4. **Review** by someone who didn't write it, on four concerns: correctness, design (the principles above), tests (each rule proven in its own package) and doc comments.
-5. **Comment pass.** After the review's fixes, re-read every comment on code that changed.
+1. **Code model first.** The task says what should happen; it doesn't name types or packages. Before any code, the builder writes down the new types, the package each lives in, the methods callers will use, and which package's tests will prove each acceptance criterion. A person reviews it before any code is written. Criteria describe behavior, so code with no model at all can meet them; this step is what prevents that.
+2. **Build** against the model. Report any departure from it, and why.
+3. **Review** by someone who didn't write it, on four concerns: correctness, design (the principles above), tests (each rule proven in its own package) and doc comments.
+4. **Comment pass.** After the review's fixes, re-read every comment on code that changed.

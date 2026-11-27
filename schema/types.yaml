@@ -13,6 +13,11 @@
 #                   pinned: the link records the target's revision and fingerprint.
 #                   pinned defaults to propagates. Only revisable targets are ever pinned,
 #                   so a pinned edge to an initiative stays bare.
+# fallen            Statuses (from the type's schema) that mean the record no longer holds.
+#                   A propagating link from a committing record to a record in one of
+#                   them reopens the committing record. Optional.
+# closed            Statuses (from the type's schema) that mean the record is no longer in force.
+#                   A committing record in one of them isn't reopened by a fallen target. Optional.
 # subrecords        Header field holding a list of sub-records, each with its own short id.
 # template          Header lines `mason new` writes after id and title. {title}, {slug} and {today} are replaced.
 # body              Body `mason new` writes.
@@ -81,6 +86,7 @@ types:
     revisions_inline: true
     meaning: [claim]
     identity: [claim]
+    fallen: [incorrect, insufficient]
     edges:
       answers: {to: [question], propagates: false}
     subrecords:
@@ -147,6 +153,7 @@ types:
   prd:
     prefix: prd
     layer: committing
+    closed: [rejected, deprecated, superseded]
     revisable: true
     revisions_inline: false
     meaning: [title, body]
@@ -160,6 +167,7 @@ types:
   requirement:
     prefix: req
     layer: committing
+    closed: [rejected, deprecated, superseded]
     revisable: true
     revisions_inline: true
     meaning: [statement]
@@ -175,6 +183,7 @@ types:
   decision:
     prefix: dec
     layer: committing
+    closed: [rejected, deprecated, superseded]
     revisable: true
     revisions_inline: false
     meaning: [title, criteria, confirmation, body]
@@ -198,6 +207,7 @@ types:
   design_doc:
     prefix: dd
     layer: committing
+    closed: [rejected, deprecated, superseded]
     revisable: true
     revisions_inline: false
     meaning: [title, body]
@@ -213,6 +223,7 @@ types:
   task:
     prefix: task
     layer: committing
+    closed: [rejected, deprecated, superseded]
     revisable: true
     revisions_inline: false
     meaning: [title, body]
@@ -234,6 +245,7 @@ types:
   plan:
     prefix: plan
     layer: committing
+    closed: [rejected, deprecated, superseded]
     revisable: true
     revisions_inline: false
     meaning: [title, body]

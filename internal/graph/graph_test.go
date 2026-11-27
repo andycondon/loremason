@@ -246,3 +246,123 @@ func TestFileMisplaced(t *testing.T) {
 		t.Error("a file is misplaced when its ID's prefix and its folder disagree")
 	}
 }
+
+// ---- Node: status ----
+
+func TestNodeStatus(t *testing.T) {
+	g := load(t, file("bel_7k3m9q", "status: incorrect"), file("ev_p4n2xa"))
+	if g.Node("bel_7k3m9q").Status() != "incorrect" || g.Node("ev_p4n2xa").Status() != "" {
+		t.Error("Status is the header's status, or empty")
+	}
+}
+
+// ---- Edge: reopens ----
+
+// reopens returns whether the edge from a record through relies_on, or
+// another field, reopens its source.
+func reopens(t *testing.T, g *Graph, from, name string) bool {
+	t.Helper()
+	return edge(t, g, from, name).Reopens()
+}
+
+func TestEdgeReopensWhenABeliefHasFallen(t *testing.T) {
+	for _, status := range []string{"incorrect", "insufficient"} {
+		g := load(t,
+			file("bel_7k3m9q", "status: "+status),
+			file("dec_9w4hzd", "relies_on: [bel_7k3m9q]"),
+			file("task_p4n2xa", "relies_on: [bel_7k3m9q]"),
+		)
+		if !reopens(t, g, "dec_9w4hzd", "relies_on") || !reopens(t, g, "task_p4n2xa", "relies_on") {
+			t.Errorf("a decision and a task relying on a belief that is %s reopen", status)
+		}
+	}
+}
+
+func TestEdgeFromAClosedCommitmentDoesNotReopen(t *testing.T) {
+	for status, want := range map[string]bool{"rejected": false, "deprecated": false, "superseded": false, "accepted": true} {
+		g := load(t,
+			file("bel_7k3m9q", "status: incorrect"),
+			file("task_p4n2xa", "status: "+status, "relies_on: [bel_7k3m9q]"),
+		)
+		if got := reopens(t, g, "task_p4n2xa", "relies_on"); got != want {
+			t.Errorf("a %s task relying on an incorrect belief: reopens = %v", status, got)
+		}
+	}
+}
+
+func TestEdgeReopensNothingElse(t *testing.T) {
+	g := load(t,
+		file("bel_7k3m9q", "status: withdrawn"),
+		file("bel_c9d4se", "status: held"),
+		file("bel_h8c1rt", "status: incorrect"),
+		file("dec_9w4hzd", "relies_on: [bel_7k3m9q, bel_c9d4se]"),
+		file("dec_p4n2xa", "mentions: [bel_h8c1rt]"),                // doesn't propagate
+		file("ev_q2m5vz", "about: [bel_h8c1rt]"),                    // source isn't a commitment
+		file("bel_t6w8yb", "answers: [bel_h8c1rt]", "status: held"), // neither
+		file("task_k3m9qr", "relies_on: [bel_zzzzzz]"),              // no target
+	)
+	for _, c := range []struct{ from, name string }{
+		{"dec_9w4hzd", "relies_on"}, // the withdrawn belief, then the held one
+		{"dec_p4n2xa", "mentions"},
+		{"task_k3m9qr", "relies_on"},
+	} {
+		for _, e := range g.Edges {
+			if e.From.ID == c.from && e.Name == c.name && e.Reopens() {
+				t.Errorf("%s %s -> %s reopens", c.from, c.name, e.To.Name)
+			}
+		}
+	}
+}
+
+// No edge a knowing record holds propagates today, so the test makes one
+// that does: only the source's layer then keeps it from reopening.
+func TestEdgeDoesNotReopenFromOutsideTheCommittingLayer(t *testing.T) {
+	g := load(t,
+		file("bel_h8c1rt", "status: incorrect"),
+		file("ev_q2m5vz", "about: [bel_h8c1rt]"),
+		file("dec_9w4hzd", "mentions: [bel_h8c1rt]"),
+	)
+	for _, c := range []struct {
+		from, field string
+		want        bool
+	}{
+		{"ev_q2m5vz", "about", false},
+		{"dec_9w4hzd", "mentions", true},
+	} {
+		e := edge(t, g, c.from, c.field)
+		e.Def.Propagates = true
+		if e.Reopens() != c.want {
+			t.Errorf("a propagating link from %s: reopens = %v", c.from, !c.want)
+		}
+	}
+}
+
+// A sub-record's link takes its layer from the record that holds it, so a
+// propagating link from a knowing record's sub-record never reopens it.
+func TestEdgeFromASubRecordDoesNotReopen(t *testing.T) {
+	g := load(t,
+		file("bel_h8c1rt", "status: incorrect"),
+		file("bel_7k3m9q", "status: held", "support:\n  - {id: s1, evidence: [bel_h8c1rt]}"),
+	)
+	e := edge(t, g, "bel_7k3m9q/s1", "evidence")
+	e.Def.Propagates = true
+	if e.Reopens() {
+		t.Error("a link from a sub-record of a knowing record reopens")
+	}
+}
+
+// A link to a sub-record is judged by the sub-record's own status, which the
+// parent's type reads as fallen or not.
+func TestEdgeToASubRecordReopensOnlyWhenItHasFallen(t *testing.T) {
+	g := load(t,
+		file("bel_7k3m9q", "status: held", "support:\n  - {id: s1}\n  - {id: s2, status: incorrect}"),
+		file("dec_9w4hzd", "relies_on: [bel_7k3m9q/s1]"),
+		file("dec_p4n2xa", "relies_on: [bel_7k3m9q/s2]"),
+	)
+	if reopens(t, g, "dec_9w4hzd", "relies_on") {
+		t.Error("a link to a sub-record that holds reopens")
+	}
+	if !reopens(t, g, "dec_p4n2xa", "relies_on") {
+		t.Error("a link to a sub-record that has fallen doesn't reopen")
+	}
+}
