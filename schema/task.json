@@ -20,6 +20,19 @@
     "status": {
       "$ref": "common.json#/$defs/maturity"
     },
+    "progress": {
+      "description": "how far the work has got; a task without it is todo",
+      "enum": [
+        "todo",
+        "in_progress",
+        "blocked",
+        "done"
+      ],
+      "default": "todo"
+    },
+    "blocked_by": {
+      "$ref": "common.json#/$defs/links"
+    },
     "part_of": {
       "$ref": "common.json#/$defs/links"
     },

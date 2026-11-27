@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/fs"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -68,6 +69,8 @@ type Edge struct {
 	To         []string `yaml:"to"`         // the types it may point at, or any
 	Propagates bool     `yaml:"propagates"` // a change in the target means the record needs a re-check
 	Pinned     *bool    `yaml:"pinned"`     // whether the link pins its target; nil means as Propagates
+	Settles    []string `yaml:"settles"`    // the source's statuses at which the link settles its target; each is one of the source type's statuses
+	Pending    []string `yaml:"pending"`    // the source's statuses at which the link is an answer still waiting; each is one of the source type's statuses
 }
 
 // ShouldPin reports whether a link of this edge to a node of kind target
@@ -113,14 +116,32 @@ func (t *Type) IsFallen(status string) bool { return slices.Contains(t.Fallen, s
 // record in it is no longer in force and a fallen target doesn't reopen it.
 func (t *Type) IsClosed(status string) bool { return slices.Contains(t.Closed, status) }
 
+// field returns the type's schema for a header field, following references,
+// or nil when the type has no such field.
+func (t *Type) field(name string) *jsonschema.Schema {
+	s := t.Schema.Properties[name]
+	for s != nil && s.Enum == nil && s.Default == nil && s.Ref != nil {
+		s = s.Ref
+	}
+	return s
+}
+
+// Default returns the default the schema declares for a header field, such
+// as todo for a task's progress, or "" when it declares none.
+func (t *Type) Default(field string) string {
+	s := t.field(field)
+	if s == nil || s.Default == nil {
+		return ""
+	}
+	str, _ := (*s.Default).(string)
+	return str
+}
+
 // statuses lists the values the type's schema allows for status, or nil when
 // it has no status or doesn't list them.
 func (t *Type) statuses() []string {
-	s := t.Schema.Properties["status"]
-	for s != nil && s.Enum == nil {
-		s = s.Ref
-	}
-	if s == nil {
+	s := t.field("status")
+	if s == nil || s.Enum == nil {
 		return nil
 	}
 	var out []string
@@ -133,7 +154,8 @@ func (t *Type) statuses() []string {
 }
 
 // checkStatuses reports a fallen or closed status the type's schema doesn't
-// allow.
+// allow, and a settles or pending status on one of the type's edges that it
+// doesn't allow either.
 func (t *Type) checkStatuses() error {
 	for _, k := range []struct {
 		key  string
@@ -142,6 +164,19 @@ func (t *Type) checkStatuses() error {
 		for _, st := range k.list {
 			if !slices.Contains(t.statuses(), st) {
 				return fmt.Errorf("types.yaml: %s lists `%s` as %s, but its schema has no such status", t.Name, st, k.key)
+			}
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(t.Edges)) {
+		e := t.Edges[name]
+		for _, k := range []struct {
+			key  string
+			list []string
+		}{{"settles", e.Settles}, {"pending", e.Pending}} {
+			for _, st := range k.list {
+				if !slices.Contains(t.statuses(), st) {
+					return fmt.Errorf("types.yaml: the %s edge of %s lists `%s` as %s, but its schema has no such status", name, t.Name, st, k.key)
+				}
 			}
 		}
 	}

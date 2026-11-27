@@ -47,6 +47,10 @@
         "additionalProperties": false
       }
     },
+    "dropped": {
+      "description": "why the question was dropped; having it means the question is dropped",
+      "$ref": "common.json#/$defs/text"
+    },
     "part_of": {
       "$ref": "common.json#/$defs/links"
     },
