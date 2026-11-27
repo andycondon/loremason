@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/andycondon/loremason/internal/graph"
 )
 
-const schema = `
+const tables = `
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE nodes (
 	id TEXT PRIMARY KEY,
@@ -39,18 +40,26 @@ CREATE INDEX edges_src ON edges (src);
 CREATE VIRTUAL TABLE nodes_fts USING fts5(id UNINDEXED, title, body);
 `
 
-// containment is the name of the edge from a sub-record to the record
+// Containment is the name of the edge from a sub-record to the record
 // holding it. It doesn't propagate: a change to a sub-record is a change to
-// its record, and links pin that record's revisions.
-const containment = "subrecord_of"
+// its record, and links pin that record's revisions. Show leaves it out and
+// reports the sub-record's links with the record instead.
+const Containment = "subrecord_of"
 
 // Build writes an index of g to path. Everything is written, in one
-// transaction, to path with ".tmp" added, and the file is then renamed into
-// place, so a reader never sees half an index. Records and their
+// transaction, to a new temporary file beside path (named so .gitignore
+// covers it), and the file is then renamed into place, so a reader never
+// sees half an index. Builds running at once each have their own file; the
+// last to finish is the one left. Records and their
 // sub-records each get a row in nodes, links and containment a row in edges.
 func Build(path string, g *graph.Graph, m Meta) (err error) {
-	tmp := path + ".tmp"
-	if err := os.Remove(tmp); err != nil && !os.IsNotExist(err) {
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
 		return err
 	}
 	defer func() {
@@ -78,11 +87,13 @@ func write(db *sql.DB, g *graph.Graph, m Meta) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(schema); err != nil {
+	if _, err := tx.Exec(tables); err != nil {
 		return err
 	}
 	meta := [][2]string{
 		{"version", m.Version},
+		{"schema", strconv.Itoa(m.Schema)},
+		{"types", m.Types},
 		{"fingerprint_method", strconv.Itoa(m.FingerprintMethod)},
 		{"signature", m.Signature},
 		{"problems", strconv.Itoa(m.Problems)},
@@ -213,7 +224,7 @@ func (w *writer) edges() error {
 			if !w.canonical(c) {
 				continue
 			}
-			if _, err := ins.Exec(c.ID, f.Node.ID, containment, nil, "", false, false, false); err != nil {
+			if _, err := ins.Exec(c.ID, f.Node.ID, Containment, nil, "", false, false, false); err != nil {
 				return err
 			}
 		}

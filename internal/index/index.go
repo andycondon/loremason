@@ -1,10 +1,14 @@
 // Package index keeps a SQLite copy of the whole workspace, so a query
 // reads one file instead of loading and checking every record. The copy
 // holds the graph, what the checks found (as a count), and a signature of
-// the files it was built from. It is rebuilt from graph/ whenever the files
-// or the loremason version have changed, so there is no incremental update
-// to get wrong. Whether a link is stale or reopens a commitment is decided
-// in package graph and stored; the queries here only select and join.
+// the files it was built from. It is rebuilt from graph/ whenever the files,
+// the loremason version, the fingerprint method, the index's own table layout
+// (SchemaVersion) or the record types (types.yaml) have changed, so there is
+// no incremental update to get wrong. Several processes may open the same
+// workspace at once: each builds into its own temporary file and renames it
+// into place, and any of the results is as good as another. Whether a link
+// is stale or reopens a commitment is decided in package graph and stored;
+// the queries here only select and join.
 //
 // The design is in docs/context-graph/03-implementation.md, section 6.
 package index
@@ -16,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,13 +33,20 @@ import (
 	"github.com/andycondon/loremason/internal/graph"
 	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/internal/workspace"
+	"github.com/andycondon/loremason/schema"
 )
 
 const (
 	dir      = ".loremason"
 	fileName = "index.db"
-	ignore   = "index.db\nindex.db.tmp\nindex.db-journal\n"
+	ignore   = "index.db*\n" // the index, and the temporary and journal files beside it
 )
+
+// SchemaVersion is the version of the index's own tables. Raise it whenever
+// the tables or what is stored in them change, so older indexes are rebuilt.
+// It isn't the loremason version in the workspace's config; that is
+// Meta.Version.
+const SchemaVersion = 1
 
 // Index is an open index. Close it when done.
 type Index struct {
@@ -45,7 +57,9 @@ type Index struct {
 
 // Meta is what an index records about how it was built.
 type Meta struct {
-	Version           string // the loremason version in the workspace's config
+	Version           string // the loremason version in the workspace's config, not the index's layout
+	Schema            int    // SchemaVersion, the version of the index's tables
+	Types             string // a hash of the embedded schema/types.yaml, so a change to the record types rebuilds
 	FingerprintMethod int    // fingerprint.Method
 	Signature         string // of the files under graph/; see Signature
 	Problems          int    // errors found loading and checking, not counting warnings
@@ -67,12 +81,12 @@ func Open(root string, reg *registry.Registry) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	want := Meta{Version: ws.Config.Version, FingerprintMethod: fingerprint.Method, Signature: sig}
+	want := Meta{Version: ws.Config.Version, Schema: SchemaVersion, Types: typesHash(), FingerprintMethod: fingerprint.Method, Signature: sig}
 	path := filepath.Join(root, dir, fileName)
 
 	rebuilt := false
 	got, ok := readMeta(path)
-	if !ok || got.Version != want.Version || got.FingerprintMethod != want.FingerprintMethod || got.Signature != want.Signature {
+	if !ok || !got.sameBuild(want) {
 		res, err := check.Run(root, reg)
 		if err != nil {
 			return nil, err
@@ -89,6 +103,23 @@ func Open(root string, reg *registry.Registry) (*Index, error) {
 		return nil, err
 	}
 	return &Index{db: db, problems: got.Problems, rebuilt: rebuilt}, nil
+}
+
+// sameBuild reports whether an index with m was built the way want says,
+// ignoring the problem count, which is a result of the build.
+func (m Meta) sameBuild(want Meta) bool {
+	m.Problems, want.Problems = 0, 0
+	return m == want
+}
+
+// typesHash returns a hash of the embedded record types.
+func typesHash() string {
+	data, err := schema.FS.ReadFile("types.yaml")
+	if err != nil {
+		panic("the embedded types.yaml is missing: " + err.Error()) // the tests rule this out
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // Close closes the index.
@@ -117,16 +148,31 @@ func errNoFTS5(cause error) error {
 	return fmt.Errorf("full-text search (FTS5) is missing from this SQLite build, and mason needs it to find records by words (%v); install a mason release, which includes it, or rebuild mason with an SQLite driver that has FTS5", cause)
 }
 
-// openDB opens an SQLite file and checks that it can do full-text search.
+// busyTimeout is how long, in milliseconds, a connection waits for a lock
+// another process holds before it gives up.
+const busyTimeout = 10000
+
+// connect opens an SQLite file that waits busyTimeout for locks.
+func connect(path string) (*sql.DB, error) {
+	u := url.URL{Scheme: "file", Path: path, RawQuery: "_pragma=busy_timeout(" + strconv.Itoa(busyTimeout) + ")"}
+	return sql.Open("sqlite", u.String())
+}
+
+// openDB opens an SQLite file and checks that it can do full-text search. A
+// probe that fails for another reason, such as a busy file, is returned as it
+// is.
 func openDB(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := connect(path)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1) // the temp probe table and the queries share a connection
 	if err := probeFTS5(db); err != nil {
 		db.Close()
-		return nil, errNoFTS5(err)
+		if strings.Contains(err.Error(), "no such module: fts5") {
+			return nil, errNoFTS5(err)
+		}
+		return nil, err
 	}
 	return db, nil
 }
@@ -137,7 +183,7 @@ func readMeta(path string) (m Meta, ok bool) {
 	if _, err := os.Stat(path); err != nil {
 		return Meta{}, false
 	}
-	db, err := sql.Open("sqlite", path)
+	db, err := connect(path)
 	if err != nil {
 		return Meta{}, false
 	}
@@ -157,6 +203,10 @@ func readMeta(path string) (m Meta, ok bool) {
 		switch k {
 		case "version":
 			m.Version = v
+		case "schema":
+			m.Schema, perr = strconv.Atoi(v)
+		case "types":
+			m.Types = v
 		case "fingerprint_method":
 			m.FingerprintMethod, perr = strconv.Atoi(v)
 		case "signature":
@@ -171,7 +221,7 @@ func readMeta(path string) (m Meta, ok bool) {
 		}
 		seen++
 	}
-	return m, rows.Err() == nil && seen == 4
+	return m, rows.Err() == nil && seen == 6
 }
 
 // Signature summarises every file under root's graph/ folder: its path,
@@ -205,12 +255,13 @@ func Signature(root string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// writeIgnore writes .loremason/.gitignore, listing the index files, unless
+// writeIgnore writes .loremason/.gitignore, covering the index and every
+// temporary or journal file beside it but not config.yaml, unless
 // the file is already there.
 func writeIgnore(root string) error {
 	p := filepath.Join(root, dir, ".gitignore")
 	if _, err := os.Stat(p); err == nil {
 		return nil
 	}
-	return os.WriteFile(p, []byte(strings.TrimSpace(ignore)+"\n"), 0o644)
+	return os.WriteFile(p, []byte(ignore), 0o644)
 }

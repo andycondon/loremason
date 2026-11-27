@@ -26,6 +26,35 @@ func TestFind(t *testing.T) {
 	}
 }
 
+func TestFindTakesSeveralWords(t *testing.T) {
+	beliefAndTask(t)
+	want := "bel_7k3m9q  belief  held  validate and encodings\n"
+	for _, args := range [][]string{{"find", "utf-8", "failures"}, {"find", "utf-8 failures"}} {
+		if code, out, errOut := mason(args...); code != 0 || errOut != "" || out != want {
+			t.Errorf("%v: exit %d, stderr %q, stdout %q", args, code, errOut, out)
+		}
+	}
+}
+
+func TestFindWithNothingToSearchFor(t *testing.T) {
+	beliefAndTask(t)
+	code, out, errOut := mason("find", "-")
+	if code != 0 || out != "" || !strings.Contains(errOut, "no words to search for") {
+		t.Errorf("exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+}
+
+func TestShowMarksLinksOfSubRecords(t *testing.T) {
+	newWorkspace(t, map[string]string{
+		"belief/bel_7k3m9q.md": testws.Belief,
+		"question/q_3fz8km.md": "---\nid: q_3fz8km\nquestion: Which?\noptions:\n  - {id: o1, title: One, for: [bel_7k3m9q]}\ncreated: 2026-11-22\n---\n",
+	})
+	code, out, errOut := mason("show", "q_3fz8km")
+	if code != 0 || !strings.Contains(out, "for [o1]  bel_7k3m9q") || strings.Contains(out, "subrecord_of") {
+		t.Errorf("exit %d, stderr %q, stdout:\n%s", code, errOut, out)
+	}
+}
+
 func TestShow(t *testing.T) {
 	beliefAndTask(t)
 	mason("sync")
@@ -91,7 +120,7 @@ func TestQueryUnknownID(t *testing.T) {
 func TestQueryUsageMistakes(t *testing.T) {
 	beliefAndTask(t)
 	for _, args := range [][]string{
-		{"find"}, {"find", "a", "b"}, {"show"}, {"show", "a", "b"},
+		{"find"}, {"show"}, {"show", "a", "b"},
 		{"dependents"}, {"dependents", "a", "b"}, {"stale", "x"}, {"reopened", "x"},
 	} {
 		if code, out, _ := mason(args...); code != 2 || out != "" {

@@ -12,17 +12,25 @@ import (
 )
 
 var findCmd = &cli.Command{
-	Name:    "find",
-	Summary: "list the records whose title or body has all of the words",
-	Args:    []string{"words"},
+	Name:     "find",
+	Summary:  "list the records whose title or body has all of the words",
+	Args:     []string{"words"},
+	Variadic: true,
 	Setup: func(*flag.FlagSet) cli.Action {
-		return query(func(x *index.Index, args []string, w io.Writer) error {
-			found, err := x.Find(args[0])
+		search := query(func(x *index.Index, args []string, w io.Writer) error {
+			found, err := x.Find(strings.Join(args, " "))
 			for _, s := range found {
 				fmt.Fprintln(w, line(s))
 			}
 			return err
 		})
+		return func(env *cli.Env, args []string) error {
+			if len(index.Words(strings.Join(args, " "))) == 0 {
+				env.Warnf("no words to search for; find looks for letters and digits")
+				return nil
+			}
+			return search(env, args)
+		}
 	},
 }
 
@@ -141,6 +149,10 @@ func printLinks(w io.Writer, heading string, links []index.Link) {
 	}
 	fmt.Fprintf(w, "\n%s\n", heading)
 	for _, l := range links {
-		fmt.Fprintf(w, "  %s  %s\n", l.Field, linkLine(l))
+		field := l.Field
+		if l.Local != "" {
+			field += " [" + l.Local + "]" // made by that sub-record
+		}
+		fmt.Fprintf(w, "  %s  %s\n", field, linkLine(l))
 	}
 }

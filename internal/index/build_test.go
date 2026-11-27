@@ -45,11 +45,11 @@ func TestBuildWritesNodesAndContainment(t *testing.T) {
 			t.Errorf("nodes has %d rows for %s, want 1", len(got), id)
 		}
 	}
-	got := rows(t, w, `SELECT dst FROM edges WHERE src = 'q_3fz8km/o1' AND name = ?`, containment)
+	got := rows(t, w, `SELECT dst FROM edges WHERE src = 'q_3fz8km/o1' AND name = ?`, Containment)
 	if len(got) != 1 || got[0] != "q_3fz8km" {
 		t.Errorf("containment of the option = %v", got)
 	}
-	if got := rows(t, w, `SELECT propagates FROM edges WHERE name = ?`, containment); len(got) == 0 || got[0] != "0" {
+	if got := rows(t, w, `SELECT propagates FROM edges WHERE name = ?`, Containment); len(got) == 0 || got[0] != "0" {
 		t.Errorf("containment should not propagate: %v", got)
 	}
 	if got := rows(t, w, `SELECT count(*) FROM nodes_fts WHERE id LIKE '%/%'`); got[0] != "0" {
@@ -100,13 +100,16 @@ func TestBuildFailsWhereItCannotWrite(t *testing.T) {
 	if err := Build(filepath.Join(w.Root, "missing", "index.db"), g, Meta{}); err == nil {
 		t.Error("Build into a missing folder succeeded")
 	}
-	// A directory where the temporary file belongs can't be removed.
+	// A folder where the index belongs can't be replaced by a file.
 	p := filepath.Join(w.Root, ".loremason", "index.db")
-	if err := os.MkdirAll(p+".tmp/x", 0o755); err != nil {
+	if err := os.MkdirAll(p+"/x", 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := Build(p, g, Meta{}); err == nil {
 		t.Error("Build over a folder succeeded")
+	}
+	if left := leftovers(t, w); len(left) != 0 {
+		t.Errorf("a failed build left %v", left)
 	}
 }
 
@@ -122,7 +125,7 @@ func TestBuildReplacesAnIndexInOnePiece(t *testing.T) {
 	if got := rows(t, w, `SELECT value FROM meta WHERE key = 'version'`); len(got) != 1 || got[0] != "1" {
 		t.Errorf("version = %v", got)
 	}
-	if _, err := os.Stat(p + ".tmp"); err == nil {
-		t.Error("the temporary file was left behind")
+	if left := leftovers(t, w); len(left) != 0 {
+		t.Errorf("the temporary file was left behind: %v", left)
 	}
 }

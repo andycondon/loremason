@@ -173,3 +173,56 @@ func TestImportsNothingFromLoremason(t *testing.T) {
 		}
 	}
 }
+
+// echo has a command that takes one or more words, and one that takes a
+// name and then one or more words.
+func echo(got *[]string) *App {
+	setup := func(*flag.FlagSet) Action {
+		return func(_ *Env, args []string) error { *got = append(*got, args...); return nil }
+	}
+	return &App{
+		Name:    "echo",
+		Version: "1",
+		Summary: "echo repeats.",
+		Commands: []*Command{
+			{Name: "say", Summary: "say words", Args: []string{"words"}, Variadic: true, Setup: setup},
+			{Name: "tell", Summary: "tell someone words", Args: []string{"name", "words"}, Variadic: true, Setup: setup},
+		},
+	}
+}
+
+func runEcho(args ...string) (code int, got []string, stdout, stderr string) {
+	var out, errb bytes.Buffer
+	code = echo(&got).Run(args, &out, &errb)
+	return code, got, out.String(), errb.String()
+}
+
+func TestVariadicTakesOneOrMore(t *testing.T) {
+	if code, got, _, _ := runEcho("say", "a"); code != 0 || !slices.Equal(got, []string{"a"}) {
+		t.Errorf("one word: exit %d, got %v", code, got)
+	}
+	if code, got, _, _ := runEcho("say", "a", "b", "c"); code != 0 || !slices.Equal(got, []string{"a", "b", "c"}) {
+		t.Errorf("exit %d, got %v", code, got)
+	}
+	if code, got, _, _ := runEcho("tell", "ann", "x", "y"); code != 0 || !slices.Equal(got, []string{"ann", "x", "y"}) {
+		t.Errorf("exit %d, got %v", code, got)
+	}
+}
+
+func TestVariadicNeedsAtLeastOne(t *testing.T) {
+	for want, args := range map[string][]string{
+		"echo: say takes one or more words; see `echo say --help`":                                        {"say"},
+		"echo: tell takes 2 arguments, the last of them one or more: name, words; see `echo tell --help`": {"tell", "ann"},
+	} {
+		if code, got, out, errOut := runEcho(args...); code != 2 || errOut != want+"\n" || out != "" || got != nil {
+			t.Errorf("%v: exit %d, stdout %q, stderr %q", args, code, out, errOut)
+		}
+	}
+}
+
+func TestVariadicHelpShowsTheRepeat(t *testing.T) {
+	_, _, out, _ := runEcho("say", "--help")
+	if !strings.Contains(out, "echo say <words>...") {
+		t.Errorf("help:\n%s", out)
+	}
+}

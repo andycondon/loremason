@@ -72,10 +72,8 @@ func BenchmarkOpenCurrent(b *testing.B) {
 
 func BenchmarkBuild(b *testing.B) {
 	root := scaleWorkspace(b)
-	res := openScale(b)
 	g := loadGraph(b, root)
 	path := root + "/.loremason/bench.db"
-	_ = res
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if err := Build(path, g, Meta{}); err != nil {

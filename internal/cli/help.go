@@ -27,8 +27,11 @@ func (a *App) help(w io.Writer, fs *flag.FlagSet) {
 // help writes a command's help: how to call it, what it does, and its flags.
 func (c *Command) help(a *App, w io.Writer, fs *flag.FlagSet) {
 	call := a.Name + " " + c.Name
-	for _, arg := range c.Args {
+	for i, arg := range c.Args {
 		call += " <" + arg + ">"
+		if c.Variadic && i == len(c.Args)-1 {
+			call += "..."
+		}
 	}
 	fmt.Fprintf(w, "Usage:\n  %s [flags]\n\n%s\n", call, c.Summary)
 	writeFlags(w, fs)

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/andycondon/loremason/internal/testws"
 )
@@ -23,24 +24,29 @@ type answers struct {
 
 func ask(t *testing.T, x *Index, id string) answers {
 	t.Helper()
-	var a answers
-	var err error
-	if a.Stale, err = x.Stale(); err != nil {
-		t.Fatal(err)
-	}
-	if a.Reopened, err = x.Reopened(); err != nil {
-		t.Fatal(err)
-	}
-	if a.Dependents, err = x.Dependents(id); err != nil {
-		t.Fatal(err)
-	}
-	if a.Show, err = x.Show(id); err != nil {
-		t.Fatal(err)
-	}
-	if a.Found, err = x.Find("utf 8"); err != nil {
+	a, err := answersOf(x, id)
+	if err != nil {
 		t.Fatal(err)
 	}
 	return a
+}
+
+// answersOf runs every query, for tests that can't call t.Fatal.
+func answersOf(x *Index, id string) (a answers, err error) {
+	if a.Stale, err = x.Stale(); err != nil {
+		return
+	}
+	if a.Reopened, err = x.Reopened(); err != nil {
+		return
+	}
+	if a.Dependents, err = x.Dependents(id); err != nil {
+		return
+	}
+	if a.Show, err = x.Show(id); err != nil {
+		return
+	}
+	a.Found, err = x.Find("utf 8")
+	return
 }
 
 func TestDeletingTheIndexChangesNoAnswer(t *testing.T) {
@@ -289,18 +295,88 @@ created: 2026-11-22
 }
 
 func TestDependentsStopAtACycle(t *testing.T) {
-	// The types don't allow a cycle of propagating links, so make one in the
-	// index itself: the belief now relies on the task that relies on it.
+	// Two tasks implement each other. The index doesn't check types, so the
+	// walk has to cope: the other task once, and not the start itself.
 	x := open(t, newWS(t, map[string]string{
-		"belief/bel_7k3m9q.md": testws.Belief,
-		"task/task_9w4hzd.md":  record("task_9w4hzd", "Task", "status: accepted", "relies_on: [bel_7k3m9q]"),
+		"task/task_9w4hzd.md": record("task_9w4hzd", "A", "status: accepted", "implements: [task_c9d4se]"),
+		"task/task_c9d4se.md": record("task_c9d4se", "B", "status: accepted", "implements: [task_9w4hzd]"),
 	}))
-	if _, err := x.db.Exec(`INSERT INTO edges VALUES ('bel_7k3m9q', 'task_9w4hzd', 'relies_on', NULL, '', 1, 0, 0)`); err != nil {
+	got, err := x.Dependents("task_9w4hzd")
+	if err != nil || len(got) != 1 || got[0].ID != "task_c9d4se" || got[0].Depth != 1 {
+		t.Errorf("Dependents = %+v, %v", got, err)
+	}
+}
+
+func TestDependentsOfADenseGraphAreFast(t *testing.T) {
+	// Every task implements every other: the number of paths is astronomical,
+	// the number of records is not.
+	const n = 60
+	name := func(i int) string { return fmt.Sprintf("task_%06d", i) }
+	files := map[string]string{}
+	for i := 0; i < n; i++ {
+		var links []string
+		for j := 0; j < n; j++ {
+			if j != i {
+				links = append(links, name(j))
+			}
+		}
+		files["task/"+name(i)+".md"] = record(name(i), name(i), "status: accepted", "implements: ["+strings.Join(links, ", ")+"]")
+	}
+	x := open(t, newWS(t, files))
+	start := time.Now()
+	got, err := x.Dependents(name(0))
+	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := x.Dependents("bel_7k3m9q")
-	if err != nil || ids2(got) != "task_9w4hzd" {
-		t.Errorf("Dependents = %+v, %v", got, err)
+	if took := time.Since(start); took > 2*time.Second {
+		t.Errorf("Dependents took %v", took)
+	}
+	if len(got) != n-1 {
+		t.Fatalf("got %d dependents, want %d", len(got), n-1)
+	}
+	for i, d := range got {
+		if d.Depth != 1 || d.On.ID != name(0) || d.ID != name(i+1) {
+			t.Fatalf("dependent %d = %+v", i, d)
+		}
+	}
+}
+
+func TestShowListsSubRecordLinksUnderTheRecord(t *testing.T) {
+	x := open(t, newWS(t, map[string]string{
+		"belief/bel_7k3m9q.md": testws.Belief,
+		"question/q_3fz8km.md": `---
+id: q_3fz8km
+question: Which?
+options:
+  - {id: o1, title: One, for: [bel_7k3m9q]}
+created: 2026-11-22
+---
+`,
+	}))
+	d, err := x.Show("q_3fz8km")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, l := range d.Out {
+		if l.Field == Containment {
+			t.Errorf("containment row in Out: %+v", l)
+		}
+		if l.Other.ID == "bel_7k3m9q" && l.Local == "o1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Out lacks the option's link marked o1: %+v", d.Out)
+	}
+	b, err := x.Show("bel_7k3m9q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range b.In {
+		if l.Field == Containment {
+			t.Errorf("containment row in In: %+v", l)
+		}
 	}
 }
 

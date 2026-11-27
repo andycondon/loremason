@@ -142,11 +142,32 @@ func loadGraph(tb testing.TB, root string) *graph.Graph {
 // open builds it.
 func removeAll(tb testing.TB, root string) {
 	tb.Helper()
-	for _, name := range []string{"index.db", "index.db.tmp"} {
-		if err := os.Remove(filepath.Join(root, ".loremason", name)); err != nil && !os.IsNotExist(err) {
+	files, err := filepath.Glob(filepath.Join(root, ".loremason", "index.db*"))
+	if err != nil {
+		tb.Fatal(err)
+	}
+	for _, f := range files {
+		if err := os.Remove(f); err != nil {
 			tb.Fatal(err)
 		}
 	}
+}
+
+// leftovers lists the temporary and journal files beside a workspace's
+// index.
+func leftovers(t *testing.T, w *testws.Workspace) []string {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(w.Root, ".loremason", "index.db*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, f := range files {
+		if f != indexPath(w) {
+			out = append(out, filepath.Base(f))
+		}
+	}
+	return out
 }
 
 // TestMain removes the generated workspace when the tests end.

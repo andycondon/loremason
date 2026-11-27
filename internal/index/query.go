@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -23,7 +24,8 @@ type Pin struct {
 
 // Link is one end of a link, seen from the record that was asked about.
 type Link struct {
-	Field string  // the field the link is written in, or "subrecord_of" for containment
+	Field string  // the field the link is written in
+	Local string  // for a link made by one of the record's sub-records, that sub-record's local name ("s1"); otherwise ""
 	Other Summary // the record at the other end
 	Pin   *Pin    // nil when the link isn't pinned
 }
@@ -33,7 +35,7 @@ type Detail struct {
 	Summary
 	Header string // the record's header as JSON, "" when its file couldn't be read
 	Body   string
-	Out    []Link // links the record makes, by field then target
+	Out    []Link // links the record and its sub-records make, by field then target; a sub-record's carry its Local name
 	In     []Link // links to the record, by field then source
 }
 
@@ -153,12 +155,18 @@ func (x *Index) notFound(name string) error {
 	return e
 }
 
+// Words returns the words Find searches for in text: runs of letters and
+// digits. It is empty when the text has none, as when it is only punctuation.
+func Words(text string) []string {
+	return strings.FieldsFunc(text, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+}
+
 // Find returns the records whose title or body has all of the words, by ID.
 // The words are plain text: punctuation separates them, so "utf-8 files"
 // finds a body that says "non-UTF-8 files".
 func (x *Index) Find(words string) ([]Summary, error) {
 	var terms []string
-	for _, w := range strings.FieldsFunc(words, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+	for _, w := range Words(words) {
 		terms = append(terms, `"`+w+`"`)
 	}
 	if len(terms) == 0 {
@@ -194,20 +202,49 @@ func (x *Index) Show(id string) (*Detail, error) {
 	if err != nil {
 		return nil, err
 	}
-	if d.Out, err = x.links(`e.src = ?`, `e.dst`, id); err != nil {
+	if d.Out, err = x.out(id); err != nil {
 		return nil, err
 	}
-	if d.In, err = x.links(`e.dst = ?`, `e.src`, id); err != nil {
+	if d.In, err = x.in(id); err != nil {
 		return nil, err
 	}
 	return d, nil
 }
 
-// links returns the links where, selecting by where, the record at the end
-// named by other is the one to report.
-func (x *Index) links(where, other, id string) ([]Link, error) {
+// out returns the links made by the record and by its sub-records. Each of
+// a sub-record's has Local set. Containment itself isn't a link to report.
+func (x *Index) out(id string) ([]Link, error) {
+	rows, err := x.db.Query(`SELECT e.name, e.pinned_rev, e.pinned_fp, `+summaryCols+`, e.src
+		FROM edges e JOIN nodes n ON n.id = e.dst
+		WHERE e.name != ?2 AND (e.src = ?1 OR e.src IN (SELECT c.src FROM edges c WHERE c.dst = ?1 AND c.name = ?2))
+		ORDER BY e.name, n.id, e.src`, id, Containment)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Link
+	for rows.Next() {
+		var l Link
+		var rev sql.NullInt64
+		var fp, src string
+		if err := rows.Scan(&l.Field, &rev, &fp, &l.Other.ID, &l.Other.Type, &l.Other.Title, &l.Other.Status, &src); err != nil {
+			return nil, err
+		}
+		if rev.Valid {
+			l.Pin = &Pin{Rev: int(rev.Int64), FP: fp}
+		}
+		if src != id {
+			l.Local = strings.TrimPrefix(src, id+"/")
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// in returns the links to the record, without containment.
+func (x *Index) in(id string) ([]Link, error) {
 	rows, err := x.db.Query(`SELECT e.name, e.pinned_rev, e.pinned_fp, `+summaryCols+`
-		FROM edges e JOIN nodes n ON n.id = `+other+` WHERE `+where+` ORDER BY e.name, n.id`, id)
+		FROM edges e JOIN nodes n ON n.id = e.src WHERE e.dst = ? AND e.name != ? ORDER BY e.name, n.id`, id, Containment)
 	if err != nil {
 		return nil, err
 	}
@@ -235,39 +272,79 @@ func scanLinks(rows *sql.Rows) ([]Link, error) {
 
 // Dependents returns the records that rely on the one called id, which may
 // be an alias: those with a propagating link to it, those with one to them,
-// and so on. Each is listed once, at its shortest depth, by depth then ID.
-// A link that only mentions the record doesn't count, nor does containment.
+// and so on. Each is listed once, at its shortest depth, by depth then ID,
+// so a cycle or a dense tangle of links costs no more than its links. The
+// link that reached a record is the one from the lowest-numbered record on
+// the previous level, then by field. A link that only mentions the record
+// doesn't count, nor does containment.
 func (x *Index) Dependents(id string) ([]Dependent, error) {
 	id, err := x.resolve(id)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := x.db.Query(`
-WITH RECURSIVE dep(id, depth, via, field) AS (
-	SELECT src, 1, dst, name FROM edges WHERE dst = ?1 AND propagates = 1
-	UNION
-	SELECT e.src, d.depth + 1, e.dst, e.name FROM edges e JOIN dep d ON e.dst = d.id
-	WHERE e.propagates = 1 AND d.depth < (SELECT count(*) FROM nodes)
-), first AS (
-	SELECT id, depth, via, field, ROW_NUMBER() OVER (PARTITION BY id ORDER BY depth, via, field) AS rn FROM dep WHERE id != ?1
-)
-SELECT n.id, n.type, n.title, n.status, f.depth, f.field, v.id, v.type, v.title, v.status
-FROM first f JOIN nodes n ON n.id = f.id JOIN nodes v ON v.id = f.via
-WHERE f.rn = 1 ORDER BY f.depth, n.id`, id)
+	// The walk is traversal only; which links propagate is stored.
+	rows, err := x.db.Query(`SELECT dst, src, name FROM edges WHERE propagates = 1 ORDER BY dst, src, name`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []Dependent
+	type reach struct{ src, field string }
+	in := map[string][]reach{} // by the record linked to
 	for rows.Next() {
-		var d Dependent
-		if err := rows.Scan(&d.ID, &d.Type, &d.Title, &d.Status, &d.Depth, &d.Field,
-			&d.On.ID, &d.On.Type, &d.On.Title, &d.On.Status); err != nil {
+		var dst string
+		var r reach
+		if err := rows.Scan(&dst, &r.src, &r.field); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		in[dst] = append(in[dst], r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+
+	type found struct {
+		id, via, field string
+		depth          int
+	}
+	seen := map[string]bool{id: true}
+	var order []found
+	frontier := []string{id} // sorted, so the first link found to a record has the lowest via
+	for depth := 1; len(frontier) > 0; depth++ {
+		var next []found
+		for _, via := range frontier {
+			for _, r := range in[via] {
+				if !seen[r.src] {
+					seen[r.src] = true
+					next = append(next, found{r.src, via, r.field, depth})
+				}
+			}
+		}
+		sort.Slice(next, func(i, j int) bool { return next[i].id < next[j].id })
+		order = append(order, next...)
+		frontier = frontier[:0]
+		for _, f := range next {
+			frontier = append(frontier, f.id)
+		}
+	}
+	sum, err := x.db.Prepare(`SELECT ` + summaryCols + ` FROM nodes n WHERE n.id = ?`)
+	if err != nil {
+		return nil, err
+	}
+	defer sum.Close()
+	summary := func(id string) (Summary, error) { return scanSummary(sum.QueryRow(id)) }
+	out := make([]Dependent, 0, len(order))
+	for _, f := range order {
+		d := Dependent{Depth: f.depth, Field: f.field}
+		if d.Summary, err = summary(f.id); err != nil {
+			return nil, err
+		}
+		if d.On, err = summary(f.via); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // Stale returns the records that have changed since links were written

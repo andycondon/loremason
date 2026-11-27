@@ -4,8 +4,11 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/andycondon/loremason/internal/fingerprint"
@@ -30,8 +33,8 @@ func TestOpenBuildsThenReuses(t *testing.T) {
 	if x.Rebuilt() {
 		t.Error("nothing changed, so the second open should reuse the index")
 	}
-	if _, err := os.Stat(indexPath(w) + ".tmp"); err == nil {
-		t.Error("the temporary file was left behind")
+	if left := leftovers(t, w); len(left) != 0 {
+		t.Errorf("the temporary file was left behind: %v", left)
 	}
 }
 
@@ -110,6 +113,90 @@ func buildWith(t *testing.T, w *testws.Workspace, method int) error {
 	return Build(indexPath(w), w.Load(), Meta{Version: "other", FingerprintMethod: method, Signature: sig})
 }
 
+func TestOpenRebuildsForAnOlderIndexSchemaOrChangedTypes(t *testing.T) {
+	w := newWS(t, map[string]string{"belief/bel_7k3m9q.md": testws.Belief})
+	open(t, w).Close()
+	current := func() Meta {
+		t.Helper()
+		sig, err := Signature(w.Root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Meta{Version: testws.Version, Schema: SchemaVersion, Types: typesHash(), FingerprintMethod: fingerprint.Method, Signature: sig}
+	}
+	if x := open(t, w); x.Rebuilt() {
+		t.Fatal("the test's idea of a current index is wrong: Open rebuilt it")
+	}
+	for name, change := range map[string]func(*Meta){
+		"an older index schema": func(m *Meta) { m.Schema-- },
+		"changed record types":  func(m *Meta) { m.Types = "another" },
+	} {
+		m := current()
+		change(&m)
+		if err := Build(indexPath(w), w.Load(), m); err != nil {
+			t.Fatal(err)
+		}
+		x := open(t, w)
+		if !x.Rebuilt() {
+			t.Errorf("%s should rebuild", name)
+		}
+		x.Close()
+		if x = open(t, w); x.Rebuilt() {
+			t.Errorf("after the rebuild for %s the index should be current", name)
+		}
+	}
+}
+
+func TestOpenInParallelOnAStaleIndex(t *testing.T) {
+	w := newWS(t, map[string]string{
+		"belief/bel_7k3m9q.md": testws.Belief,
+		"task/task_9w4hzd.md":  record("task_9w4hzd", "Task", "status: accepted", "relies_on: [bel_7k3m9q]"),
+	})
+	open(t, w).Close()
+	put(t, w, "belief/bel_c9d4se.md", strings.NewReplacer("bel_7k3m9q", "bel_c9d4se", "validate and encodings", "guessing").Replace(testws.Belief))
+
+	const n = 8
+	got := make([]answers, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			x, err := Open(w.Root, registry.Load())
+			if err != nil {
+				errs[i] = err
+				return
+			}
+			defer x.Close()
+			if got[i], err = answersOf(x, "bel_7k3m9q"); err != nil {
+				errs[i] = err
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	for i := range got {
+		if errs[i] != nil {
+			t.Fatalf("open %d: %v", i, errs[i])
+		}
+		if !reflect.DeepEqual(got[i], got[0]) {
+			t.Errorf("open %d answered differently:\n%+v\nvs\n%+v", i, got[i], got[0])
+		}
+	}
+	if len(got[0].Dependents) != 1 || got[0].Show == nil {
+		t.Errorf("answers look empty: %+v", got[0])
+	}
+	if _, err := open(t, w).Show("bel_c9d4se"); err != nil {
+		t.Errorf("the index lacks the added record: %v", err)
+	}
+	if left := leftovers(t, w); len(left) != 0 {
+		t.Errorf("left behind: %v", left)
+	}
+}
+
 func TestOpenRebuildsACorruptIndex(t *testing.T) {
 	w := newWS(t, map[string]string{"belief/bel_7k3m9q.md": testws.Belief})
 	open(t, w).Close()
@@ -125,6 +212,16 @@ func TestOpenRebuildsACorruptIndex(t *testing.T) {
 	}
 }
 
+// ignored reports whether a .gitignore of simple patterns covers name.
+func ignored(gitignore, name string) bool {
+	for _, pat := range strings.Fields(gitignore) {
+		if ok, _ := path.Match(pat, name); ok {
+			return true
+		}
+	}
+	return false
+}
+
 func TestOpenWritesGitignoreOnce(t *testing.T) {
 	w := newWS(t, map[string]string{"belief/bel_7k3m9q.md": testws.Belief})
 	open(t, w).Close()
@@ -133,10 +230,15 @@ func TestOpenWritesGitignoreOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"index.db", "index.db.tmp"} {
-		if !strings.Contains(string(data), want+"\n") {
-			t.Errorf(".gitignore lacks %s:\n%s", want, data)
+	// Every file a build or a crashed one can leave is covered, and the
+	// config isn't.
+	for _, name := range []string{"index.db", "index.db.123456.tmp", "index.db-journal", "index.db-wal"} {
+		if !ignored(string(data), name) {
+			t.Errorf(".gitignore doesn't cover %s:\n%s", name, data)
 		}
+	}
+	if ignored(string(data), "config.yaml") {
+		t.Errorf(".gitignore covers config.yaml:\n%s", data)
 	}
 	if strings.Contains(string(data), "config.yaml") {
 		t.Errorf(".gitignore hides the config:\n%s", data)
@@ -181,6 +283,18 @@ func TestOpenWithoutFTS5(t *testing.T) {
 	}
 	if _, serr := os.Stat(indexPath(w)); serr == nil {
 		t.Error("an index was left in place")
+	}
+}
+
+func TestOpenReportsABusyProbeAsItIs(t *testing.T) {
+	old := probeFTS5
+	t.Cleanup(func() { probeFTS5 = old })
+	probeFTS5 = func(db *sql.DB) error { return errors.New("database is locked") }
+
+	w := newWS(t, map[string]string{"belief/bel_7k3m9q.md": testws.Belief})
+	_, err := Open(w.Root, registry.Load())
+	if err == nil || !strings.Contains(err.Error(), "database is locked") || strings.Contains(err.Error(), "FTS5") {
+		t.Errorf("Open = %v; want the busy error, not a missing-FTS5 one", err)
 	}
 }
 

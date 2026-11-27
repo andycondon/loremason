@@ -31,7 +31,10 @@ type App struct {
 type Command struct {
 	Name    string
 	Summary string   // one line, shown in the app's help and the command's
-	Args    []string // the arguments it takes, by name, such as "record ID"; it takes exactly these
+	Args    []string // the arguments it takes, by name, such as "record ID"; it takes exactly these, unless Variadic
+	// Variadic makes the last of Args take one or more values, such as
+	// "words", instead of exactly one. The action gets them all in args.
+	Variadic bool
 	// Setup declares the command's flags and returns what it does. The
 	// action reads the flags' values through the variables Setup made.
 	Setup func(fs *flag.FlagSet) Action
@@ -106,7 +109,7 @@ func (c *Command) run(a *App, env *Env, args []string) error {
 	if err != nil {
 		return &usageError{err.Error()}
 	}
-	if len(rest) != len(c.Args) {
+	if len(rest) < len(c.Args) || (len(rest) > len(c.Args) && !c.Variadic) {
 		return c.wrongCount(fs, len(rest))
 	}
 	return action(env, rest)
@@ -134,15 +137,19 @@ func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
 
 func (c *Command) wrongCount(fs *flag.FlagSet, got int) error {
 	var msg string
-	switch len(c.Args) {
-	case 0:
+	switch {
+	case len(c.Args) == 0:
 		msg = c.Name + " takes no arguments"
-	case 1:
+	case c.Variadic && len(c.Args) == 1:
+		msg = c.Name + " takes one or more " + c.Args[0]
+	case c.Variadic:
+		msg = fmt.Sprintf("%s takes %d arguments, the last of them one or more: %s", c.Name, len(c.Args), strings.Join(c.Args, ", "))
+	case len(c.Args) == 1:
 		msg = c.Name + " takes one " + c.Args[0]
 	default:
 		msg = fmt.Sprintf("%s takes %d arguments: %s", c.Name, len(c.Args), strings.Join(c.Args, ", "))
 	}
-	if got > len(c.Args) && takesValues(fs) {
+	if got > len(c.Args) && !c.Variadic && takesValues(fs) {
 		msg += " (quote a value that has spaces)"
 	}
 	return &usageError{msg}

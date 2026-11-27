@@ -324,3 +324,33 @@ func TestEdgeDoesNotReopenFromOutsideTheCommittingLayer(t *testing.T) {
 		}
 	}
 }
+
+// A sub-record's link takes its layer from the record that holds it, so a
+// propagating link from a knowing record's sub-record never reopens it.
+func TestEdgeFromASubRecordDoesNotReopen(t *testing.T) {
+	g := load(t,
+		file("bel_h8c1rt", "status: incorrect"),
+		file("bel_7k3m9q", "status: held", "support:\n  - {id: s1, evidence: [bel_h8c1rt]}"),
+	)
+	e := edge(t, g, "bel_7k3m9q/s1", "evidence")
+	e.Def.Propagates = true
+	if e.Reopens() {
+		t.Error("a link from a sub-record of a knowing record reopens")
+	}
+}
+
+// A link to a sub-record is judged by the sub-record's own status, which the
+// parent's type reads as fallen or not.
+func TestEdgeToASubRecordReopensOnlyWhenItHasFallen(t *testing.T) {
+	g := load(t,
+		file("bel_7k3m9q", "status: held", "support:\n  - {id: s1}\n  - {id: s2, status: incorrect}"),
+		file("dec_9w4hzd", "relies_on: [bel_7k3m9q/s1]"),
+		file("dec_p4n2xa", "relies_on: [bel_7k3m9q/s2]"),
+	)
+	if reopens(t, g, "dec_9w4hzd", "relies_on") {
+		t.Error("a link to a sub-record that holds reopens")
+	}
+	if !reopens(t, g, "dec_p4n2xa", "relies_on") {
+		t.Error("a link to a sub-record that has fallen doesn't reopen")
+	}
+}
