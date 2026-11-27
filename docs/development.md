@@ -11,6 +11,7 @@ internal/graph/     the model: Graph, File, Node, Edge, Ref, Pin; Load and Creat
 internal/check/     rules over a loaded graph
 internal/index/     a SQLite index of the graph, rebuilt when the files change, and the queries over it
 internal/pinning/  sync and revise: plan the changes, then apply them
+internal/page/     the generated initiative pages: render them, check them against disk, plan what sync writes
 internal/fingerprint/ the fp1 method, pure functions
 internal/splice/   rewrite the header fields tools own; leave every other byte
 internal/record/    reading a record file (Parse; Map, Value and Path over the header)

@@ -190,8 +190,12 @@ func errNoFTS5(cause error) error {
 // another process holds before it gives up.
 const busyTimeout = 10000
 
-// connect opens an SQLite file that waits busyTimeout for locks.
+// connect opens an SQLite file that waits busyTimeout for locks. A relative
+// path is made absolute first, since a file: URI can't hold one with "..".
 func connect(path string) (*sql.DB, error) {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
 	u := url.URL{Scheme: "file", Path: path, RawQuery: "_pragma=busy_timeout(" + strconv.Itoa(busyTimeout) + ")"}
 	return sql.Open("sqlite", u.String())
 }

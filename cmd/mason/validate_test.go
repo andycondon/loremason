@@ -9,7 +9,13 @@ import (
 func TestValidatePrintsProblemsAndASummary(t *testing.T) {
 	useVersion(t, "test")
 	const fixture = "../../testdata/check/wrong-target-type"
-	t.Setenv("LOREMASON_WORKSPACE", fixture)
+	// validate opens the index, which writes to the workspace, so it runs on
+	// a copy.
+	copy := t.TempDir()
+	if err := os.CopyFS(copy, os.DirFS(fixture)); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LOREMASON_WORKSPACE", copy)
 	want, err := os.ReadFile(fixture + "/want.txt")
 	if err != nil {
 		t.Fatal(err)

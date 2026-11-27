@@ -50,6 +50,7 @@ const help = "mason creates and checks the records of a context graph, keeps the
 	"  dependents   list the records that rely on a record, directly or through others\n" +
 	"  stale        list the records that changed since links were pinned to them\n" +
 	"  reopened     list the commitments resting on a belief that has fallen\n" +
+	"  where        show where an initiative stands\n" +
 	"\n" +
 	"Run `mason <command> --help` for a command's arguments and flags.\n" +
 	"\n" +

@@ -7,6 +7,7 @@ import (
 
 	"github.com/andycondon/loremason/internal/check"
 	"github.com/andycondon/loremason/internal/cli"
+	"github.com/andycondon/loremason/internal/page"
 	"github.com/andycondon/loremason/internal/pinning"
 	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/internal/vcs"
@@ -22,14 +23,22 @@ var syncCmd = &cli.Command{
 			if err != nil {
 				return err
 			}
-			res, err := check.Run(w.Root, registry.Load())
+			res, x, err := load(w.Root)
 			if err != nil {
 				return err
 			}
+			defer x.Close()
 			plan := pinning.Sync(res.Graph, res.Broken(), today())
+			pages, _, err := page.Plan(w.Root, x)
+			if err != nil {
+				return err
+			}
 			printWarnings(env, plan)
 			for _, path := range plan.Skipped {
 				fmt.Fprintf(env.Stdout, "%s: skipped, since it has errors; see `mason validate`\n", path)
+			}
+			for _, s := range pages.Skipped {
+				fmt.Fprintln(env.Stdout, s)
 			}
 			verb := ""
 			if *dryRun {
@@ -38,15 +47,21 @@ var syncCmd = &cli.Command{
 			for _, a := range plan.Actions {
 				fmt.Fprintf(env.Stdout, "%s: %s%s\n", a.Path, verb, a.What)
 			}
+			for _, a := range pages.Actions {
+				fmt.Fprintf(env.Stdout, "%s: %s%s\n", a.Path, verb, a.What)
+			}
 			if !*dryRun {
 				if err := pinning.Apply(w.Root, plan); err != nil {
 					return err
 				}
+				if err := pages.Apply(w.Root); err != nil {
+					return err
+				}
 			}
-			if plan.Empty() {
+			if plan.Empty() && pages.Empty() {
 				fmt.Fprintln(env.Stdout, "nothing to sync")
 			}
-			if len(plan.Skipped) > 0 {
+			if len(plan.Skipped) > 0 || len(pages.Skipped) > 0 {
 				return cli.ErrFailed
 			}
 			return nil
