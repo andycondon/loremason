@@ -122,7 +122,13 @@ func (x *Index) resolve(name string) (string, error) {
 }
 
 func (x *Index) notFound(name string) error {
-	rows, err := x.db.Query(`SELECT id FROM nodes UNION SELECT alias FROM aliases ORDER BY 1`)
+	return x.notFoundIn(name, `SELECT id FROM nodes UNION SELECT alias FROM aliases ORDER BY 1`)
+}
+
+// notFoundIn is the error for a name that matches none of the names the
+// query selects, with the nearest of them.
+func (x *Index) notFoundIn(name, query string) error {
+	rows, err := x.db.Query(query)
 	if err != nil {
 		return err
 	}
