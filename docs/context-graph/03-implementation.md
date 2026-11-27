@@ -197,7 +197,7 @@ A link appears in one of two forms:
 | Form | Written as | Used for |
 |---|---|---|
 | **Bare** | `relies_on: [bel_7k3m9q]` | What a person or agent writes. Also every link that doesn't propagate (`part_of` an initiative, `mentions`, `answers`). |
-| **Pinned** | `{to: bel_7k3m9q, rev: 1, fp: "fp1:3a9c0e1b77d2"}` | What a link that propagates becomes. It records the target's revision and fingerprint at the moment the link was made or last checked. |
+| **Pinned** | `{to: bel_7k3m9q, rev: 1, fp: "fp1:3a9c0e1b77d2"}` | What a link that propagates becomes, and evidence `from` a document. It records the target's revision and fingerprint at the moment the link was made or last checked. |
 
 **People never type fingerprints.** They write bare links, and `mason sync` pins each new link that propagates, and each new evidence `from` a document, to its target's current state. A bare link that propagates is valid but not yet watched, so it can never be stale. `mason sync` runs as part of the skills that write records, so in practice links are pinned within the same change.
 
