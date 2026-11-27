@@ -59,9 +59,9 @@ func plural(n int, noun string) string {
 }
 
 // load checks the workspace and opens the index over the result, for a
-// command that needs both the graph and the pages. The signature is taken
-// before the load, so a file edited while the command runs makes the next
-// query rebuild. The caller closes the index.
+// command that needs both the check result and the index, so the graph is
+// loaded once. The signature is taken before the load, so a file edited while
+// the command runs makes the next open rebuild. The caller closes the index.
 func load(root string) (*check.Result, *index.Index, error) {
 	sig, err := index.Signature(root)
 	if err != nil {

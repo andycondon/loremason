@@ -8,11 +8,12 @@
 // may open the same workspace at once: each builds into its own temporary
 // file and renames it into place, and any of the results is as good as
 // another. When .loremason can't be written to (a read-only checkout), the
-// index is built in a temporary file outside the workspace and removed on
-// Close. Whether a link is stale or reopens a commitment, a task's progress,
-// whether a question is settled, and which records belong to an initiative
-// are decided in package graph and stored; the queries here read what is
-// stored, and walk the stored links to find dependents.
+// index is built in a temporary file outside the workspace, again on every
+// open, and removed on Close. Whether a link is stale or reopens a
+// commitment, a task's progress, whether a question is settled, and which
+// records belong to an initiative are decided in package graph and stored;
+// the queries here read what is stored, and walk the stored links to find
+// dependents.
 //
 // The design is in docs/context-graph/03-implementation.md, section 6.
 package index
@@ -76,9 +77,9 @@ type Meta struct {
 // what is there now: the files under graph/, the loremason version, the
 // fingerprint method, SchemaVersion or the record types (any embedded schema
 // file). It also writes .loremason/.gitignore when that is missing, so the
-// index isn't committed. When the index can't be written in .loremason, it
-// is built in a temporary file outside the workspace instead, and Close
-// removes it.
+// index isn't committed. When that file or the index can't be written in
+// .loremason, the index is built in a temporary file outside the workspace
+// instead, and Close removes it.
 func Open(root string, reg *registry.Registry) (*Index, error) {
 	sig, err := Signature(root)
 	if err != nil {
@@ -210,8 +211,8 @@ func (x *Index) Close() error {
 // workspace when the index was built. A query warns when it isn't zero.
 func (x *Index) Problems() int { return x.problems }
 
-// Rebuilt reports whether Open built the index, rather than finding it
-// current.
+// Rebuilt reports whether opening built the index (Open or FromCheck),
+// rather than finding it current.
 func (x *Index) Rebuilt() bool { return x.rebuilt }
 
 // probeFTS5 reports why the SQLite build can't do full-text search, or nil.
@@ -311,6 +312,7 @@ func readMeta(path string) (m Meta, ok bool) {
 
 // Signature summarises every file under root's graph/ folder: its path,
 // size and modification time. An added, edited or deleted file changes it.
+// It is "" when there is no graph/ folder.
 func Signature(root string) (string, error) {
 	base, err := filepath.EvalSymlinks(filepath.Join(root, graph.Dir))
 	if errors.Is(err, fs.ErrNotExist) {

@@ -27,8 +27,8 @@ const attributesLine = "*/README.md linguist-generated=true"
 
 // Action is one file `mason sync` would write or delete, said in plain words.
 type Action struct {
-	Path string
-	What string
+	Path string // relative to the workspace, with forward slashes
+	What string // what is done, or for a skipped page, why it isn't
 }
 
 func (a Action) String() string { return a.Path + ": " + a.What }
@@ -49,7 +49,8 @@ type change struct {
 	remove bool
 }
 
-// Empty reports whether the plan changes nothing.
+// Empty reports whether the plan writes or deletes nothing. Skipped pages
+// don't count: they are left alone.
 func (p *Changes) Empty() bool { return len(p.Actions) == 0 }
 
 // kebab is what a slug looks like. A slug that isn't is left to the schema
@@ -78,7 +79,7 @@ var kebab = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 //     when it is missing, and the line is appended when the file lacks it,
 //     keeping every other byte. A file with the line is left alone.
 //
-// Every diagnostic names the page and says to run `mason sync`, or what to do
+// Every diagnostic names the file and says to run `mason sync`, or what to do
 // by hand. The error is for what can't be read. The diagnostics are errors,
 // so `mason validate` fails until `mason sync` has been run.
 func Plan(root string, x *index.Index) (*Changes, diag.List, error) {
@@ -217,7 +218,8 @@ func mapKeys[V any](m map[string]V) func(yield func(string) bool) {
 
 // MarkerLines is how far down a page Marker may be, counting from line 1, for
 // the page to be taken as generated. A page quoting the marker further down
-// is hand-written. The title and a merge conflict above the marker fit in it.
+// is hand-written. README puts the marker on line 3, so the rest leaves room
+// for a merge conflict above it.
 const MarkerLines = 10
 
 // lf returns text with CRLF line endings changed to LF, so a page checked

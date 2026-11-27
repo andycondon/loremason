@@ -279,7 +279,7 @@ Pins, `via` links and re-check evidence all live in record files, never only in 
 
 ## 6. The index
 
-`index.db` is a SQLite database (a database kept in a single file). `mason` is written in Go and includes SQLite through a pure-Go driver, so it stays one binary with nothing else to install. The index is rebuilt from `graph/` whenever the files have changed since the last build: the index keeps a signature of every file's path, size and modification time, so an added, edited or deleted file is noticed. It's also rebuilt when the loremason version or fingerprint method has changed, when the index's own table layout has (a schema version number in the code), or when the record types have (`types.yaml` and the JSON schemas; the index keeps a hash of them). Several `mason` commands starting at once on a stale index each build into their own temporary file and rename it into place, so none of them sees half an index and none fails. A full rebuild of 5,000 records took about a third of a second in a test, so there's no incremental update to get wrong.
+`index.db` is a SQLite database (a database kept in a single file). `mason` is written in Go and includes SQLite through a pure-Go driver, so it stays one binary with nothing else to install. The index is rebuilt from `graph/` whenever the files have changed since the last build: the index keeps a signature of every file's path, size and modification time, so an added, edited or deleted file is noticed. It's also rebuilt when the loremason version or fingerprint method has changed, when the index's own table layout has (a schema version number in the code), or when the record types have (`types.yaml` and the JSON schemas; the index keeps a hash of them). When `.loremason` can't be written to (a read-only checkout), the index is built in a temporary file outside the workspace on every command, and removed when the command ends. Several `mason` commands starting at once on a stale index each build into their own temporary file and rename it into place, so none of them sees half an index and none fails. A full rebuild of 5,000 records took about a third of a second in a test, so there's no incremental update to get wrong.
 
 ```mermaid
 erDiagram
@@ -363,7 +363,7 @@ Following links is done in Go, not in SQL. `mason dependents` loads the links th
 | `mason dependents <id>` | What is built on this, directly and further down? Follows links that propagate, with each record's depth; a record that only mentions this one isn't listed. |
 | `mason stale` | Which links need a re-check, grouped by the record that changed? |
 | `mason reopened` | Which commitments rely on a belief that has fallen? |
-| `mason where <initiative>` | The "where are we" view of an initiative, named by slug or ID: tasks in progress, blocked tasks with what they wait on, open questions with their pending answers, and the initiative's own links that need a re-check, grouped by the record that changed. |
+| `mason where <initiative>` | The "where are we" view of an initiative, named by slug, ID or alias: tasks in progress, blocked tasks with what they wait on, open questions with their pending answers, and the links from the initiative's records (and their sub-records) that need a re-check, grouped by the record that changed. |
 
 Queries print plain text, one stable line per result, which people and agents both read. Structured output can come with the MCP server (section 10).
 
@@ -375,11 +375,11 @@ Writing commands are kept separate and few. `mason new <type>` creates a record 
 
 Each initiative's `README.md` is built from the records in it and written to `initiatives/<slug>/README.md`, so browsing an initiative on GitHub still starts there. It shows the title, purpose, goals and body of the `initiative` record, who is involved and their roles, and the initiative's design docs, PRDs and tasks. Each is linked by title to its record file and shows its status, and a task its progress. Closed records stay listed, because the page is the list of what exists.
 
-The page opens with a hidden marker line and a visible line saying it's generated and from which record. It's a read-only snapshot: nothing reads it back. Its rules:
+After its title, the page has a hidden marker line (line 3) and a visible line saying it's generated and from which record. It's a read-only snapshot: nothing reads it back except to compare it with a fresh render. Its rules:
 - **Kept current.** `mason sync` regenerates it, and `validate` fails when it no longer matches the records, so a hand edit can't quietly drift.
 - **Committed.** It's marked generated in `initiatives/.gitattributes`, where `sync` keeps its one line (`*/README.md linguist-generated=true`) and leaves every other line alone, so GitHub collapses it in pull request diffs. A merge conflict in it is resolved by running `sync`.
 - **Stable.** It renders the same bytes from the same records on any day: it holds no dates.
-- **Never over a person's work.** `sync` writes only a page with no file yet or with its marker. A hand-written `README.md` is left alone and reported. A generated page whose initiative is gone is deleted, and two initiatives with the same slug get no page.
+- **Never over a person's work.** `sync` writes only a page with no file yet or with its marker among the first ten lines. A hand-written `README.md` is left alone and reported, and `sync` exits with failure until it is moved. A generated page whose initiative is gone is deleted, unless the records had errors, since a broken record may be the missing initiative. Two initiatives with the same slug get no page.
 
 There is no committed `where.md`. A copy of the `mason where` view would change with nearly every record change, conflict across branches and be read stale, while the command answers fresh. Writing its output to a file can come later, and so can a UI over the same queries.
 

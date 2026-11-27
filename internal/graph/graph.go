@@ -250,8 +250,8 @@ func (e *Edge) Attr(name string) string {
 }
 
 // Progress returns the node's progress: the header's, or else the default its
-// type's schema declares (todo for a task). It's "" for a node that has no
-// progress field.
+// type's schema declares (todo for a task). It's "" for a sub-record, which
+// gets no default, and for a node whose type has no progress field.
 func (n *Node) Progress() string {
 	if p := n.Fields.Text("progress"); p != "" {
 		return p
@@ -263,8 +263,8 @@ func (n *Node) Progress() string {
 }
 
 // Settled reports whether the node needs no more answering: it is dropped (it
-// has a dropped field), or a link to it settles it. For a question, open
-// means not settled.
+// has a dropped field), or a link to it settles it. It is asked of any node;
+// for a question, open means not settled.
 func (n *Node) Settled() bool {
 	if _, dropped := n.Fields.Get("dropped"); dropped {
 		return true

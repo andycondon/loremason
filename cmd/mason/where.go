@@ -27,8 +27,8 @@ var whereCmd = &cli.Command{
 }
 
 // printView prints the view: the initiative, then its four sections. A
-// section with nothing in it says "none". Records print with line, and what
-// belongs to a record is indented under it.
+// section with nothing in it says "none". Records print as line formats them,
+// and what belongs to a record is indented under it.
 func printView(w io.Writer, v *index.View) {
 	fmt.Fprintln(w, line(v.Initiative))
 

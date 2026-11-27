@@ -15,7 +15,7 @@ import (
 
 var syncCmd = &cli.Command{
 	Name:    "sync",
-	Summary: "pin links and record fingerprints",
+	Summary: "pin links, record fingerprints and regenerate the pages",
 	Setup: func(fs *flag.FlagSet) cli.Action {
 		dryRun := fs.Bool("dry-run", false, "say what would change, and change nothing")
 		return func(env *cli.Env, _ []string) error {

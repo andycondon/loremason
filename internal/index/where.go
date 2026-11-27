@@ -69,7 +69,7 @@ type Person struct {
 }
 
 // Entry is a member record listed on an initiative's page, by title (ignoring
-// case) then ID.
+// ASCII case) then ID.
 type Entry struct {
 	Summary
 	Path     string // the record's file, relative to the workspace, as stored
@@ -190,7 +190,8 @@ type Initiative struct {
 	Slug string
 }
 
-// Initiatives returns every initiative, by ID.
+// Initiatives returns every initiative with its slug, by ID, including those
+// whose slug is empty or shared.
 func (x *Index) Initiatives() ([]Initiative, error) {
 	rows, err := x.db.Query(`SELECT ` + summaryCols + `, i.slug FROM nodes n JOIN initiatives i ON i.id = n.id ORDER BY n.id`)
 	if err != nil {
@@ -208,8 +209,8 @@ func (x *Index) Initiatives() ([]Initiative, error) {
 	return out, rows.Err()
 }
 
-// Where returns where the initiative stands. name is its slug, its ID or an
-// alias. An unknown name gives a *NotFoundError, the name of another kind of
+// Where returns where the initiative stands, as View says. name is its slug,
+// its ID or an alias. An unknown name gives a *NotFoundError, the name of another kind of
 // record a *NotInitiativeError, and a slug two initiatives share a
 // *DuplicateSlugError.
 func (x *Index) Where(name string) (*View, error) {
@@ -372,7 +373,7 @@ func (x *Index) people(ini string) ([]Person, error) {
 }
 
 // entries returns the initiative's members of one type, by title (ignoring
-// case) then ID.
+// ASCII case, as SQLite's NOCASE does) then ID.
 func (x *Index) entries(ini, typ string) ([]Entry, error) {
 	rows, err := x.db.Query(`SELECT `+summaryCols+`, n.path, n.progress FROM nodes n JOIN members m ON m.id = n.id
 		WHERE m.initiative = ? AND n.type = ? ORDER BY n.title COLLATE NOCASE, n.id`, ini, typ)

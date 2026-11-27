@@ -105,6 +105,8 @@ func Build(path string, g *graph.Graph, m Meta) (err error) {
 	return os.Rename(tmp, path)
 }
 
+// write puts the tables, the meta rows and everything in g into db, in one
+// transaction.
 func write(db *sql.DB, g *graph.Graph, m Meta) error {
 	tx, err := db.Begin()
 	if err != nil {

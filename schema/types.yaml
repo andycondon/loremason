@@ -19,7 +19,8 @@
 # closed            Statuses (from the type's schema) that mean the record is no longer in force.
 #                   A committing record in one of them isn't reopened by a fallen target. Optional.
 # settles           On an edge: statuses of the source (from its type's schema) at which the link
-#                   settles its target. A question is settled by an incoming link that settles it. Optional.
+#                   settles its target. A record with an incoming link that settles it is settled;
+#                   an open question is one that isn't. Optional.
 # pending           On an edge: statuses of the source (from its type's schema) at which the link is
 #                   an answer still waiting to settle its target. Optional.
 # subrecords        Header field holding a list of sub-records, each with its own short id.
