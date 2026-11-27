@@ -1,8 +1,14 @@
 package page
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/andycondon/loremason/internal/index"
+	"github.com/andycondon/loremason/internal/registry"
 )
 
 // ---- Plan and Apply ----
@@ -25,7 +31,7 @@ func TestPlanWritesMissingPagesAndAttributes(t *testing.T) {
 	if got := read(t, w, "initiatives/alpha/README.md"); !strings.HasPrefix(got, "# Initiative alpha\n") {
 		t.Errorf("page = %q", got)
 	}
-	if exists(w, "initiatives/alpha/.README.md.tmp") {
+	if left, _ := filepath.Glob(filepath.Join(w.Root, "initiatives", "alpha", ".*.tmp")); len(left) != 0 {
 		t.Error("a temporary file was left")
 	}
 }
@@ -107,7 +113,7 @@ func TestPlanDeletesAnOrphanedPage(t *testing.T) {
 	write(t, w, "initiatives/notes/README.md", "# hand-written, no initiative\n")
 
 	p, ds := plan(t, w)
-	if got := paths(ds); got != "initiatives/gone/README.md" || !strings.Contains(ds[0].Msg, "run `mason sync` to delete it") {
+	if got := paths(ds); got != "initiatives/gone/README.md" || !strings.Contains(ds[0].Msg, "no initiative has the slug `gone`") || !strings.Contains(ds[0].Msg, "run `mason sync` to delete it") {
 		t.Errorf("diagnostics: %v", ds)
 	}
 	if err := p.Apply(w.Root); err != nil {
@@ -150,18 +156,42 @@ func TestPlanGivesDuplicateSlugsNoPage(t *testing.T) {
 	}
 }
 
-func TestPlanRewritesTheAttributesFile(t *testing.T) {
+func TestPlanAddsItsLineToAnAttributesFileWithoutIt(t *testing.T) {
 	w := workspace(t, map[string]string{"initiative/" + iniA + ".md": initiative(iniA, "alpha")})
 	syncPages(t, w)
-	write(t, w, AttributesPath, "*/README.md linguist-generated=false\n")
-	p, ds := plan(t, w)
-	if paths(ds) != AttributesPath || len(p.Actions) != 1 {
-		t.Fatalf("diagnostics %v, actions %+v", ds, p.Actions)
+	for _, c := range []struct{ have, want string }{
+		{"*/README.md linguist-generated=false\n", "*/README.md linguist-generated=false\n*/README.md linguist-generated=true\n"},
+		{"# mine\r\n*.png binary", "# mine\r\n*.png binary\n*/README.md linguist-generated=true\n"},
+		{"", "*/README.md linguist-generated=true\n"},
+	} {
+		write(t, w, AttributesPath, c.have)
+		p, ds := plan(t, w)
+		if paths(ds) != AttributesPath || len(p.Actions) != 1 {
+			t.Fatalf("%q: diagnostics %v, actions %+v", c.have, ds, p.Actions)
+		}
+		if err := p.Apply(w.Root); err != nil {
+			t.Fatal(err)
+		}
+		if got := read(t, w, AttributesPath); got != c.want {
+			t.Errorf("%q became %q, want %q", c.have, got, c.want)
+		}
+		syncPages(t, w)
 	}
-	if err := p.Apply(w.Root); err != nil {
-		t.Fatal(err)
-	}
+}
+
+func TestPlanLeavesAnAttributesFileWithItsLineAlone(t *testing.T) {
+	w := workspace(t, map[string]string{"initiative/" + iniA + ".md": initiative(iniA, "alpha")})
 	syncPages(t, w)
+	for _, have := range []string{
+		"*.png binary\n*/README.md linguist-generated=true\n*.svg text\n",
+		"*/README.md linguist-generated=true",
+		"# mine\r\n*/README.md linguist-generated=true\r\n",
+	} {
+		write(t, w, AttributesPath, have)
+		if p, ds := plan(t, w); len(p.Actions) != 0 || len(ds) != 0 {
+			t.Errorf("%q: actions %+v, diagnostics %v", have, p.Actions, ds)
+		}
+	}
 }
 
 func TestPlanWithNoInitiativesWritesNothing(t *testing.T) {
@@ -199,5 +229,180 @@ func TestFirstDifference(t *testing.T) {
 		if _, msg := firstDifference([]byte(c.got), []byte(c.want)); !strings.HasPrefix(msg, c.msg) {
 			t.Errorf("firstDifference(%q, %q) = %q", c.got, c.want, msg)
 		}
+	}
+}
+
+func TestPlanSeesAPageWithWindowsLineEndingsAsCurrent(t *testing.T) {
+	w := workspace(t, map[string]string{"initiative/" + iniA + ".md": initiative(iniA, "alpha", "purpose: Be fast.")})
+	syncPages(t, w)
+	page := read(t, w, "initiatives/alpha/README.md")
+	write(t, w, "initiatives/alpha/README.md", strings.ReplaceAll(page, "\n", "\r\n"))
+	if p, ds := plan(t, w); len(p.Actions) != 0 || len(p.Skipped) != 0 || len(ds) != 0 {
+		t.Errorf("a line-ending difference is not stale: %+v, %v", p, ds)
+	}
+	write(t, w, "initiatives/alpha/README.md", strings.ReplaceAll(strings.Replace(page, "Be fast.", "Be slow.", 1), "\n", "\r\n"))
+	p, ds := plan(t, w)
+	if len(ds) != 1 || ds[0].Line != 7 || !strings.Contains(ds[0].Msg, "line 7 reads `Be slow.`") {
+		t.Errorf("a real difference is still found, with no carriage return in what it says: %v", ds)
+	}
+	if len(p.Actions) != 1 {
+		t.Errorf("actions: %+v", p.Actions)
+	}
+}
+
+// ---- Which pages are generated ----
+
+func TestPlanLeavesAPageThatOnlyQuotesTheMarkerAlone(t *testing.T) {
+	w := workspace(t, map[string]string{"initiative/" + iniA + ".md": initiative(iniA, "alpha")})
+	notes := "# My notes\n" + strings.Repeat("a line\n", 10) + "Pages begin with:\n" + Marker + "\n"
+	write(t, w, "initiatives/alpha/README.md", notes)
+	p, _ := plan(t, w)
+	if len(p.Skipped) != 1 || !strings.Contains(p.Skipped[0].What, "hand-written") {
+		t.Errorf("a marker deep in the page makes it hand-written: %+v", p)
+	}
+}
+
+func TestHasMarkerMeansAWholeLineNearTheTop(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		page string
+		want bool
+	}{
+		{"first line", Marker + "\n", true},
+		{"line 10", strings.Repeat("x\n", 9) + Marker + "\n", true},
+		{"line 11", strings.Repeat("x\n", 10) + Marker + "\n", false},
+		{"with a carriage return", "# T\r\n" + Marker + "\r\n", true},
+		{"part of a line", "see " + Marker + "\n", false},
+		{"none", "# T\n", false},
+	} {
+		if got := hasMarker([]byte(c.page)); got != c.want {
+			t.Errorf("%s: hasMarker = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestPlanRecognisesAConflictAboveTheMarker(t *testing.T) {
+	w := workspace(t, map[string]string{"initiative/" + iniA + ".md": initiative(iniA, "alpha")})
+	syncPages(t, w)
+	page := read(t, w, "initiatives/alpha/README.md")
+	conflict := strings.Replace(page, "# Initiative alpha\n", "<<<<<<< ours\n# Initiative alpha\n=======\n# Initiative beta\n>>>>>>> theirs\n", 1)
+	write(t, w, "initiatives/alpha/README.md", conflict)
+	p, ds := plan(t, w)
+	if len(p.Skipped) != 0 || len(ds) != 1 || !strings.Contains(ds[0].Msg, "is out of date") {
+		t.Fatalf("a conflict above the marker should still be a generated page: %+v, %v", p.Skipped, ds)
+	}
+}
+
+// ---- Pages that aren't regular files ----
+
+func TestPlanReportsAPageThatIsNotAFile(t *testing.T) {
+	w := workspace(t, map[string]string{
+		"initiative/" + iniA + ".md": initiative(iniA, "alpha"),
+		"initiative/" + iniB + ".md": initiative(iniB, "beta"),
+	})
+	if err := os.MkdirAll(filepath.Join(w.Root, "initiatives", "alpha", "README.md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, w, "initiatives/beta", "not a folder\n")
+	write(t, w, "initiatives/other/x", "")
+	if err := os.MkdirAll(filepath.Join(w.Root, "initiatives", "other", "README.md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	p, ds := plan(t, w)
+	for _, page := range []string{"initiatives/alpha/README.md", "initiatives/beta/README.md"} {
+		found := false
+		for _, d := range ds {
+			if d.Path == page && !d.Warning && strings.Contains(d.Msg, "not a regular file") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("no diagnostic for %s: %v", page, ds)
+		}
+		skipped := false
+		for _, a := range p.Skipped {
+			if a.Path == page {
+				skipped = true
+			}
+		}
+		if !skipped {
+			t.Errorf("%s isn't skipped: %+v", page, p.Skipped)
+		}
+	}
+	if err := p.Apply(w.Root); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// ---- Broken records ----
+
+func TestPlanLeavesPagesAloneWhileARecordCannotBeLoaded(t *testing.T) {
+	w := workspace(t, map[string]string{"initiative/" + iniA + ".md": initiative(iniA, "alpha")})
+	syncPages(t, w)
+	page := read(t, w, "initiatives/alpha/README.md")
+	w.Write("initiative/"+iniA+".md", "---\nid: [\n---\n")
+	stamp(t, w, "initiative/"+iniA+".md")
+
+	x, err := index.Open(w.Root, registry.Load())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer x.Close()
+	if x.Problems() == 0 {
+		t.Fatal("the broken record should be a problem")
+	}
+	p, ds, err := Plan(w.Root, x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Actions) != 0 || len(ds) != 0 {
+		t.Errorf("a page whose initiative can't be read is not an orphan: %+v, %v", p.Actions, ds)
+	}
+	if got := read(t, w, "initiatives/alpha/README.md"); got != page {
+		t.Errorf("the page changed:\n%s", got)
+	}
+}
+
+// ---- Apply ----
+
+func TestApplyIsSafeWhenSeveralRunAtOnce(t *testing.T) {
+	w := workspace(t, map[string]string{"initiative/" + iniA + ".md": initiative(iniA, "alpha")})
+	p, _ := plan(t, w)
+	for round := 0; round < 30; round++ {
+		var wg sync.WaitGroup
+		errs := make(chan error, 8)
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := p.Apply(w.Root); err != nil {
+					errs <- err
+				}
+			}()
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			t.Fatalf("round %d: %v", round, err)
+		}
+	}
+	if left, _ := filepath.Glob(filepath.Join(w.Root, "initiatives", "*", ".*.tmp")); len(left) != 0 {
+		t.Errorf("temporary files were left: %v", left)
+	}
+	syncPages(t, w)
+}
+
+func TestApplyLeavesNoTemporaryFileWhenItFails(t *testing.T) {
+	dir := t.TempDir()
+	// A folder where the file belongs can't be replaced by a file.
+	if err := os.MkdirAll(filepath.Join(dir, "page.md", "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(filepath.Join(dir, "page.md"), []byte("x")); err == nil {
+		t.Fatal("writeFile over a folder succeeded")
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, ".*")); len(left) != 0 {
+		t.Errorf("a failed write left %v", left)
 	}
 }

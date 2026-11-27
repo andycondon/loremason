@@ -509,3 +509,22 @@ func TestProblemsOfACleanWorkspace(t *testing.T) {
 		t.Errorf("Problems = %d, want 0", x.Problems())
 	}
 }
+
+func TestConnectOpensARelativePath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "x.db"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	db, err := connect(filepath.Join(".", "sub", "..", "x.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE t (a)`); err != nil {
+		t.Fatalf("a relative path with .. should open the file: %v", err)
+	}
+	if info, err := os.Stat(filepath.Join(dir, "x.db")); err != nil || info.Size() == 0 {
+		t.Errorf("the table wasn't written to ./x.db: %v", err)
+	}
+}

@@ -58,10 +58,11 @@ var syncCmd = &cli.Command{
 					return err
 				}
 			}
-			if plan.Empty() && pages.Empty() {
+			skipped := len(plan.Skipped) > 0 || len(pages.Skipped) > 0
+			if plan.Empty() && pages.Empty() && !skipped {
 				fmt.Fprintln(env.Stdout, "nothing to sync")
 			}
-			if len(plan.Skipped) > 0 || len(pages.Skipped) > 0 {
+			if skipped {
 				return cli.ErrFailed
 			}
 			return nil

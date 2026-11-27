@@ -383,12 +383,53 @@ func TestInitiativesAreListedByID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ids(got) != iniA+" "+iniB || got[0].Type != "initiative" || got[0].Title != "Initiative alpha" {
-		t.Errorf("Initiatives = %+v", got)
+	if len(got) != 2 || got[0].ID != iniA || got[1].ID != iniB || got[0].Type != "initiative" || got[0].Title != "Initiative alpha" {
+		t.Fatalf("Initiatives = %+v", got)
+	}
+	if got[0].Slug != "alpha" || got[1].Slug != "beta" {
+		t.Errorf("slugs = %q, %q", got[0].Slug, got[1].Slug)
+	}
+}
+
+func TestAnInitiativeWithNoSlugIsNotFoundByAnEmptyName(t *testing.T) {
+	w := newWS(t, map[string]string{"initiative/" + iniA + ".md": record(iniA, "No slug", "status: active")})
+	x := open(t, w)
+	for name, call := range map[string]func() error{
+		"Where":    func() error { _, err := x.Where(""); return err },
+		"Overview": func() error { _, err := x.Overview(""); return err },
+	} {
+		if err := call(); !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s(\"\") = %v, want a not-found error", name, err)
+		}
+	}
+	got, err := x.Initiatives()
+	if err != nil || len(got) != 1 || got[0].Slug != "" {
+		t.Errorf("Initiatives = %+v, %v", got, err)
 	}
 }
 
 // ---- Overview ----
+
+func TestOverviewSortsEntriesByTitleIgnoringCaseThenID(t *testing.T) {
+	w := newWS(t, map[string]string{
+		"initiative/" + iniA + ".md": initiative(iniA, "alpha"),
+		"task/task_t1t1t1.md":        task("task_t1t1t1", "banana", iniA),
+		"task/task_t2t2t2.md":        task("task_t2t2t2", "Apple", iniA),
+		"task/task_t3t3t3.md":        task("task_t3t3t3", "cherry", iniA),
+		"task/task_t4t4t4.md":        task("task_t4t4t4", "Banana", iniA),
+	})
+	o, err := open(t, w).Overview("alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range o.Tasks {
+		got = append(got, e.ID)
+	}
+	if want := "task_t2t2t2 task_t1t1t1 task_t4t4t4 task_t3t3t3"; strings.Join(got, " ") != want {
+		t.Errorf("tasks = %v, want %s", got, want)
+	}
+}
 
 func TestOverviewHoldsWhatTheREADMEShows(t *testing.T) {
 	w := newWS(t, map[string]string{

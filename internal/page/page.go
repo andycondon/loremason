@@ -8,6 +8,7 @@ package page
 
 import (
 	"fmt"
+	"net/url"
 	"path"
 	"path/filepath"
 	"strings"
@@ -87,13 +88,18 @@ func section(b *strings.Builder, heading, dir string, entries []index.Entry) {
 }
 
 // linkTo returns the path of a workspace file as a link target relative to
-// the folder dir, with the characters that end a Markdown link escaped.
+// the folder dir, with each segment of it escaped as a URL path segment, so
+// a space, a bracket or a % in a name can't end or change the link.
 func linkTo(dir, file string) string {
 	rel, err := filepath.Rel(filepath.FromSlash(dir), filepath.FromSlash(file))
 	if err != nil {
 		rel = file
 	}
-	return strings.NewReplacer(" ", "%20", "(", "%28", ")", "%29").Replace(filepath.ToSlash(rel))
+	segs := strings.Split(filepath.ToSlash(rel), "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	return strings.Join(segs, "/")
 }
 
 // escape makes text safe to use as Markdown link text or a heading.

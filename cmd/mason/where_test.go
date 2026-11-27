@@ -121,16 +121,17 @@ func TestSyncDryRunWritesNoPages(t *testing.T) {
 
 func TestSyncSkipsAHandWrittenPage(t *testing.T) {
 	w := newWorkspace(t, initiativeWorkspace(t))
+	mason("sync") // pins the links and writes the attributes, so only the page is left
 	path := filepath.Join(w.Root, pagePath)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(path, []byte("my notes\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	code, out, _ := mason("sync")
 	if code != 1 || !strings.Contains(out, pagePath+": skipped, since it is hand-written") {
 		t.Errorf("exit %d\n%s", code, out)
+	}
+	if strings.Contains(out, "nothing to sync") {
+		t.Errorf("said there was nothing to sync, with a page skipped:\n%s", out)
 	}
 	if got, _ := os.ReadFile(path); string(got) != "my notes\n" {
 		t.Errorf("the page was overwritten: %q", got)

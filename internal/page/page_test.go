@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/andycondon/loremason/internal/index"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden README with what is rendered")
@@ -96,5 +98,35 @@ func TestREADMEEscapesAndLinksRelatively(t *testing.T) {
 	got := string(README(overview(t, w, "alpha")))
 	if want := "- [A \\[link\\] and \\`code\\`](../../graph/task/task_t1t1t1.md): accepted, todo\n"; !strings.Contains(got, want) {
 		t.Errorf("missing %q in:\n%s", want, got)
+	}
+}
+
+func TestREADMEEscapesEachSegmentOfALinkPath(t *testing.T) {
+	o := &index.Overview{
+		Initiative: index.Summary{ID: iniA, Title: "Alpha"},
+		Slug:       "alpha",
+		Path:       "graph/initiative/" + iniA + ".md",
+		Tasks: []index.Entry{{
+			Summary: index.Summary{ID: "task_t1t1t1", Title: "T", Status: "accepted"},
+			Path:    "graph/my tasks/50%#1 (a)?.md",
+		}},
+	}
+	got := string(README(o))
+	if want := "- [T](../../graph/my%20tasks/50%25%231%20%28a%29%3F.md): accepted\n"; !strings.Contains(got, want) {
+		t.Errorf("missing %q in:\n%s", want, got)
+	}
+}
+
+func TestREADMESortsEntriesByTitleIgnoringCase(t *testing.T) {
+	w := workspace(t, map[string]string{
+		"initiative/" + iniA + ".md": initiative(iniA, "alpha"),
+		"task/task_t1t1t1.md":        task("task_t1t1t1", "banana", iniA),
+		"task/task_t2t2t2.md":        task("task_t2t2t2", "Cherry", iniA),
+		"task/task_t3t3t3.md":        task("task_t3t3t3", "apple", iniA),
+	})
+	got := string(README(overview(t, w, "alpha")))
+	a, b, c := strings.Index(got, "[apple]"), strings.Index(got, "[banana]"), strings.Index(got, "[Cherry]")
+	if a < 0 || !(a < b && b < c) {
+		t.Errorf("tasks should read apple, banana, Cherry:\n%s", got)
 	}
 }

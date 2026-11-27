@@ -4,13 +4,15 @@
 // the files it was built from. It is rebuilt from graph/ whenever the files,
 // the loremason version, the fingerprint method, the index's own table layout
 // (SchemaVersion) or the record types (every embedded schema file) have
-// changed, so there is no incremental update to get wrong. Several processes may open the same
-// workspace at once: each builds into its own temporary file and renames it
-// into place, and any of the results is as good as another. Whether a link
-// is stale or reopens a commitment, a task's progress, whether a question is
-// settled, and which records belong to an initiative are decided in package
-// graph and stored; the queries here read what is stored, and walk the
-// stored links to find dependents.
+// changed, so there is no incremental update to get wrong. Several processes
+// may open the same workspace at once: each builds into its own temporary
+// file and renames it into place, and any of the results is as good as
+// another. When .loremason can't be written to (a read-only checkout), the
+// index is built in a temporary file outside the workspace and removed on
+// Close. Whether a link is stale or reopens a commitment, a task's progress,
+// whether a question is settled, and which records belong to an initiative
+// are decided in package graph and stored; the queries here read what is
+// stored, and walk the stored links to find dependents.
 //
 // The design is in docs/context-graph/03-implementation.md, section 6.
 package index
@@ -27,6 +29,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	_ "modernc.org/sqlite" // the pure-Go SQLite driver
 
@@ -55,6 +58,7 @@ type Index struct {
 	db       *sql.DB
 	problems int
 	rebuilt  bool
+	temp     string // an index built outside the workspace, removed on Close; "" otherwise
 }
 
 // Meta is what an index records about how it was built.
@@ -72,7 +76,9 @@ type Meta struct {
 // what is there now: the files under graph/, the loremason version, the
 // fingerprint method, SchemaVersion or the record types (any embedded schema
 // file). It also writes .loremason/.gitignore when that is missing, so the
-// index isn't committed.
+// index isn't committed. When the index can't be written in .loremason, it
+// is built in a temporary file outside the workspace instead, and Close
+// removes it.
 func Open(root string, reg *registry.Registry) (*Index, error) {
 	sig, err := Signature(root)
 	if err != nil {
@@ -98,13 +104,11 @@ func openWith(root, sig string, load func() (*check.Result, error)) (*Index, err
 	if err != nil {
 		return nil, err
 	}
-	if err := writeIgnore(root); err != nil {
-		return nil, err
-	}
+	ignoreErr := writeIgnore(root)
 	want := Meta{Version: ws.Config.Version, Schema: SchemaVersion, Types: typesHash(), FingerprintMethod: fingerprint.Method, Signature: sig}
 	path := filepath.Join(root, dir, fileName)
 
-	rebuilt := false
+	rebuilt, temp := false, ""
 	got, ok := readMeta(path)
 	if !ok || !got.sameBuild(want) {
 		res, err := load()
@@ -113,16 +117,48 @@ func openWith(root, sig string, load func() (*check.Result, error)) (*Index, err
 		}
 		errs, _ := res.Diagnostics.Count()
 		want.Problems = errs
-		if err := Build(path, res.Graph, want); err != nil {
+		if ignoreErr == nil {
+			err = Build(path, res.Graph, want)
+		}
+		if ignoreErr != nil || notWritable(err) {
+			path, err = buildOutside(res, want)
+			temp = path
+		}
+		if err != nil {
 			return nil, err
 		}
 		got, rebuilt = want, true
 	}
 	db, err := openDB(path)
 	if err != nil {
+		if temp != "" {
+			os.Remove(temp)
+		}
 		return nil, err
 	}
-	return &Index{db: db, problems: got.Problems, rebuilt: rebuilt}, nil
+	return &Index{db: db, problems: got.Problems, rebuilt: rebuilt, temp: temp}, nil
+}
+
+// notWritable reports whether err says a file couldn't be created because
+// of permissions or a read-only file system.
+func notWritable(err error) bool {
+	return errors.Is(err, fs.ErrPermission) || errors.Is(err, syscall.EROFS)
+}
+
+// buildOutside builds the index in a new temporary file outside the
+// workspace, and returns its path.
+func buildOutside(res *check.Result, m Meta) (string, error) {
+	f, err := os.CreateTemp("", "loremason-index-*.db")
+	if err != nil {
+		return "", err
+	}
+	path := f.Name()
+	f.Close()
+	if err := Build(path, res.Graph, m); err != nil {
+		os.Remove(path)
+		return "", err
+	}
+	return path, nil
 }
 
 // sameBuild reports whether an index with m was built the way want says,
@@ -160,8 +196,15 @@ func typesHash() string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// Close closes the index.
-func (x *Index) Close() error { return x.db.Close() }
+// Close closes the index, and removes it when it was built outside the
+// workspace.
+func (x *Index) Close() error {
+	err := x.db.Close()
+	if x.temp != "" {
+		os.Remove(x.temp)
+	}
+	return err
+}
 
 // Problems returns the number of errors found loading and checking the
 // workspace when the index was built. A query warns when it isn't zero.

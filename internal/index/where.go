@@ -68,7 +68,8 @@ type Person struct {
 	Role string // "" when the link names none
 }
 
-// Entry is a member record listed on an initiative's page, by title then ID.
+// Entry is a member record listed on an initiative's page, by title (ignoring
+// case) then ID.
 type Entry struct {
 	Summary
 	Path     string // the record's file, relative to the workspace, as stored
@@ -103,8 +104,12 @@ func (e *NotInitiativeError) Error() string {
 const slugsAndIDs = `SELECT slug FROM initiatives WHERE slug != '' UNION SELECT id FROM initiatives ORDER BY 1`
 
 // bySlug returns the ID of the initiative with the slug. It returns "" when
-// there is none, and a *DuplicateSlugError when there are several.
+// there is none, or when the slug is empty (an initiative with no slug has
+// none to be found by), and a *DuplicateSlugError when there are several.
 func (x *Index) bySlug(slug string) (string, error) {
+	if slug == "" {
+		return "", nil
+	}
 	rows, err := x.db.Query(`SELECT id FROM initiatives WHERE slug = ? ORDER BY id`, slug)
 	if err != nil {
 		return "", err
@@ -178,9 +183,29 @@ func (x *Index) summary(id string) (Summary, error) {
 	return scanSummary(x.db.QueryRow(`SELECT `+summaryCols+` FROM nodes n WHERE n.id = ?`, id))
 }
 
+// Initiative is an initiative in one line, with its slug, which is "" when
+// the record has none.
+type Initiative struct {
+	Summary
+	Slug string
+}
+
 // Initiatives returns every initiative, by ID.
-func (x *Index) Initiatives() ([]Summary, error) {
-	return x.summaries(`SELECT ` + summaryCols + ` FROM nodes n JOIN initiatives i ON i.id = n.id ORDER BY n.id`)
+func (x *Index) Initiatives() ([]Initiative, error) {
+	rows, err := x.db.Query(`SELECT ` + summaryCols + `, i.slug FROM nodes n JOIN initiatives i ON i.id = n.id ORDER BY n.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Initiative
+	for rows.Next() {
+		var i Initiative
+		if err := rows.Scan(&i.ID, &i.Type, &i.Title, &i.Status, &i.Slug); err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
 }
 
 // Where returns where the initiative stands. name is its slug, its ID or an
@@ -346,10 +371,11 @@ func (x *Index) people(ini string) ([]Person, error) {
 	return out, rows.Err()
 }
 
-// entries returns the initiative's members of one type, by title then ID.
+// entries returns the initiative's members of one type, by title (ignoring
+// case) then ID.
 func (x *Index) entries(ini, typ string) ([]Entry, error) {
 	rows, err := x.db.Query(`SELECT `+summaryCols+`, n.path, n.progress FROM nodes n JOIN members m ON m.id = n.id
-		WHERE m.initiative = ? AND n.type = ? ORDER BY n.title, n.id`, ini, typ)
+		WHERE m.initiative = ? AND n.type = ? ORDER BY n.title COLLATE NOCASE, n.id`, ini, typ)
 	if err != nil {
 		return nil, err
 	}

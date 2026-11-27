@@ -279,7 +279,7 @@ Pins, `via` links and re-check evidence all live in record files, never only in 
 
 ## 6. The index
 
-`index.db` is a SQLite database (a database kept in a single file). `mason` is written in Go and includes SQLite through a pure-Go driver, so it stays one binary with nothing else to install. The index is rebuilt from `graph/` whenever the files have changed since the last build: the index keeps a signature of every file's path, size and modification time, so an added, edited or deleted file is noticed. It's also rebuilt when the loremason version or fingerprint method has changed, when the index's own table layout has (a schema version number in the code), or when `types.yaml` has (the index keeps a hash of it). Several `mason` commands starting at once on a stale index each build into their own temporary file and rename it into place, so none of them sees half an index and none fails. A full rebuild of 5,000 records took about a third of a second in a test, so there's no incremental update to get wrong.
+`index.db` is a SQLite database (a database kept in a single file). `mason` is written in Go and includes SQLite through a pure-Go driver, so it stays one binary with nothing else to install. The index is rebuilt from `graph/` whenever the files have changed since the last build: the index keeps a signature of every file's path, size and modification time, so an added, edited or deleted file is noticed. It's also rebuilt when the loremason version or fingerprint method has changed, when the index's own table layout has (a schema version number in the code), or when the record types have (`types.yaml` and the JSON schemas; the index keeps a hash of them). Several `mason` commands starting at once on a stale index each build into their own temporary file and rename it into place, so none of them sees half an index and none fails. A full rebuild of 5,000 records took about a third of a second in a test, so there's no incremental update to get wrong.
 
 ```mermaid
 erDiagram
@@ -342,7 +342,7 @@ erDiagram
 - **`aliases`** maps each alias a record has had to its ID, so `show` and `dependents` accept an old one.
 - **`members`** lists the records in each initiative, sub-records included. A record is in an initiative when following `part_of` from it reaches the initiative, so requirements are in it through their PRD and steps through their plan.
 - **`initiatives`** holds each initiative's slug, purpose and goals, for `mason where` and the generated README.
-- A **`meta`** table records what the index was built from: the loremason version, the fingerprint method, the index's schema version, a hash of `types.yaml`, and the files' signature.
+- A **`meta`** table records what the index was built from: the loremason version, the fingerprint method, the index's schema version, a hash of the record types (`types.yaml` and the JSON schemas), and the files' signature.
 
 **The rules are computed once, in Go, and stored.** Whether a link is stale (its pin no longer matches the target's current revision and fingerprint) and whether it reopens a commitment are worked out by the same code `sync` and `validate` use, and written to `edges.stale` and `edges.reopens`. The queries only select on those columns, so a rule has one home and `stale` can never disagree with `sync`.
 
@@ -377,7 +377,7 @@ Each initiative's `README.md` is built from the records in it and written to `in
 
 The page opens with a hidden marker line and a visible line saying it's generated and from which record. It's a read-only snapshot: nothing reads it back. Its rules:
 - **Kept current.** `mason sync` regenerates it, and `validate` fails when it no longer matches the records, so a hand edit can't quietly drift.
-- **Committed.** It's marked generated in `initiatives/.gitattributes`, which `sync` owns, so GitHub collapses it in pull request diffs. A merge conflict in it is resolved by running `sync`.
+- **Committed.** It's marked generated in `initiatives/.gitattributes`, where `sync` keeps its one line (`*/README.md linguist-generated=true`) and leaves every other line alone, so GitHub collapses it in pull request diffs. A merge conflict in it is resolved by running `sync`.
 - **Stable.** It renders the same bytes from the same records on any day: it holds no dates.
 - **Never over a person's work.** `sync` writes only a page with no file yet or with its marker. A hand-written `README.md` is left alone and reported. A generated page whose initiative is gone is deleted, and two initiatives with the same slug get no page.
 

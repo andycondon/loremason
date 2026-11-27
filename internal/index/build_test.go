@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/internal/testws"
 )
 
@@ -127,5 +129,79 @@ func TestBuildReplacesAnIndexInOnePiece(t *testing.T) {
 	}
 	if left := leftovers(t, w); len(left) != 0 {
 		t.Errorf("the temporary file was left behind: %v", left)
+	}
+}
+
+func TestBuildStoresProgressSettledLinksMembersAndInitiatives(t *testing.T) {
+	w := newWS(t, map[string]string{
+		"initiative/" + iniA + ".md": initiative(iniA, "alpha", "purpose: Be fast.", "goals:", "  - First", "  - Second",
+			"involves:", "  - {to: who_k1m2n3, role: decides}"),
+		"actor/who_k1m2n3.md":    record("who_k1m2n3", "Zed", "kind: person"),
+		"task/task_t1t1t1.md":    task("task_t1t1t1", "Working", iniA, "progress: in_progress"),
+		"question/q_c1c1c1.md":   question("q_c1c1c1", iniA),
+		"question/q_c2c2c2.md":   question("q_c2c2c2", iniA),
+		"decision/dec_d2d2d2.md": decision("dec_d2d2d2", iniA, "accepted", "q_c2c2c2"),
+		"decision/dec_d5d5d5.md": decision("dec_d5d5d5", iniA, "proposed", "q_c1c1c1"),
+	})
+	valid(t, w)
+	open(t, w).Close()
+
+	one := func(want, query string, args ...any) {
+		t.Helper()
+		if got := rows(t, w, query, args...); len(got) != 1 || got[0] != want {
+			t.Errorf("%s %v = %v, want [%s]", query, args, got, want)
+		}
+	}
+	one("in_progress", `SELECT progress FROM nodes WHERE id = 'task_t1t1t1'`)
+	one("1", `SELECT settled FROM nodes WHERE id = 'q_c2c2c2'`)
+	one("0", `SELECT settled FROM nodes WHERE id = 'q_c1c1c1'`)
+	one("1", `SELECT settles FROM edges WHERE src = 'dec_d2d2d2' AND dst = 'q_c2c2c2'`)
+	one("0", `SELECT settles FROM edges WHERE src = 'dec_d5d5d5' AND dst = 'q_c1c1c1'`)
+	one("1", `SELECT pending FROM edges WHERE src = 'dec_d5d5d5' AND dst = 'q_c1c1c1'`)
+	one("0", `SELECT pending FROM edges WHERE src = 'dec_d2d2d2' AND dst = 'q_c2c2c2'`)
+	one("decides", `SELECT role FROM edges WHERE src = ? AND dst = 'who_k1m2n3'`, iniA)
+	if got := rows(t, w, `SELECT id FROM members WHERE initiative = ? ORDER BY id`, iniA); strings.Join(got, " ") != "dec_d2d2d2 dec_d5d5d5 q_c1c1c1 q_c2c2c2 task_t1t1t1" {
+		t.Errorf("members = %v", got)
+	}
+	one("alpha|Be fast.|[\"First\",\"Second\"]", `SELECT slug || '|' || purpose || '|' || goals FROM initiatives WHERE id = ?`, iniA)
+}
+
+// ---- Build outside the workspace ----
+
+func TestOpenBuildsOutsideAWorkspaceItCannotWriteTo(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write anywhere")
+	}
+	w := newWS(t, map[string]string{
+		"initiative/" + iniA + ".md": initiative(iniA, "alpha"),
+	})
+	dir := filepath.Join(w.Root, ".loremason")
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	x, err := Open(w.Root, registry.Load())
+	if err != nil {
+		t.Fatalf("Open in a read-only workspace: %v", err)
+	}
+	if !x.Rebuilt() {
+		t.Error("with no index, the open should build one")
+	}
+	if got, err := x.Initiatives(); err != nil || len(got) != 1 || got[0].Slug != "alpha" {
+		t.Errorf("Initiatives = %+v, %v", got, err)
+	}
+	if _, err := os.Stat(indexPath(w)); err == nil {
+		t.Error("an index was written into the read-only folder")
+	}
+	temp := x.temp
+	if temp == "" {
+		t.Fatal("the index should be in a temporary file")
+	}
+	if err := x.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(temp); err == nil {
+		t.Errorf("Close left %s behind", temp)
 	}
 }
