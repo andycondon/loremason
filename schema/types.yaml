@@ -13,6 +13,9 @@
 #                   pinned: the link records the target's revision and fingerprint.
 #                   pinned defaults to propagates. Only revisable targets are ever pinned,
 #                   so a pinned edge to an initiative stays bare.
+# fallen            Statuses (from the type's schema) that mean the record no longer holds.
+#                   A propagating link from a committing record to a record in one of
+#                   them reopens the committing record. Optional.
 # subrecords        Header field holding a list of sub-records, each with its own short id.
 # template          Header lines `mason new` writes after id and title. {title}, {slug} and {today} are replaced.
 # body              Body `mason new` writes.
@@ -81,6 +84,7 @@ types:
     revisions_inline: true
     meaning: [claim]
     identity: [claim]
+    fallen: [incorrect, insufficient]
     edges:
       answers: {to: [question], propagates: false}
     subrecords:

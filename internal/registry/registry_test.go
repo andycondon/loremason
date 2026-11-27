@@ -80,6 +80,50 @@ func TestTypeMeaning(t *testing.T) {
 	}
 }
 
+func TestTypeFallen(t *testing.T) {
+	belief := typ(t, "belief")
+	for status, want := range map[string]bool{"incorrect": true, "insufficient": true, "held": false, "withdrawn": false, "": false} {
+		if belief.IsFallen(status) != want {
+			t.Errorf("IsFallen(%q) = %v", status, !want)
+		}
+	}
+	if typ(t, "task").IsFallen("rejected") {
+		t.Error("a type with no fallen statuses has none fall")
+	}
+}
+
+func TestTypeCheckFallen(t *testing.T) {
+	belief, task := *typ(t, "belief"), *typ(t, "task")
+	if err := belief.checkFallen(); err != nil {
+		t.Errorf("belief's own fallen statuses: %v", err)
+	}
+	belief.Fallen = []string{"incorrect", "gone"}
+	if err := belief.checkFallen(); err == nil || !strings.Contains(err.Error(), "`gone`") {
+		t.Errorf("a status the schema lacks: %v", err)
+	}
+	task.Fallen = []string{"rejected"} // task's status comes from a shared definition
+	if err := task.checkFallen(); err != nil {
+		t.Errorf("a status through a $ref: %v", err)
+	}
+	task.Fallen = []string{"held"}
+	if err := task.checkFallen(); err == nil {
+		t.Error("held isn't a task status")
+	}
+	finding := *typ(t, "finding") // no status at all
+	finding.Fallen = []string{"incorrect"}
+	if err := finding.checkFallen(); err == nil {
+		t.Error("a type with no status can't have a fallen one")
+	}
+}
+
+func TestEveryTypeHasAKnownLayer(t *testing.T) {
+	for name, typ := range Load().Types {
+		if !slices.Contains([]string{Knowing, Committing, Scope}, typ.Layer) {
+			t.Errorf("%s: layer %q", name, typ.Layer)
+		}
+	}
+}
+
 func TestTypeValidate(t *testing.T) {
 	belief := typ(t, "belief")
 	fields := func(created string) map[string]any {
