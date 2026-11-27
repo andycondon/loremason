@@ -9,6 +9,7 @@ cmd/mason/          the commands: each calls the domain and prints what it retur
 internal/cli/       commands, flags, help and exit codes; knows nothing about loremason
 internal/graph/     the model: Graph, File, Node, Edge, Ref, Pin; Load and Create
 internal/check/     rules over a loaded graph
+internal/index/     a SQLite index of the graph, rebuilt when the files change, and the queries over it
 internal/pinning/  sync and revise: plan the changes, then apply them
 internal/fingerprint/ the fp1 method, pure functions
 internal/splice/   rewrite the header fields tools own; leave every other byte

@@ -1,5 +1,5 @@
 // Command mason creates and checks the records of a loremason context graph,
-// and keeps the links between them pinned.
+// keeps the links between them pinned, and answers questions about them.
 package main
 
 import (
@@ -18,10 +18,10 @@ var Version = "0.0.1"
 var app = &cli.App{
 	Name:    "mason",
 	Version: Version,
-	Summary: "mason creates and checks the records of a context graph, and keeps the links\nbetween them pinned.",
+	Summary: "mason creates and checks the records of a context graph, keeps the links\nbetween them pinned, and answers questions about them.",
 	Footer: "The workspace is the nearest folder, here or above, with a .loremason folder.\n" +
 		"Set " + workspace.Env + " to use another.",
-	Commands: []*cli.Command{validateCmd, newCmd, syncCmd, reviseCmd},
+	Commands: []*cli.Command{validateCmd, newCmd, syncCmd, reviseCmd, findCmd, showCmd, dependentsCmd, staleCmd, reopenedCmd},
 }
 
 func main() {
