@@ -117,10 +117,9 @@ classDiagram
   }
   class document {
     <<abstract>>
-    title, body
-    revisable
+    finding, design_doc, prd, plan
+    title, body, revisable
   }
-  class finding
   question "1" *-- "*" option : contains
   option --> belief : supports or disputes
   belief --> question : answers
@@ -131,7 +130,6 @@ classDiagram
   artifact --|> source
   actor --|> source
   document --|> source
-  finding --|> document
   actor <-- artifact : attributed_to
   activity <-- evidence : generated_by
   activity <-- document : generated_by
