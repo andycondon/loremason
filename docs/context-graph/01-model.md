@@ -113,7 +113,7 @@ classDiagram
     status
   }
   class artifact {
-    document, code, conversation, issue
+    page, code, conversation, issue
   }
   class document {
     <<abstract>>
@@ -466,7 +466,7 @@ Everything is a *record*, and each record has a type, written in `snake_case`. A
 |---|---|---|---|
 | `source` | knowing | Where evidence comes from. Its `kind` is `actor`, `artifact` or `document`. | |
 | `actor` (source kind) | knowing | Something that bears responsibility for an activity, for a thing existing, or for another actor's activity. Kinds: `person`, `organization`, `software_agent` (a standing agent). Exactly the Agent of PROV (W3C's provenance standard) under another name, so that "agent" always means an AI agent. | A person; the reviewer agent |
-| `artifact` (source kind) | knowing | Something made outside our records: a web page, code at a commit, a conversation record, a GitHub issue. A document we wrote ourselves is a `document`, not an artifact. | A web page; `validate` at a commit |
+| `artifact` (source kind) | knowing | Something made outside our records. Kinds: `page` (a web page, or a paper or PDF someone else wrote), `code` (at a commit), `conversation` (a conversation record), `issue` (a GitHub issue). A document we wrote ourselves is a `document`, not an artifact. | A web page; `validate` at a commit |
 | `activity` | knowing | Something that happened over time: an AI agent's session, or one run of a step. Has a start and end (`started_at`, `ended_at`) and a `status`. `associated_with` the actor responsible; evidence is `generated_by` it. Exactly PROV's Activity: the *how*, beside actors (*who*) and records (*what*). | The main session on 2026-11-22; one run of a step |
 | `document` (source kind) | knowing and committing | Abstract type: the shared shape of prose we wrote. A title and a body, revisable with old revisions left in git, `generated_by` an activity and `attributed_to` an actor. Evidence can come `from` one, at a pinned revision. The pin doesn't propagate and doesn't seal the revision. Never stored as a type itself; the document types are `finding`, `design_doc`, `prd` and `plan`. Decisions and tasks are not documents. | |
 | `finding` | knowing | A document we wrote ourselves: a survey, an analysis, an observation. Holds prose, tables and references whole. Can be revised. `generated_by` the activity that produced it. Beliefs drawn from it rest on evidence that quotes it. The knowing layer's document: it needs no edges or status until something relies on it. | A survey of data lineage tools |
