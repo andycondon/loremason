@@ -21,6 +21,9 @@ import (
 )
 
 // The layers a type can belong to.
+// FixedFPField is the field a fixed record keeps its fingerprint in.
+const FixedFPField = "fp"
+
 const (
 	Knowing    = "knowing"
 	Committing = "committing"
@@ -321,7 +324,7 @@ func (t *Type) checkFixed() error {
 		return nil
 	case t.Revisable:
 		return fmt.Errorf("types.yaml: %s is fixed, so it can't also be revisable; a record is either revisable or fixed", t.Name)
-	case t.Schema.Properties["fp"] == nil:
+	case t.Schema.Properties[FixedFPField] == nil:
 		return fmt.Errorf("types.yaml: %s is fixed, so its schema must have an fp field", t.Name)
 	}
 	return nil

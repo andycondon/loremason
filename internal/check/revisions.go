@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/andycondon/loremason/internal/graph"
+	"github.com/andycondon/loremason/internal/registry"
 )
 
 // Rules about revisions and pins. The design is in
@@ -151,7 +152,7 @@ func (c *checker) fixed(f *graph.File) {
 	case rec.IsZero():
 		c.ds.Warnf(f.At(1), "the fingerprint of %s isn't written down yet; run `mason sync`", n.ID)
 	case rec != n.Fingerprint():
-		c.ds.Errorf(f.At(n.Fields.KeyLine("fp")), "%s never changes, but its text no longer matches its fingerprint; undo the change, or write new evidence that undermines this one", n.ID)
+		c.ds.Errorf(f.At(n.Fields.KeyLine(registry.FixedFPField)), "%s never changes, but its text no longer matches its fingerprint; undo the change, or write new evidence that undermines this one", n.ID)
 	}
 }
 

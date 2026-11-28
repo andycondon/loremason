@@ -19,6 +19,7 @@ import (
 	"github.com/andycondon/loremason/internal/fingerprint"
 	"github.com/andycondon/loremason/internal/graph"
 	"github.com/andycondon/loremason/internal/record"
+	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/internal/splice"
 )
 
@@ -340,7 +341,7 @@ func (e *fileEdit) apply(path string) ([]byte, error) {
 		}
 	}
 	if e.fp != nil {
-		h.Set("fp", record.Render("fp", record.Quoted(e.fp.String())))
+		h.Set(registry.FixedFPField, record.Render(registry.FixedFPField, record.Quoted(e.fp.String())))
 	}
 	for _, field := range e.unlist {
 		v, _ := n.Fields.Get(field)

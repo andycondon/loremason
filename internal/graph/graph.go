@@ -157,6 +157,17 @@ func (n *Node) IsSubrecord() bool { return n.Parent != nil }
 // Revisable reports whether the node is a record that keeps revisions.
 func (n *Node) Revisable() bool { return n.Kind.Revisable && !n.IsSubrecord() }
 
+// Links returns the node's outgoing edges with this name.
+func (n *Node) Links(name string) []*Edge {
+	var out []*Edge
+	for _, e := range n.Outgoing {
+		if e.Name == name {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // Current returns the current revision. A revisable record always has one
 // (perhaps implicit); for any other node it's nil.
 func (n *Node) Current() *Revision {
@@ -297,8 +308,8 @@ func (n *Node) StatusHolder() *Node {
 			return rec
 		}
 		next := rec
-		for _, e := range rec.Outgoing {
-			if e.Name == from && e.Target != nil {
+		for _, e := range rec.Links(from) {
+			if e.Target != nil {
 				next = e.Target.Record()
 				break
 			}
@@ -479,8 +490,8 @@ func (n *Node) DoubtedBy() []*Node {
 				add(in.From)
 			}
 		}
-		for _, out := range link.Outgoing {
-			if out.Name != EdgeEvidence || out.Target == nil {
+		for _, out := range link.Links(EdgeEvidence) {
+			if out.Target == nil {
 				continue
 			}
 			for _, in := range out.Target.Incoming {

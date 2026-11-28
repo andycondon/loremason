@@ -5,6 +5,7 @@ import (
 
 	"github.com/andycondon/loremason/internal/fingerprint"
 	"github.com/andycondon/loremason/internal/record"
+	"github.com/andycondon/loremason/internal/registry"
 )
 
 // Revision is one entry in a record's revisions list. readRevisions and Out
@@ -175,7 +176,7 @@ func withoutRevisions(v any) any {
 // RecordedFingerprint returns the fingerprint a fixed record wrote down in
 // its own fp field, or zero when it hasn't (sync writes it).
 func (n *Node) RecordedFingerprint() fingerprint.FP {
-	fp, _ := fingerprint.Parse(n.Fields.Text("fp"))
+	fp, _ := fingerprint.Parse(n.Fields.Text(registry.FixedFPField))
 	return fp
 }
 

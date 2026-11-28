@@ -46,8 +46,8 @@ func (c *checker) constraints(e *graph.Edge) {
 
 // linksTo reports whether a record has a link by an edge to a node.
 func (c *checker) linksTo(from *graph.Node, edge string, to *graph.Node) bool {
-	for _, o := range from.Outgoing {
-		if o.Name == edge && o.Target == to {
+	for _, o := range from.Links(edge) {
+		if o.Target == to {
 			return true
 		}
 	}
