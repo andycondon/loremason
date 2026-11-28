@@ -304,7 +304,7 @@ Walk-through:
 
 ## 4. Principles
 
-**Evidence never changes.** Evidence is a dated, verbatim quote or observation, never a paraphrase. Its fingerprint is recorded when it is created, and `validate` fails if it changes. Corrections come as *new* evidence (an undermine), so the record of what was observed stays trustworthy. A reproduction is new evidence too, with its own record.
+**Evidence never changes.** Evidence is a dated, verbatim quote or observation, never a paraphrase. Its fingerprint is recorded by the first `mason sync` after it is written, and `validate` fails if it changes. Corrections come as *new* evidence (an undermine), so the record of what was observed stays trustworthy. A reproduction is new evidence too, with its own record.
 
 **"Someone said X" is evidence that they hold X, not evidence that X.** Beliefs drawn from a person's words rest on that person's authority, and that should be visible. `asserted_by` shows whether a person confirmed a belief or an agent made it. People confirm only the load-bearing beliefs drawn from their own words, and those arrive as proposals, not flags.
 
