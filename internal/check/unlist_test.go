@@ -63,3 +63,19 @@ func TestListOfAMapIsNotFixable(t *testing.T) {
 		t.Errorf("broken: %v", res.Broken())
 	}
 }
+
+// A step belongs to one plan: naming two is an error sync can't repair.
+func TestStepInTwoPlansIsAnError(t *testing.T) {
+	w := testws.New(t, map[string]string{
+		"plan/plan_a1a1a1.md": rec("plan_a1a1a1", "One", "status: accepted"),
+		"plan/plan_b2b2b2.md": rec("plan_b2b2b2", "Two", "status: proposed"),
+		"step/step_s1s1s1.md": rec("step_s1s1s1", "Step", "part_of: [plan_a1a1a1, plan_b2b2b2]"),
+	})
+	res, out := run(t, w.Root)
+	if !strings.Contains(out, "error: `part_of` is a list") || strings.Contains(out, "rewrites it") {
+		t.Errorf("diagnostics:\n%s", out)
+	}
+	if len(res.Broken()) != 1 {
+		t.Errorf("broken: %v", res.Broken())
+	}
+}

@@ -232,6 +232,9 @@ func (r *Registry) checkSealed(t *Type) error {
 		if !ok {
 			return fmt.Errorf("types.yaml: %s takes its status from `%s`, but it has no such edge", t.Name, t.StatusFrom)
 		}
+		if !t.SingleLink(t.StatusFrom) {
+			return fmt.Errorf("types.yaml: %s takes its status from `%s`, but that field is a list; a record takes its status from one record", t.Name, t.StatusFrom)
+		}
 		for _, to := range e.To {
 			if target := r.Types[to]; target != nil {
 				statuses = append(statuses, target.statuses()...)

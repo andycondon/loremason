@@ -7,8 +7,7 @@
   "required": [
     "id",
     "title",
-    "created",
-    "part_of"
+    "created"
   ],
   "properties": {
     "id": {
@@ -18,7 +17,7 @@
       "$ref": "common.json#/$defs/line"
     },
     "part_of": {
-      "$ref": "common.json#/$defs/links"
+      "$ref": "common.json#/$defs/link"
     },
     "follows": {
       "$ref": "common.json#/$defs/links"

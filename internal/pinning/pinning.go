@@ -353,7 +353,7 @@ func (e *fileEdit) apply(path string) ([]byte, error) {
 	}
 	for _, field := range e.pinnedFields() {
 		v, _ := n.Fields.Get(field)
-		h.Set(field, v.Rewrite(e.links(v)))
+		h.Set(field, v.Rewrite(e.links(field, v)))
 	}
 	return h.Bytes(), nil
 }
@@ -370,9 +370,9 @@ func (e *fileEdit) pinnedFields() []string {
 	return fields
 }
 
-// links writes a link field as a list, pinning the links in the plan and
-// leaving the rest as they were.
-func (e *fileEdit) links(field record.Value) record.Out {
+// links writes a link field as a list, or as one value when the field takes
+// one link, pinning the links in the plan and leaving the rest as they were.
+func (e *fileEdit) links(name string, field record.Value) record.Out {
 	byPath := map[string]*graph.Edge{}
 	for edge := range e.pins {
 		byPath[edge.Item.Path.String()] = edge
@@ -385,6 +385,9 @@ func (e *fileEdit) links(field record.Value) record.Out {
 			continue
 		}
 		items = append(items, e.pins[edge].Out(edge.To.Name).WithCommentsOf(item))
+	}
+	if len(items) == 1 && e.file.Type.SingleLink(name) {
+		return items[0]
 	}
 	return record.List(items...)
 }

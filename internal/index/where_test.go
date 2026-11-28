@@ -217,7 +217,7 @@ created: 2026-11-22
 `,
 		"plan/plan_p2p2p2.md": record("plan_p2p2p2", "A plan", "status: accepted", "part_of: "+iniA),
 		"step/step_s2s2s2.md": record("step_s2s2s2", "The second step", "part_of: plan_p2p2p2"),
-		"step/step_s1s1s1.md": record("step_s1s1s1", "The first step", `part_of: [{to: plan_p2p2p2, rev: 1, fp: "fp1:0000000000a1"}]`),
+		"step/step_s1s1s1.md": record("step_s1s1s1", "The first step", `part_of: {to: plan_p2p2p2, rev: 1, fp: "fp1:0000000000a1"}`),
 		"task/task_t9t9t9.md": record("task_t9t9t9", "Outside", "status: accepted", pinned("bel_b1b1b1")),
 	})
 	valid(t, w)

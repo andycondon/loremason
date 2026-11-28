@@ -319,7 +319,5 @@ types:
     edges:
       part_of: {to: [plan], propagates: true}
       follows: {to: [step], propagates: false}
-    template: |
-      part_of: []
     body: |
       Exact files, the pattern to copy, and the one check that shows it worked.

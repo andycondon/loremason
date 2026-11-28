@@ -32,6 +32,7 @@ func TestCheckSealedRefusesABadKey(t *testing.T) {
 		{"an unknown status", "decision", Sealed{Status: []string{"accepted", "done"}}, "", "sealed at `done`"},
 		{"an unknown status through status_from", "step", Sealed{Status: []string{"held"}}, "part_of", "sealed at `held`"},
 		{"an unknown status_from edge", "step", Sealed{Status: []string{"accepted"}}, "belongs_to", "status from `belongs_to`"},
+		{"a status_from edge that holds a list", "step", Sealed{Status: []string{"accepted"}}, "follows", "is a list"},
 	} {
 		d := *typ(t, c.typ)
 		d.Sealed, d.StatusFrom = c.seal, c.from

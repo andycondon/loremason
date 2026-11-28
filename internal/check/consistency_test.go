@@ -119,3 +119,15 @@ func TestQuestionPendingSealNamesItsAnswer(t *testing.T) {
 		t.Errorf("diagnostics:\n%s", got)
 	}
 }
+
+// A step has no status: what will seal it once written down is its plan
+// being accepted, and the warning says so.
+func TestStepPendingSealNamesItsPlan(t *testing.T) {
+	_, got := run(t, testws.New(t, map[string]string{
+		"plan/plan_a1a1a1.md": rec("plan_a1a1a1", "Plan", "status: accepted"),
+		"step/step_s1s1s1.md": rec("step_s1s1s1", "Step", "part_of: plan_a1a1a1"),
+	}).Root)
+	if !strings.Contains(got, "its plan plan_a1a1a1 being accepted will seal it once it is") {
+		t.Errorf("diagnostics:\n%s", got)
+	}
+}
