@@ -89,7 +89,7 @@ func TestStale(t *testing.T) {
 	w.Edit("belief/bel_7k3m9q.md", "validate doesn't handle", "validate mishandles")
 	code, out, errOut := mason("stale")
 	want := "bel_7k3m9q  belief  held  validate and encodings  r1\n" +
-		"  relies_on  task_9w4hzd  task  accepted  Do it  pinned r1 " + testws.BeliefFP + "\n"
+		"  relies_on  task_9w4hzd  task  accepted  Do it  pinned r1 " + testws.BeliefFP + "  (stale)\n"
 	// The check counts a stale pin as an error, so the warning is expected.
 	if code != 0 || errOut != "mason: warning: the graph has 1 error; run mason validate\n" || out != want {
 		t.Errorf("exit %d, stderr %q, stdout:\n%s", code, errOut, out)

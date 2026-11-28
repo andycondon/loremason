@@ -34,12 +34,9 @@ CREATE TABLE edges (
 	pinned_rev INTEGER,
 	pinned_fp TEXT NOT NULL,
 	propagates INTEGER NOT NULL,
-	stale INTEGER NOT NULL,
-	reopens INTEGER NOT NULL,
+	concerns INTEGER NOT NULL,
 	settles INTEGER NOT NULL,
 	pending INTEGER NOT NULL,
-	orphaned INTEGER NOT NULL,
-	doubted INTEGER NOT NULL,
 	role TEXT NOT NULL
 );
 CREATE TABLE members (
@@ -79,9 +76,8 @@ const Containment = "subrecord_of"
 // graph works them out, and each record in nodes_fts for text search. Each
 // alias gets a row in aliases. Each link that reaches a record, and each
 // sub-record's containment in its record, gets a row in edges, with whether
-// it is stale, reopens its source, settles its target, is a pending
-// answer, rests on a record no longer in force or relies on a doubted
-// belief, and its role. Each initiative gets a row in initiatives and a row
+// its concerns (graph.Concern: why it needs a re-check, if it does),
+// whether it settles its target or is a pending answer, and its role. Each initiative gets a row in initiatives and a row
 // in members for each record in it, and a row in produced for each record
 // produced in its activities. A second file with an ID the graph already has
 // is left out.
@@ -233,7 +229,7 @@ func (w *writer) aliases() error {
 // edges writes every link that reaches a record, with the answers the graph
 // gives for it, and the containment of each sub-record.
 func (w *writer) edges() error {
-	ins, err := w.tx.Prepare(`INSERT INTO edges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	ins, err := w.tx.Prepare(`INSERT INTO edges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -250,7 +246,7 @@ func (w *writer) edges() error {
 				fp = e.Pin.FP.String()
 			}
 		}
-		if _, err := ins.Exec(e.From.ID, e.Target.ID, e.Name, rev, fp, e.Def.Propagates, e.Stale(), e.Reopens(), e.Settles(), e.Pending(), e.Orphaned(), e.Doubts(), e.Attr("role")); err != nil {
+		if _, err := ins.Exec(e.From.ID, e.Target.ID, e.Name, rev, fp, e.Def.Propagates, uint8(e.Concerns()), e.Settles(), e.Pending(), e.Attr("role")); err != nil {
 			return err
 		}
 	}
@@ -262,7 +258,7 @@ func (w *writer) edges() error {
 			if !w.canonical(c) {
 				continue
 			}
-			if _, err := ins.Exec(c.ID, f.Node.ID, Containment, nil, "", false, false, false, false, false, false, false, ""); err != nil {
+			if _, err := ins.Exec(c.ID, f.Node.ID, Containment, nil, "", false, 0, false, false, ""); err != nil {
 				return err
 			}
 		}

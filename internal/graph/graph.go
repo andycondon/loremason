@@ -298,16 +298,25 @@ const (
 // concerns is every concern, in the order String lists them.
 var concerns = []Concern{Stale, Reopens, Orphaned, Doubted}
 
+// Each returns the concerns c includes, one flag apiece, in the order String
+// lists them.
+func (c Concern) Each() []Concern {
+	var out []Concern
+	for _, f := range concerns {
+		if c.Has(f) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // Has reports whether c includes every concern in o.
 func (c Concern) Has(o Concern) bool { return c&o == o }
 
 // String gives the reason in words, a comma between several. It is "" for none.
 func (c Concern) String() string {
 	var parts []string
-	for _, f := range concerns {
-		if !c.Has(f) {
-			continue
-		}
+	for _, f := range c.Each() {
 		switch f {
 		case Stale:
 			parts = append(parts, "stale")

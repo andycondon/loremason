@@ -321,8 +321,7 @@ erDiagram
     int pinned_rev
     text pinned_fp
     bool propagates
-    bool stale "computed"
-    bool reopens "computed"
+    int concerns "computed"
     bool settles "computed"
     bool pending "computed"
     text role
@@ -361,11 +360,11 @@ erDiagram
 - **`initiatives`** holds each initiative's slug, purpose and goals, for `mason where` and the generated README.
 - A **`meta`** table records what the index was built from: the loremason version, the fingerprint method, the index's schema version, a hash of the record types (`types.yaml` and the JSON schemas), and the files' signature.
 
-**The rules are computed once, in Go, and stored.** Whether a link is stale (its pin no longer matches the target's current revision and fingerprint) and whether it reopens a commitment are worked out by the same code `sync` and `validate` use, and written to `edges.stale` and `edges.reopens`. The queries only select on those columns, so a rule has one home and `stale` can never disagree with `sync`.
+**The rules are computed once, in Go, and stored.** Whether a link needs a re-check, and why, is one value, its concerns: any of stale (its pin no longer matches the target's current revision and fingerprint), reopens, orphaned and doubted, all worked out in one place by the same code `sync` and `validate` use. They are written to the one column `edges.concerns`. A link has concerns only when it propagates, its source is a commitment still in force, and its target exists. The queries only select on that column, so a rule has one home and `stale` and `where` can never disagree with `sync` or each other.
 
 The same goes for where work stands: a task's progress (with its default), whether a node is settled (dropped, or settled by an incoming `answers` link), whether each `answers` link settles or is pending, and each initiative's members are worked out in Go and stored, and `mason where` only selects.
 
-A link **reopens** its source when it propagates, its source is a commitment still in force, and its target's status is one its type marks as fallen. Which statuses count as fallen is data, declared in `types.yaml` beside each type's statuses: for a belief, `incorrect` and `insufficient`. Which statuses close a record is data too (for commitments, `rejected`, `deprecated` and `superseded`; for a belief, `withdrawn`), so a commitment already turned down or replaced isn't listed again. A belief that is withdrawn reopens nothing, but a commitment in force that relies on one is reported separately ("rests on bel_x, which is withdrawn"). Generally, a propagating link from a record in force to a closed record is reported as needing a re-check, like a stale link ("rests on X, which is <status>"), and `mason stale` lists it.
+A link **reopens** its source when it propagates, its source is a commitment still in force, and its target's status is one its type marks as fallen. Which statuses count as fallen is data, declared in `types.yaml` beside each type's statuses: for a belief, `incorrect` and `insufficient`. Which statuses close a record is data too (for commitments, `rejected`, `deprecated` and `superseded`; for a belief, `withdrawn`), so a commitment already turned down or replaced isn't listed again. A belief that is withdrawn reopens nothing, but a commitment in force that relies on one is reported separately ("rests on bel_x, which is withdrawn"). Generally, a propagating link from a record in force to a closed record is reported as needing a re-check, like a stale link ("rests on X, which is <status>"), and it is one of the link's concerns, so `mason stale` and `mason where` list it.
 
 A belief is doubted when evidence undermines evidence one of its `supports` links cites, or undercuts one of those links. The commitments relying on a doubted belief show in `where`'s re-check list. The quiet re-check writes evidence and sets `via` on the `relies_on` pin. Once that evidence is observed on or after every undermining or undercutting evidence (compared as instants of `observed_at`: a date alone is midnight UTC, a time with no offset is UTC, and a tie clears the doubt), the doubt clears; a newer undermine brings it back. Only `supports` links count. Evidence whose `observed_at` is missing or unreadable clears nothing. Until a `mason recheck` command exists, `via` is set by hand.
 
@@ -382,7 +381,7 @@ Following links is done in Go, not in SQL. `mason dependents` loads the links th
 | `mason find <words>` | Which records match these words? Takes one or more words, unquoted if you like. Shows each record's ID, type, status and title. |
 | `mason show <id>` | One record's text, with its links out and the links pointing at it, each showing the record at the other end by ID, type, status and title. |
 | `mason dependents <id>` | What is built on this, directly and further down? Follows links that propagate, with each record's depth; a record that only mentions this one isn't listed. |
-| `mason stale` | Which links need a re-check, grouped by the record that changed? |
+| `mason stale` | Which links need a re-check (stale pin, reopened, orphaned or doubted), and why, grouped by the record that changed? `mason reopened` lists only the reopened ones. |
 | `mason reopened` | Which commitments rely on a belief that has fallen? |
 | `mason where <initiative>` | The "where are we" view of an initiative, named by slug, ID or alias: tasks in progress, blocked tasks with what they wait on, open questions with their pending answers, and the links from the initiative's records (and their sub-records) that need a re-check, grouped by the record that changed. |
 

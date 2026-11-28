@@ -9,6 +9,7 @@ import (
 
 	"github.com/andycondon/loremason/internal/check"
 	"github.com/andycondon/loremason/internal/fingerprint"
+	"github.com/andycondon/loremason/internal/graph"
 	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/internal/testws"
 )
@@ -254,7 +255,7 @@ func TestRechecksAreScopedToEachInitiativesOwnRecords(t *testing.T) {
 			t.Fatalf("%s: change = %+v", c.ini, ch)
 		}
 		l := ch.Links[0]
-		if l.Other.ID != c.task || l.Field != "relies_on" || !l.Stale || l.Reopens || l.Pin == nil || l.Pin.Rev != 1 {
+		if l.Other.ID != c.task || l.Field != "relies_on" || !l.Concerns.Has(graph.Stale) || l.Concerns.Has(graph.Reopens) || l.Pin == nil || l.Pin.Rev != 1 {
 			t.Errorf("%s: link = %+v", c.ini, l)
 		}
 		for _, other := range v.Recheck {
@@ -276,7 +277,7 @@ func TestRecheckShowsALinkThatReopens(t *testing.T) {
 	if len(v.Recheck) != 1 || len(v.Recheck[0].Links) != 1 {
 		t.Fatalf("recheck = %+v", v.Recheck)
 	}
-	if l := v.Recheck[0].Links[0]; !l.Reopens || l.Stale {
+	if l := v.Recheck[0].Links[0]; !l.Concerns.Has(graph.Reopens) || l.Concerns.Has(graph.Stale) {
 		t.Errorf("link = %+v, want reopens and not stale", l)
 	}
 }
@@ -581,7 +582,7 @@ func recheckOf(v *View) []string {
 	for _, c := range v.Recheck {
 		for _, l := range c.Links {
 			var flags []string
-			for flag, on := range map[string]bool{"stale": l.Stale, "reopens": l.Reopens, "orphaned": l.Orphaned, "doubted": l.Doubted} {
+			for flag, on := range map[string]bool{"stale": l.Concerns.Has(graph.Stale), "reopens": l.Concerns.Has(graph.Reopens), "orphaned": l.Concerns.Has(graph.Orphaned), "doubted": l.Concerns.Has(graph.Doubted)} {
 				if on {
 					flags = append(flags, flag)
 				}
@@ -610,7 +611,7 @@ func TestAcceptedTaskOnAWithdrawnBeliefNeedsARecheck(t *testing.T) {
 		t.Errorf("Reopened = %+v, %v; a withdrawn belief reopens nothing", r, err)
 	}
 	stale, err := x.Stale()
-	if err != nil || len(stale) != 1 || len(stale[0].Links) != 1 || stale[0].Links[0].Other.ID != "task_t1t1t1" || !stale[0].Links[0].Orphaned {
+	if err != nil || len(stale) != 1 || len(stale[0].Links) != 1 || stale[0].Links[0].Other.ID != "task_t1t1t1" || !stale[0].Links[0].Concerns.Has(graph.Orphaned) {
 		t.Errorf("Stale = %+v, %v", stale, err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/andycondon/loremason/internal/graph"
 	"github.com/andycondon/loremason/internal/suggest"
 )
 
@@ -45,21 +46,6 @@ type Dependent struct {
 	Depth int     // 1 for a record that links to it, 2 for one that links to that, and so on
 	Field string  // the field of the link that reached it
 	On    Summary // the record that link points at; the one asked about when Depth is 1
-}
-
-// StaleGroup is a record that has changed, or is no longer in force, and the
-// links that need a re-check because of it.
-type StaleGroup struct {
-	Target   Summary
-	Revision int         // the target's current revision
-	Links    []StaleLink // Other is the record holding the link
-}
-
-// StaleLink is a link that needs a re-check because of its target.
-type StaleLink struct {
-	Link
-	Stale    bool // the link is pinned to a revision the target has moved past
-	Orphaned bool // the link rests on a target that is no longer in force
 }
 
 // Reopening is a commitment resting on a belief that has fallen.
@@ -360,37 +346,42 @@ func (x *Index) Dependents(id string) ([]Dependent, error) {
 	return out, nil
 }
 
-// Stale returns the records that have changed since links were written
-// against them, or that are no longer in force under a link that relies on
-// them, one group per record by ID, with the links to re-check.
-func (x *Index) Stale() ([]StaleGroup, error) {
+// Stale returns the links that need a re-check anywhere in the workspace, for
+// any concern (see graph.Concern), grouped by the record that changed, by ID.
+// It is the workspace-wide version of the list `where` gives an initiative.
+func (x *Index) Stale() ([]Change, error) { return x.recheck("") }
+
+// recheck returns the links with a concern, grouped by their target, whose
+// source is a member of the initiative; an empty ini means every link.
+func (x *Index) recheck(ini string) ([]Change, error) {
 	rows, err := x.db.Query(`SELECT t.id, t.type, t.title, t.status, COALESCE(t.revision, 0),
-		e.name, e.pinned_rev, e.pinned_fp, e.stale, e.orphaned, s.id, s.type, s.title, s.status
+		e.name, e.pinned_rev, e.pinned_fp, e.concerns, s.id, s.type, s.title, s.status
 		FROM edges e JOIN nodes t ON t.id = e.dst JOIN nodes s ON s.id = e.src
-		WHERE e.stale = 1 OR e.orphaned = 1 ORDER BY t.id, s.id, e.name`)
+		WHERE e.concerns != 0 AND (? = '' OR e.src IN (SELECT id FROM members WHERE initiative = ?))
+		ORDER BY t.id, s.id, e.name`, ini, ini)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []StaleGroup
+	var out []Change
 	for rows.Next() {
 		var t Summary
 		var rev int
-		var l StaleLink
+		var l RecheckLink
 		var pinRev sql.NullInt64
 		var fp string
 		if err := rows.Scan(&t.ID, &t.Type, &t.Title, &t.Status, &rev,
-			&l.Field, &pinRev, &fp, &l.Stale, &l.Orphaned, &l.Other.ID, &l.Other.Type, &l.Other.Title, &l.Other.Status); err != nil {
+			&l.Field, &pinRev, &fp, &l.Concerns, &l.Other.ID, &l.Other.Type, &l.Other.Title, &l.Other.Status); err != nil {
 			return nil, err
 		}
 		if pinRev.Valid {
 			l.Pin = &Pin{Rev: int(pinRev.Int64), FP: fp}
 		}
 		if n := len(out); n == 0 || out[n-1].Target.ID != t.ID {
-			out = append(out, StaleGroup{Target: t, Revision: rev})
+			out = append(out, Change{Target: t, Revision: rev})
 		}
-		g := &out[len(out)-1]
-		g.Links = append(g.Links, l)
+		c := &out[len(out)-1]
+		c.Links = append(c.Links, l)
 	}
 	return out, rows.Err()
 }
@@ -400,7 +391,7 @@ func (x *Index) Stale() ([]StaleGroup, error) {
 func (x *Index) Reopened() ([]Reopening, error) {
 	rows, err := x.db.Query(`SELECT c.id, c.type, c.title, c.status, e.name, b.id, b.type, b.title, b.status
 		FROM edges e JOIN nodes c ON c.id = e.src JOIN nodes b ON b.id = e.dst
-		WHERE e.reopens = 1 ORDER BY c.id, b.id, e.name`)
+		WHERE e.concerns & ? != 0 ORDER BY c.id, b.id, e.name`, uint8(graph.Reopens))
 	if err != nil {
 		return nil, err
 	}
