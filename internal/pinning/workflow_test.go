@@ -101,7 +101,7 @@ func TestNonBreakingRevisionsRepinQuietly(t *testing.T) {
 func TestNewRecordsGetAFirstRevision(t *testing.T) {
 	w := testws.New(t, nil)
 	belief, _ := registry.Load().Find("belief")
-	rel, err := graph.Create(w.Root, belief, "X", time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC))
+	rel, err := graph.Create(w.Root, belief, "X", time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC), graph.CreateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

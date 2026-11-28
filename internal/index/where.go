@@ -391,3 +391,20 @@ func (x *Index) entries(ini, typ string) ([]Entry, error) {
 	}
 	return out, rows.Err()
 }
+
+// ResolveInitiative returns the initiative that name stands for, with its
+// slug, as Where takes it: a slug, an ID or an alias. The errors are
+// Where's.
+func (x *Index) ResolveInitiative(name string) (Initiative, error) {
+	id, err := x.initiative(name)
+	if err != nil {
+		return Initiative{}, err
+	}
+	s, err := x.summary(id)
+	if err != nil {
+		return Initiative{}, err
+	}
+	ini := Initiative{Summary: s}
+	err = x.db.QueryRow(`SELECT slug FROM initiatives WHERE id = ?`, id).Scan(&ini.Slug)
+	return ini, err
+}

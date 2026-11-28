@@ -3,6 +3,7 @@ package id
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"regexp"
 )
 
@@ -28,4 +29,15 @@ func Prefix(s string) (string, bool) {
 		return "", false
 	}
 	return m[1], true
+}
+
+// Derive returns the ID with the given prefix that key always gives, so the
+// same key names the same record without a lookup.
+func Derive(prefix, key string) string {
+	sum := sha256.Sum256([]byte(key))
+	b := sum[:6]
+	for i := range b {
+		b[i] = alphabet[b[i]%32]
+	}
+	return prefix + "_" + string(b)
 }

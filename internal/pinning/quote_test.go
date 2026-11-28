@@ -55,3 +55,18 @@ func TestSyncLeavesAQuoteOnItsRevision(t *testing.T) {
 		t.Errorf("a quote of an older revision is stale: %v", s)
 	}
 }
+
+// A quote that names an older revision with @r1 is pinned to it, not moved
+// forward as a link that propagates would be.
+func TestSyncPinsAQuoteToTheRevisionItNames(t *testing.T) {
+	finding := "---\nid: fnd_k3m9qx\ntitle: Caching helps\nrevisions:\n  - {rev: 1, date: 2026-11-22, fp: \"fp1:000000000001\"}\n  - {rev: 2, date: 2026-11-23, fp: \"fp1:000000000002\", change: non_breaking}\ncreated: 2026-11-22\n---\n\nFirst thoughts.\n"
+	named := strings.Replace(quote, "[fnd_k3m9qx]", "[fnd_k3m9qx@r1]", 1)
+	w := testws.New(t, map[string]string{"finding/fnd_k3m9qx.md": finding, "evidence/ev_p4n2xa.md": named})
+	p := sync(t, w)
+	if got := w.Read("evidence/ev_p4n2xa.md"); !strings.Contains(got, "{to: fnd_k3m9qx, rev: 1, fp: \"fp1:000000000001\"}") {
+		t.Errorf("the quote isn't pinned to r1:\n%s", got)
+	}
+	if got := actions(p); strings.Contains(got, "since every revision") {
+		t.Errorf("the pin moved forward:\n%s", got)
+	}
+}

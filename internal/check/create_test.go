@@ -25,7 +25,7 @@ func TestNewRecordsPassEveryCheck(t *testing.T) {
 	for _, name := range reg.Names() {
 		typ := reg.Types[name]
 		for _, title := range titles {
-			rel, err := graph.Create(w.Root, typ, title, time.Now())
+			rel, err := graph.Create(w.Root, typ, title, time.Now(), graph.CreateOptions{})
 			if err != nil {
 				t.Fatalf("%s %q: %v", name, title, err)
 			}
