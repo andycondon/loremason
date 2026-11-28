@@ -60,10 +60,10 @@ func TestGenerateHasStalePinsAndReopeningEdges(t *testing.T) {
 	}
 	var stale, reopens int
 	for _, e := range g.Edges {
-		if e.Stale() {
+		if e.Concerns().Has(graph.Stale) {
 			stale++
 		}
-		if e.Reopens() {
+		if e.Concerns().Has(graph.Reopens) {
 			reopens++
 		}
 	}

@@ -67,7 +67,7 @@ func TestOrphaned(t *testing.T) {
 		var got, found bool
 		for _, e := range g.Edges {
 			if e.From.ID == c.from && e.Name == c.name && e.Target != nil && e.Target.ID == c.to {
-				got, found = e.Orphaned(), true
+				got, found = e.Concerns().Has(Orphaned), true
 			}
 		}
 		if !found || got != c.want {
@@ -85,10 +85,10 @@ func TestStepsOfASupersededPlanAreNotReportedOrphaned(t *testing.T) {
 		file("step_s1s1s1", "part_of: plan_p1p1p1"),
 		file("step_s2s2s2", "part_of: plan_p2p2p2"),
 	)
-	if edge(t, g, "step_s1s1s1", "part_of").Orphaned() {
+	if edge(t, g, "step_s1s1s1", "part_of").Concerns().Has(Orphaned) {
 		t.Error("a step of a superseded plan is out of force, so isn't orphaned")
 	}
-	if edge(t, g, "step_s2s2s2", "part_of").Orphaned() {
+	if edge(t, g, "step_s2s2s2", "part_of").Concerns().Has(Orphaned) {
 		t.Error("a step of a plan in force isn't orphaned")
 	}
 }
@@ -110,7 +110,7 @@ func doubtGraph(t *testing.T, direction, via string, extra ...string) *Graph {
 }
 
 func doubts(t *testing.T, g *Graph) bool {
-	return edge(t, g, "dec_d1d1d1", "relies_on").reliesOnDoubted()
+	return edge(t, g, "dec_d1d1d1", "relies_on").Concerns().Has(Doubted)
 }
 
 // A belief is doubted by evidence undermining or undercutting a supporting
@@ -160,7 +160,7 @@ func TestDoubtsOnlyForACommitmentInForce(t *testing.T) {
 		file("dec_d1d1d1", "status: rejected", "relies_on: [bel_b1b1b1]"),
 		file("task_d2d2d2", "status: accepted", "blocked_by: [bel_b1b1b1]"),
 	)
-	if doubts(t, g) || edge(t, g, "task_d2d2d2", "blocked_by").reliesOnDoubted() {
+	if doubts(t, g) || edge(t, g, "task_d2d2d2", "blocked_by").Concerns().Has(Doubted) {
 		t.Error("a closed source, or a link that doesn't propagate, isn't doubted")
 	}
 }

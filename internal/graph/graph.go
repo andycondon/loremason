@@ -328,13 +328,9 @@ func (n *Node) statusHolder() *Node {
 	return nil
 }
 
-// stateSealStrings gives the reasons the type's sealed key seals the node as it is
-// now, whether or not its revision's fingerprint has been recorded.
-func (n *Node) stateSealStrings() []string { return sealStrings(n.stateSeals()) }
-
 // SealedByStatus reports whether the status of the record, or of the one it
 // takes its status from, is one its type's sealed key lists, as an accepted
-// decision's is. Unlike stateSealStrings, it ignores settling and whether the
+// decision's is. Unlike the seals Seals gives, it ignores settling and whether the
 // fingerprint is recorded.
 func (n *Node) SealedByStatus() bool {
 	h := n.statusHolder()
@@ -439,27 +435,6 @@ func (e *Edge) Concerns() Concern {
 	}
 	return c
 }
-
-// Stale reports whether a pinned link no longer matches its target: the
-// target is at another revision, or its meaning changed since it was pinned.
-// A pin that doesn't seal, such as a quote's, is never stale.
-func (e *Edge) Stale() bool { return e.Concerns().Has(Stale) }
-
-// Reopens reports whether the link reopens its source: its target's status is
-// one that the target's type lists as fallen. A target that no longer holds
-// for another reason, such as a withdrawn belief, reopens nothing.
-func (e *Edge) Reopens() bool { return e.Concerns().Has(Reopens) }
-
-// Orphaned reports whether the link rests on a record that is no longer in
-// force, such as a withdrawn belief, a superseded task, or a step of a
-// superseded plan. A target that has fallen reopens its source instead (see
-// Reopens), so it isn't reported here too. A withdrawn belief doesn't reopen
-// what relied on it, but whoever relied on it should look again.
-func (e *Edge) Orphaned() bool { return e.Concerns().Has(Orphaned) }
-
-// reliesOnDoubted reports whether the link relies on a belief that is doubted and no
-// re-check has cleared it: see doubts.
-func (e *Edge) reliesOnDoubted() bool { return e.Concerns().Has(Doubted) }
 
 // InForce reports whether the node's record is still in force: its status
 // holder's status (see statusHolder) is neither one its type lists as closed

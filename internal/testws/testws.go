@@ -104,7 +104,7 @@ func (w *Workspace) Stale() []string {
 	w.t.Helper()
 	var stale []string
 	for _, e := range w.Load().Edges {
-		if e.Stale() {
+		if e.Concerns().Has(graph.Stale) {
 			stale = append(stale, e.From.ID+" "+e.Name+" -> "+e.Target.ID)
 		}
 	}

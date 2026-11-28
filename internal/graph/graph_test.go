@@ -220,13 +220,13 @@ func TestEdgeStaleAndBehind(t *testing.T) {
 		{"2", "fp1:222222222222", true, 0}, // the meaning changed since
 	} {
 		e := stale(t, c.rev, c.fp)
-		if e.Stale() != c.stale || len(e.behind()) != c.behind {
-			t.Errorf("rev %s, %s: stale %v, behind %d", c.rev, c.fp, e.Stale(), len(e.behind()))
+		if e.Concerns().Has(Stale) != c.stale || len(e.behind()) != c.behind {
+			t.Errorf("rev %s, %s: stale %v, behind %d", c.rev, c.fp, e.Concerns().Has(Stale), len(e.behind()))
 		}
 	}
 	bare := load(t, file("bel_7k3m9q"), file("task_9w4hzd", "relies_on: [bel_7k3m9q, bel_nope00]"))
 	for _, e := range bare.Edges {
-		if e.Stale() || e.behind() != nil {
+		if e.Concerns().Has(Stale) || e.behind() != nil {
 			t.Errorf("an unpinned link, or one to nothing, is never stale: %s", e.To)
 		}
 	}
@@ -263,7 +263,7 @@ func TestNodeStatus(t *testing.T) {
 // another field, reopens its source.
 func reopens(t *testing.T, g *Graph, from, name string) bool {
 	t.Helper()
-	return edge(t, g, from, name).Reopens()
+	return edge(t, g, from, name).Concerns().Has(Reopens)
 }
 
 func TestEdgeReopensWhenABeliefHasFallen(t *testing.T) {
@@ -308,7 +308,7 @@ func TestEdgeReopensNothingElse(t *testing.T) {
 		{"task_k3m9qr", "relies_on"},
 	} {
 		for _, e := range g.Edges {
-			if e.From.ID == c.from && e.Name == c.name && e.Reopens() {
+			if e.From.ID == c.from && e.Name == c.name && e.Concerns().Has(Reopens) {
 				t.Errorf("%s %s -> %s reopens", c.from, c.name, e.To.Name)
 			}
 		}
@@ -332,7 +332,7 @@ func TestEdgeDoesNotReopenFromOutsideTheCommittingLayer(t *testing.T) {
 	} {
 		e := edge(t, g, c.from, c.field)
 		e.Def.Propagates = true
-		if e.Reopens() != c.want {
+		if e.Concerns().Has(Reopens) != c.want {
 			t.Errorf("a propagating link from %s: reopens = %v", c.from, !c.want)
 		}
 	}
@@ -347,7 +347,7 @@ func TestEdgeFromASubRecordDoesNotReopen(t *testing.T) {
 	)
 	e := edge(t, g, "bel_7k3m9q/s1", "evidence")
 	e.Def.Propagates = true
-	if e.Reopens() {
+	if e.Concerns().Has(Reopens) {
 		t.Error("a link from a sub-record of a knowing record reopens")
 	}
 }

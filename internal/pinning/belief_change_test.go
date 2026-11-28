@@ -74,7 +74,7 @@ func TestBeliefChangeStopsAtTheTaskThatStillHolds(t *testing.T) {
 	g := w.Load()
 	var link *graph.Edge
 	for _, e := range g.Edges {
-		if e.Stale() {
+		if e.Concerns().Has(graph.Stale) {
 			link = e
 		}
 	}

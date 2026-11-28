@@ -65,7 +65,7 @@ func TestStatusDoesNotSealARevisionWithNoFingerprint(t *testing.T) {
 		if n.Sealed(n.Current().Rev) {
 			t.Errorf("%s: sealed by %v with no recorded fingerprint", id, n.SealedBy(n.Current().Rev))
 		}
-		if !n.SealedByStatus() || len(n.stateSealStrings()) == 0 {
+		if !n.SealedByStatus() || len(n.stateSeals()) == 0 {
 			t.Errorf("%s: its status should still be reported as the reason it will seal", id)
 		}
 	}
@@ -88,8 +88,8 @@ func TestStatusHolderSurvivesACycle(t *testing.T) {
 	if a.statusHolder() != nil {
 		t.Errorf("statusHolder = %v, want nil on a cycle", a.statusHolder())
 	}
-	if !a.InForce() || a.SealedByStatus() || len(a.stateSealStrings()) != 0 {
-		t.Errorf("a cycle: in force %v, sealed by status %v, seals %v", a.InForce(), a.SealedByStatus(), a.stateSealStrings())
+	if !a.InForce() || a.SealedByStatus() || len(a.stateSeals()) != 0 {
+		t.Errorf("a cycle: in force %v, sealed by status %v, seals %v", a.InForce(), a.SealedByStatus(), a.stateSeals())
 	}
 	step.StatusFrom = "part_of"
 	if h := g.Node("step_4b9dxc").statusHolder(); h == nil || h.ID != "plan_k2x8wd" {
