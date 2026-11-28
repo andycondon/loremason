@@ -164,7 +164,7 @@ task:
 - **Statuses with a meaning** are data too, each list checked against the type's schema:
   - `fallen` lists a type's statuses that mean the record no longer holds;
   - `closed` lists the statuses that mean a record is no longer in force, for any type (for a belief, `withdrawn`; section 6);
-  - `sealed` lists the statuses at which the record's current revision is sealed (section 5): for a decision, `accepted`, `rejected`, `deprecated` and `superseded`. A question has no status, so for it the key is "settled"; for a step it is its plan's status;
+  - `sealed` lists the statuses at which the record's current revision is sealed (section 5): for a decision, `accepted`, `rejected`, `deprecated` and `superseded`. A question has no status, so for it the key is "settled"; for a step, which has no status of its own, it is its plan's status. `status_from` names the edge a status-less record takes its status from (a step's `part_of`); the record's in-force state and `sealed` key follow it;
   - on an edge, `target_status` lists the statuses the target should be in (`supersedes` to `superseded`). It applies only when the source is in force and sealed by its status (for a decision, `accepted`), so a draft that isn't yet in force isn't warned about;
   - on an `answers` edge, `settles` lists the source's statuses in which it settles the question (a decision at `accepted`, a belief at `held`), and `pending` lists those in which it is an answer still waiting (a decision at `proposed` or `leaning`).
 

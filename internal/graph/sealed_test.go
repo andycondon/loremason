@@ -70,3 +70,29 @@ func TestStatusDoesNotSealARevisionWithNoFingerprint(t *testing.T) {
 		}
 	}
 }
+
+// A cycle of status_from edges has no status holder, instead of looping: the
+// record is in force and sealed by nothing.
+func TestStatusHolderSurvivesACycle(t *testing.T) {
+	g := load(t,
+		file("step_2c7rq1", withRevs("follows: step_8v0ynf")...),
+		file("step_8v0ynf", withRevs("follows: step_2c7rq1")...),
+		file("step_4b9dxc", withRevs("part_of: plan_k2x8wd")...),
+		file("plan_k2x8wd", withRevs("status: accepted")...),
+	)
+	step := g.Node("step_2c7rq1").Type()
+	step.StatusFrom = "follows"
+	defer func() { step.StatusFrom = "part_of" }()
+
+	a := g.Node("step_2c7rq1")
+	if a.StatusHolder() != nil {
+		t.Errorf("StatusHolder = %v, want nil on a cycle", a.StatusHolder())
+	}
+	if !a.InForce() || a.SealedByStatus() || len(a.StateSeals()) != 0 {
+		t.Errorf("a cycle: in force %v, sealed by status %v, seals %v", a.InForce(), a.SealedByStatus(), a.StateSeals())
+	}
+	step.StatusFrom = "part_of"
+	if h := g.Node("step_4b9dxc").StatusHolder(); h == nil || h.ID != "plan_k2x8wd" {
+		t.Errorf("a step's status holder = %v, want its plan", h)
+	}
+}

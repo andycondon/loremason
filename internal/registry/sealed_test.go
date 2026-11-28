@@ -8,14 +8,14 @@ import (
 
 // Decisions, questions and steps are sealed as types.yaml says.
 func TestSealedKeysOfTheShippedTypes(t *testing.T) {
-	if s := typ(t, "decision").Sealed; !slices.Contains(s.Status, "accepted") || s.Via != "" {
+	if s := typ(t, "decision").Sealed; !slices.Contains(s.Status, "accepted") || typ(t, "decision").StatusFrom != "" {
 		t.Errorf("decision: %+v", s)
 	}
 	if !typ(t, "question").Sealed.Settled {
 		t.Error("a question is sealed once settled")
 	}
-	if s := typ(t, "step").Sealed; s.Via != "part_of" || !slices.Contains(s.Status, "accepted") {
-		t.Errorf("step: %+v", s)
+	if st := typ(t, "step"); st.StatusFrom != "part_of" || !slices.Contains(st.Sealed.Status, "accepted") {
+		t.Errorf("step: %+v", st.Sealed)
 	}
 }
 
@@ -26,14 +26,15 @@ func TestCheckSealedRefusesABadKey(t *testing.T) {
 		name string
 		typ  string
 		seal Sealed
+		from string
 		want string
 	}{
-		{"an unknown status", "decision", Sealed{Status: []string{"accepted", "done"}}, "sealed at `done`"},
-		{"an unknown status through via", "step", Sealed{Via: "part_of", Status: []string{"held"}}, "sealed at `held`"},
-		{"an unknown via edge", "step", Sealed{Via: "belongs_to", Status: []string{"accepted"}}, "sealed via `belongs_to`"},
+		{"an unknown status", "decision", Sealed{Status: []string{"accepted", "done"}}, "", "sealed at `done`"},
+		{"an unknown status through status_from", "step", Sealed{Status: []string{"held"}}, "part_of", "sealed at `held`"},
+		{"an unknown status_from edge", "step", Sealed{Status: []string{"accepted"}}, "belongs_to", "status from `belongs_to`"},
 	} {
 		d := *typ(t, c.typ)
-		d.Sealed = c.seal
+		d.Sealed, d.StatusFrom = c.seal, c.from
 		err := r.checkSealed(&d)
 		if err == nil || !strings.Contains(err.Error(), c.want) || !strings.Contains(err.Error(), c.typ) {
 			t.Errorf("%s: got %v, want one naming %s and %q", c.name, err, c.typ, c.want)

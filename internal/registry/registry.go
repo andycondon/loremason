@@ -59,6 +59,7 @@ type Type struct {
 	RevisionsInline bool             `yaml:"revisions_inline"` // old wording is kept in the file, not left to git
 	Meaning         []string         `yaml:"meaning"`          // fields a fingerprint covers; "body" for the body
 	Fixed           bool             `yaml:"fixed"`            // the record never changes once written; it keeps its own fp (evidence)
+	StatusFrom      string           `yaml:"status_from"`      // an edge of the type: a record with no status of its own takes its status from that edge's target (a step from its plan)
 	Sealed          Sealed           `yaml:"sealed"`           // when the current revision is sealed by state, not only by a pin
 	Closed          []string         `yaml:"closed"`           // statuses meaning the record is no longer in force; each is one of the schema's statuses
 	Fallen          []string         `yaml:"fallen"`           // statuses meaning the record no longer holds; each is one of the schema's statuses
@@ -70,13 +71,12 @@ type Type struct {
 }
 
 // Sealed says when a record's current revision is sealed by state. Status
-// lists the statuses that seal it, the type's own or, with Via, those of the
-// record its Via edge leads to (a step's plan). Settled seals a record once a
-// link settles it (a question). The zero value seals nothing.
+// lists the statuses that seal it, those of the record that holds its status
+// (its own, or the one its type's StatusFrom leads to). Settled seals a record
+// once a link settles it (a question). The zero value seals nothing.
 type Sealed struct {
 	Status  []string `yaml:"status"`
 	Settled bool     `yaml:"settled"`
-	Via     string   `yaml:"via"` // an edge of the type; Status then names the target's statuses
 }
 
 // Edge is a kind of link.
@@ -215,18 +215,17 @@ func (t *Type) checkStatuses() error {
 	return nil
 }
 
-// checkSealed reports a sealed status that neither the type's schema nor, with
-// via, a target of its via edge allows, and a via that isn't an edge of the
-// type.
+// checkSealed reports a status_from that isn't an edge of the type, and a
+// sealed status that neither the type's schema nor, with status_from, a target
+// of that edge allows.
 func (r *Registry) checkSealed(t *Type) error {
 	s := t.Sealed
 	statuses := t.statuses()
-	if s.Via != "" {
-		e, ok := t.Edges[s.Via]
+	if t.StatusFrom != "" {
+		e, ok := t.Edges[t.StatusFrom]
 		if !ok {
-			return fmt.Errorf("types.yaml: %s is sealed via `%s`, but it has no such edge", t.Name, s.Via)
+			return fmt.Errorf("types.yaml: %s takes its status from `%s`, but it has no such edge", t.Name, t.StatusFrom)
 		}
-		statuses = nil
 		for _, to := range e.To {
 			if target := r.Types[to]; target != nil {
 				statuses = append(statuses, target.statuses()...)

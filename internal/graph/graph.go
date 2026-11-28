@@ -213,21 +213,46 @@ func (n *Node) Quoted(rev int) bool {
 	return false
 }
 
+// StatusHolder returns the node whose status decides the record's state: the
+// record itself, or, for a record with no status of its own whose type has a
+// status_from edge, the record that edge leads to (the first it resolves,
+// followed further if that has none either). It is nil when the edges lead
+// round a cycle.
+func (n *Node) StatusHolder() *Node {
+	rec := n.Record()
+	seen := map[*Node]bool{}
+	for !seen[rec] {
+		seen[rec] = true
+		from := rec.Type().StatusFrom
+		if rec.Status() != "" || from == "" {
+			return rec
+		}
+		next := rec
+		for _, e := range rec.Outgoing {
+			if e.Name == from && e.Target != nil {
+				next = e.Target.Record()
+				break
+			}
+		}
+		if next == rec {
+			return rec
+		}
+		rec = next
+	}
+	return nil
+}
+
 // StateSeals gives the reasons the type's sealed key seals the node as it is
 // now, whether or not its revision's fingerprint has been recorded; SealedBy
 // applies them only once it has.
 func (n *Node) StateSeals() []string {
 	s := n.Type().Sealed
 	var reasons []string
-	if s.Via == "" {
-		if slices.Contains(s.Status, n.Status()) {
-			reasons = append(reasons, n.Status())
-		}
-	} else {
-		for _, e := range n.Outgoing {
-			if e.Name == s.Via && e.Target != nil && slices.Contains(s.Status, e.Target.Status()) {
-				reasons = append(reasons, fmt.Sprintf("its %s %s is %s", e.Target.Type().Name, e.Target.ID, e.Target.Status()))
-			}
+	if h := n.StatusHolder(); h != nil && slices.Contains(s.Status, h.Status()) {
+		if h == n.Record() {
+			reasons = append(reasons, h.Status())
+		} else {
+			reasons = append(reasons, fmt.Sprintf("its %s %s is %s", h.Type().Name, h.ID, h.Status()))
 		}
 	}
 	if s.Settled {
@@ -241,20 +266,13 @@ func (n *Node) StateSeals() []string {
 	return reasons
 }
 
-// SealedByStatus reports whether the record's status, or its via target's,
-// is one its type's sealed key lists, as an accepted decision's is. Unlike
-// StateSeals, it ignores settling and whether the fingerprint is recorded.
+// SealedByStatus reports whether the status of the record, or of the one it
+// takes its status from, is one its type's sealed key lists, as an accepted
+// decision's is. Unlike StateSeals, it ignores settling and whether the
+// fingerprint is recorded.
 func (n *Node) SealedByStatus() bool {
-	s := n.Type().Sealed
-	if s.Via == "" {
-		return slices.Contains(s.Status, n.Status())
-	}
-	for _, e := range n.Outgoing {
-		if e.Name == s.Via && e.Target != nil && slices.Contains(s.Status, e.Target.Status()) {
-			return true
-		}
-	}
-	return false
+	h := n.StatusHolder()
+	return h != nil && slices.Contains(n.Type().Sealed.Status, h.Status())
 }
 
 // Sealed reports whether anything seals the revision: see SealedBy.
@@ -378,27 +396,15 @@ func (e *Edge) Orphaned() bool { return e.Concerns().Has(Orphaned) }
 func (e *Edge) Doubts() bool { return e.Concerns().Has(Doubted) }
 
 // InForce reports whether the node's record is still in force: its status
-// is neither one its type lists as closed nor as fallen. A type with no such
-// statuses is always in force. A record with no status of its own whose
-// type is sealed via another record, as a step is by its plan, follows that
-// record: it is in force unless every record it leads to by that link is not.
+// holder's status (see StatusHolder) is neither one its type lists as closed
+// nor as fallen. A type with no such statuses is always in force.
 func (n *Node) InForce() bool {
-	rec := n.Record()
-	t := rec.Type()
-	if status := rec.Status(); status != "" || t.Sealed.Via == "" {
-		return !t.IsClosed(status) && !t.IsFallen(status)
+	h := n.StatusHolder()
+	if h == nil {
+		return true
 	}
-	led := false
-	for _, e := range rec.Outgoing {
-		if e.Name != t.Sealed.Via || e.Target == nil {
-			continue
-		}
-		led = true
-		if e.Target.InForce() {
-			return true
-		}
-	}
-	return !led
+	t := h.Type()
+	return !t.IsClosed(h.Status()) && !t.IsFallen(h.Status())
 }
 
 // DoubtedBy returns the evidence that makes a belief doubted, sorted by ID:
