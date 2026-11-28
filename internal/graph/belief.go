@@ -16,8 +16,8 @@ const (
 const (
 	// supportField is the sub-record field that lists a belief's support links.
 	supportField = "support"
-	// directionField is the support link field that holds its Direction.
-	directionField = "direction"
+	// DirectionField is the support link field that holds its Direction.
+	DirectionField = "direction"
 	// EdgeEvidence is the support link's edge to the evidence it cites.
 	EdgeEvidence = "evidence"
 	// EdgeUndercuts is evidence's edge to a support link it weakens.
@@ -39,7 +39,7 @@ func (n *Node) SupportLinks(d Direction) []*Node {
 	}
 	var links []*Node
 	for _, link := range n.Children {
-		if Direction(link.Fields.Text(directionField)) == d {
+		if Direction(link.Fields.Text(DirectionField)) == d {
 			links = append(links, link)
 		}
 	}

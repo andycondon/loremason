@@ -58,7 +58,7 @@ func pendingReasons(seals []graph.Seal) []string {
 		switch {
 		case s.Answered:
 			out = append(out, "its answer")
-		case s.String() == s.Status:
+		case !s.Inherited():
 			out = append(out, fmt.Sprintf("its status (%s)", s.Status))
 		default:
 			out = append(out, fmt.Sprintf("its %s %s being %s", s.Holder.Type().Name, s.Holder.ID, s.Status))

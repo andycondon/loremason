@@ -218,10 +218,16 @@ func (s Seal) String() string {
 		return s.By.From.Record().ID
 	case s.Answered:
 		return "settled"
-	case s.Holder != nil && s.Holder != s.of:
+	case s.Inherited():
 		return fmt.Sprintf("its %s %s is %s", s.Holder.Type().Name, s.Holder.ID, s.Status)
 	}
 	return s.Status
+}
+
+// Inherited reports whether the seal is the status of another record the
+// sealed one takes its status from, such as a step's plan.
+func (s Seal) Inherited() bool {
+	return s.By == nil && !s.Answered && s.Holder != nil && s.Holder != s.of
 }
 
 // Seals splits what seals a revision into the seals in force and those still

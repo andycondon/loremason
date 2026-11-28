@@ -20,7 +20,7 @@ func (c *checker) disputedBelief(f *graph.File) {
 		return
 	}
 	for _, link := range n.SupportLinks(graph.Disputes) {
-		c.ds.Warnf(f.At(link.Fields.KeyLine("direction")), "the belief is %s, but %s disputes it; a rebut means the belief is incorrect: set its status, or remove the link", statusOf(n), link.ID)
+		c.ds.Warnf(f.At(link.Fields.KeyLine(graph.DirectionField)), "the belief is %s, but %s disputes it; a rebut means the belief is incorrect: set its status, or remove the link", statusOf(n), link.ID)
 	}
 }
 
