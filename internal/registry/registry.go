@@ -20,10 +20,10 @@ import (
 	"github.com/andycondon/loremason/schema"
 )
 
-// The layers a type can belong to.
 // FixedFPField is the field a fixed record keeps its fingerprint in.
 const FixedFPField = "fp"
 
+// The layers a type can belong to.
 const (
 	Knowing    = "knowing"
 	Committing = "committing"

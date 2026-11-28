@@ -57,7 +57,9 @@ type Node struct {
 	Outgoing []*Edge
 }
 
-// Edge is one link, from the node whose field holds it.
+// Edge is one link, from the node whose field holds it. A pin on it is a
+// concern only when the link propagates, from a committing record still in
+// force (see Concerns): a pin from a record not in force isn't stale either.
 type Edge struct {
 	From   *Node
 	Name   string // the field, such as relies_on, or via for a pin's evidence

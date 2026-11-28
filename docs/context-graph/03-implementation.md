@@ -284,7 +284,7 @@ When a pinned link no longer matches its target, the record holding it is stale.
 | **Still holds** | The pin is updated to the target's current revision and fingerprint, with `via` pointing at a new evidence record that says why (`about` the record, `generated_by` the agent's session). The record itself gets no new revision, so nothing below it is touched. That's early cutoff. |
 | **Needs to change** | The record gets a new revision through `mason revise`, and its pins are updated. Whatever pins *it* now becomes stale, one step further down. |
 
-**Non-breaking revisions re-pin quietly.** If every revision between a pin and its target's current one is `non_breaking`, `mason sync` moves the pin forward with no re-check and no evidence. The revision's own `change` value is the record of why, so a `via` from an earlier re-check is kept: it still names the evidence for that re-check.
+**Non-breaking revisions re-pin quietly.** If every revision between a pin and its target's current one is `non_breaking`, `mason sync` moves the pin forward with no re-check and no evidence. The revision's own `change` value is the record of why, so the pin keeps its `via`: it still names the evidence from the last re-check.
 
 Pins, `via` links and re-check evidence all live in record files, never only in the index. So a rebuild from the files always gives the same answer to "what is stale?".
 
@@ -494,7 +494,7 @@ None of these changes the file format. Each can be added without rewriting recor
 | **bare link / pinned link** | A link as written, or with the target's revision and fingerprint recorded. |
 | **sealed** | A revision that a link that propagates has pinned, or whose record's status says it is in force (a decision once `accepted`, a question once settled, a step once its plan is `accepted`). A quote's pin (evidence `from` a document) doesn't seal. From then on, a change of substance needs a new revision. |
 | **canonical form** | The exact text a fingerprint is computed from, fixed so that the same meaning always gives the same fingerprint. |
-| **`via`** | On a pinned link: the evidence recording the re-check that last re-pinned it. |
+| **`via`** | On a pinned link: the evidence from the last re-check that concluded "still holds". A quiet non-breaking re-pin keeps it. |
 | **generated page** | A page built from records, committed, and never edited by hand. |
 | **alias** | Another name for a record, such as its ID before migration. |
 

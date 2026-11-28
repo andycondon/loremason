@@ -80,9 +80,12 @@ func TestStatusHolderSurvivesACycle(t *testing.T) {
 		file("step_4b9dxc", withRevs("part_of: plan_k2x8wd")...),
 		file("plan_k2x8wd", withRevs("status: accepted")...),
 	)
-	step := g.Node("step_2c7rq1").Type()
-	step.StatusFrom = "follows"
-	defer func() { step.StatusFrom = "part_of" }()
+	// Two steps that take their status from each other, on a copy of the type
+	// so the shared registry is left alone.
+	cyclic := *g.Node("step_2c7rq1").Type()
+	cyclic.StatusFrom = "follows"
+	g.Node("step_2c7rq1").File.Type = &cyclic
+	g.Node("step_8v0ynf").File.Type = &cyclic
 
 	a := g.Node("step_2c7rq1")
 	if a.statusHolder() != nil {
@@ -91,7 +94,6 @@ func TestStatusHolderSurvivesACycle(t *testing.T) {
 	if !a.InForce() || a.SealedByStatus() || len(a.stateSeals()) != 0 {
 		t.Errorf("a cycle: in force %v, sealed by status %v, seals %v", a.InForce(), a.SealedByStatus(), a.stateSeals())
 	}
-	step.StatusFrom = "part_of"
 	if h := g.Node("step_4b9dxc").statusHolder(); h == nil || h.ID != "plan_k2x8wd" {
 		t.Errorf("a step's status holder = %v, want its plan", h)
 	}

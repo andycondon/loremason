@@ -451,7 +451,7 @@ func TestStaleIsGroupedByTheChangedRecord(t *testing.T) {
 	}
 }
 
-func TestStaleOfACleanWorkspace(t *testing.T) {
+func TestStaleListsOnlyTheDoubtedBeliefInTheWorkedExample(t *testing.T) {
 	x := open(t, workedExample(t))
 	// The worked example has no stale pin; what it lists is the doubted belief.
 	got, err := x.Stale()
