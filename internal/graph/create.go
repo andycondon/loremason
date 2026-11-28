@@ -29,7 +29,7 @@ type CreateOptions struct {
 // type's template, and returns its path relative to root. Spaces around the
 // title are dropped.
 func Create(root string, t *registry.Type, title string, today time.Time, opts CreateOptions) (string, error) {
-	title, err := cleanTitle(title)
+	title, err := CleanTitle(title)
 	if err != nil {
 		return "", err
 	}
@@ -55,9 +55,10 @@ func Create(root string, t *registry.Type, title string, today time.Time, opts C
 	}
 }
 
-// cleanTitle applies the schemas' rule for a title, one line of text, and
-// trims it.
-func cleanTitle(s string) (string, error) {
+// CleanTitle applies the schemas' rule for a title, one line of text, and
+// trims it. Commands call it before writing anything else, so a bad title
+// leaves no files behind.
+func CleanTitle(s string) (string, error) {
 	if !utf8.ValidString(s) {
 		return "", fmt.Errorf("%w, and this one isn't valid UTF-8", ErrTitle)
 	}

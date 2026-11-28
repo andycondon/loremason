@@ -42,7 +42,7 @@ func TestDraftsStayCheap(t *testing.T) {
 	w := testws.New(t, map[string]string{"design-doc/dd_c5r1tw.md": "---\nid: dd_c5r1tw\ntitle: Reading files safely\nstatus: proposed\ncreated: 2026-11-22\n---\n\nFirst draft.\n"})
 	sync(t, w)
 	w.Edit("design-doc/dd_c5r1tw.md", "First draft.", "Second draft, much better.")
-	if got := actions(sync(t, w)); !strings.Contains(got, "refresh the fingerprint of revision 1, which nothing pins yet") {
+	if got := actions(sync(t, w)); !strings.Contains(got, "refresh the fingerprint of revision 1, which no propagating link pins") {
 		t.Errorf("got %s", got)
 	}
 	if n := w.Node("dd_c5r1tw"); len(n.Revisions) != 1 || n.Current().FP != n.Fingerprint() {
@@ -146,7 +146,7 @@ func TestReviseRefuses(t *testing.T) {
 		"belief/bel_2wq8dn.md": strings.NewReplacer("bel_7k3m9q", "bel_2wq8dn", "created:", "revisions:\n  - {rev: 1}\n  - {rev: 3}\ncreated:").Replace(testws.Belief),
 	})
 	for id, want := range map[string]string{
-		"bel_7k3m9q": "nothing pins revision 1 of bel_7k3m9q yet",
+		"bel_7k3m9q": "nothing seals revision 1 of bel_7k3m9q yet",
 		"who_4d9snc": "which has no revisions",
 		"bel_2wq8dn": "has errors; fix them first",
 	} {
