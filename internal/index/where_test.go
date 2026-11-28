@@ -154,6 +154,7 @@ func questionsWS() map[string]string {
 		"decision/dec_d4d4d4.md":     decision("dec_d4d4d4", iniA, "leaning", "q_c4c4c4"),
 		"decision/dec_d5d5d5.md":     decision("dec_d5d5d5", iniA, "proposed", "q_c1c1c1"),
 		"decision/dec_d6d6d6.md":     decision("dec_d6d6d6", iniA, "rejected", "q_c4c4c4"),
+		"decision/dec_d8d8d8.md":     decision("dec_d8d8d8", iniA, "proposed", "q_c5c5c5"),
 		"belief/bel_b3b3b3.md":       strings.NewReplacer("bel_7k3m9q", "bel_b3b3b3", "status: held", "status: held\nanswers: [q_c3c3c3]").Replace(testws.Belief),
 	}
 }
