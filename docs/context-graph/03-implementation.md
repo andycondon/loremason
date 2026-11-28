@@ -452,11 +452,11 @@ The IDs follow part 1, section 5.
 
 ```
 $ mason stale
-validate doesn't handle Latin-1 input  (belief, r1 → r2, breaking)
-  └ Report unreadable files clearly  (task, accepted)
+bel_7k3m9q  belief  held  validate doesn't handle Latin-1 input  r2
+  relies_on  task_9w4hzd  task  accepted  Report unreadable files clearly  pinned r1 fp1:536221e3130c  (stale)
 ```
 
-Only the task appears. The plan and steps aren't stale: their pins point at the task, and the task hasn't changed.
+The output groups links by the record that changed, one line per link with the revision it still pins. Only the task appears. The plan and steps aren't stale: their pins point at the task, and the task hasn't changed.
 
 **4. The re-check stops early.** An agent re-reads the task against the new claim. Reporting unreadable files clearly is still the right outcome. The agent writes evidence `ev_m3q8vb` ("still holds: the outcome doesn't depend on which encodings fail") and moves the task's pin to `{to: bel_7k3m9q, rev: 2, fp: "fp1:91bd04e6c2a8", via: ev_m3q8vb}`. The task gets no new revision, so the plan is never touched.
 
