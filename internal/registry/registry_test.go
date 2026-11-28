@@ -159,6 +159,14 @@ func TestRegistryRefusesBadConstraints(t *testing.T) {
 	if err := r.checkConstraints(&task); err != nil {
 		t.Errorf("a known status: %v", err)
 	}
+	dec := *r.Types["decision"]
+	dec.Edges = maps.Clone(dec.Edges)
+	c := dec.Edges["chooses"]
+	c.To = []string{"question"}
+	dec.Edges["chooses"] = c
+	if err := r.checkConstraints(&dec); err == nil || !strings.Contains(err.Error(), "must be a sub-record type, not `question`") {
+		t.Errorf("within an edge whose target isn't a sub-record type: %v", err)
+	}
 }
 
 func TestTypeCheckClosed(t *testing.T) {
