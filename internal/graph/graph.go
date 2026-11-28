@@ -4,6 +4,7 @@ package graph
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -663,6 +664,30 @@ func (n *Node) Locals() []string {
 
 // At returns the position of a line in the file.
 func (f *File) At(line int) diag.Pos { return diag.Pos{Path: f.Path, Line: line} }
+
+// ListedSingleLinks names the fields that take one link but hold a list that
+// is empty or has one plain ID in it, such as `generated_by: [actv_3h7npc]`.
+// These are the ones `mason sync` can rewrite to the single value (or drop);
+// a longer list, or an item that isn't a plain ID, is left for the person to
+// resolve. The check reports and sync rewrites by this one rule.
+func (f *File) ListedSingleLinks() []string {
+	var names []string
+	for _, name := range slices.Sorted(maps.Keys(f.Type.Edges)) {
+		v, ok := f.Node.Fields.Get(name)
+		if !ok || !v.IsList() || !f.Type.SingleLink(name) {
+			continue
+		}
+		switch items := v.Items(); len(items) {
+		case 0:
+			names = append(names, name)
+		case 1:
+			if _, plain := items[0].Text(); plain {
+				names = append(names, name)
+			}
+		}
+	}
+	return names
+}
 
 // Misplaced reports whether the ID's prefix names a type other than the
 // folder's. The file is then checked against neither type's schema.

@@ -81,11 +81,7 @@ func (c *checker) schemaError(f *graph.File, e *jsonschema.ValidationError) {
 // which `mason sync` rewrites to the single value.
 func (c *checker) unlist(f *graph.File, fl failure, k jsonschema.ErrorKind) (string, bool) {
 	t, ok := k.(*kind.Type)
-	if !ok || t.Got != "array" || len(fl.at) != 1 || !f.Type.SingleLink(fl.at[0]) {
-		return "", false
-	}
-	v, _ := f.Node.Fields.Get(fl.at[0])
-	if len(v.Items()) > 1 {
+	if !ok || t.Got != "array" || len(fl.at) != 1 || !slices.Contains(f.ListedSingleLinks(), fl.at[0]) {
 		return "", false
 	}
 	return fmt.Sprintf("`%s` is a list, but it takes one link, not a list; `mason sync` rewrites it", fl.at), true

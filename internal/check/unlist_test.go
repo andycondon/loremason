@@ -47,3 +47,19 @@ func TestLongerListWhereOneLinkGoesIsAnError(t *testing.T) {
 		t.Errorf("broken: %v", res.Broken())
 	}
 }
+
+// A one-item list whose item isn't a plain ID is the person's to resolve:
+// the check calls it an error, not one that sync repairs.
+func TestListOfAMapIsNotFixable(t *testing.T) {
+	w := testws.New(t, map[string]string{
+		"activity/actv_3h7npc.md": activityRecord("actv_3h7npc", "a"),
+		"evidence/ev_p4n2xa.md":   evidenceGeneratedBy("[{to: actv_3h7npc}]"),
+	})
+	res, out := run(t, w.Root)
+	if strings.Contains(out, "rewrites it") {
+		t.Errorf("diagnostics:\n%s", out)
+	}
+	if len(res.Broken()) != 1 {
+		t.Errorf("broken: %v", res.Broken())
+	}
+}

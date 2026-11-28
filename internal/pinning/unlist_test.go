@@ -57,3 +57,19 @@ func TestSyncLeavesALongerListAlone(t *testing.T) {
 		t.Errorf("file:\n%s", got)
 	}
 }
+
+// A one-item list whose item isn't a plain ID is the person's to resolve,
+// so sync leaves it.
+func TestSyncLeavesAListOfAMapAlone(t *testing.T) {
+	w := testws.New(t, map[string]string{
+		"activity/actv_3h7npc.md": activityRecord("actv_3h7npc", "a"),
+		"evidence/ev_p4n2xa.md":   evidenceGeneratedBy("ev_p4n2xa", "generated_by: [{to: actv_3h7npc}]\n"),
+	})
+	p := sync(t, w)
+	if got := actions(p); strings.Contains(got, "generated_by") {
+		t.Errorf("actions:\n%s", got)
+	}
+	if got := w.Read("evidence/ev_p4n2xa.md"); !strings.Contains(got, "generated_by: [{to: actv_3h7npc}]") {
+		t.Errorf("file:\n%s", got)
+	}
+}

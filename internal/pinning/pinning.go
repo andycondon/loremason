@@ -118,13 +118,11 @@ func Sync(g *graph.Graph, broken Broken, today string) *Plan {
 
 // unlist plans the rewrite of a single-link field, such as generated_by,
 // that holds a list of one item, to the item, and drops one that holds none.
-// Longer lists are left for the person to resolve.
+// Longer lists, and an item that isn't a plain ID, are left for the person
+// to resolve.
 func (p *Plan) unlist(f *graph.File) {
-	for _, name := range slices.Sorted(maps.Keys(f.Type.Edges)) {
-		v, ok := f.Node.Fields.Get(name)
-		if !ok || !v.IsList() || !f.Type.SingleLink(name) || len(v.Items()) > 1 {
-			continue
-		}
+	for _, name := range f.ListedSingleLinks() {
+		v, _ := f.Node.Fields.Get(name)
 		p.edit(f).unlist = append(p.edit(f).unlist, name)
 		if len(v.Items()) == 0 {
 			p.say(f, "drop the empty `%s` list", name)
