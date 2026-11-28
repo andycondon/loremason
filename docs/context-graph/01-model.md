@@ -1,13 +1,3 @@
----
-title: "Context graph design, part 1: the model"
-part: 1
-status: leaning   # agreed in principle; not yet a recorded decision
-reading_time: 15 min
-created: 2026-11-22
-updated: 2026-11-22
-author: Andy Condon
----
-
 # Context graph design, part 1: the model
 
 ## Why this exists
@@ -38,7 +28,7 @@ So we need records that are small, typed and linked, so that context can be asse
 
 The model has two layers.
 
-- The **knowing layer** records what we believe and why. A *source* (a person, an AI agent, a document) gives us *evidence* (a verbatim quote or observation), recorded during an *activity* such as an agent's session. Evidence supports *beliefs* (claims we currently hold). Gaps are *questions*, each with *options* for answering it.
+- The **knowing layer** records what we believe and why. A *source* (a person, an AI agent, a document made outside our records or one we wrote) gives us *evidence* (a verbatim quote or observation), recorded during an *activity* such as an agent's session. Evidence supports *beliefs* (claims we currently hold). Gaps are *questions*, each with *options* for answering it.
 - The **committing layer** records what we chose to do: a PRD (product requirements document) and its requirements, decisions, a design doc, tasks, and plans broken into steps. These are **commitments**: they aren't true or false; they're chosen.
 
 The main bridge between the layers: a commitment **relies on** its **load-bearing** beliefs, the ones that would change it if they turned out wrong. Its author names them, and only them, when writing it. (Decisions also answer questions, and runs of a plan's steps are recorded as activities; section 3.3 shows every crossing.)
@@ -113,11 +103,12 @@ classDiagram
     status
   }
   class artifact {
-    document, code, conversation, issue
+    page, code, conversation, issue
   }
-  class finding {
-    id
-    prose, revisable
+  class document {
+    <<abstract>>
+    finding, design_doc, prd, plan
+    title, body, revisable
   }
   question "1" *-- "*" option : contains
   option --> belief : supports or disputes
@@ -128,19 +119,21 @@ classDiagram
   source <-- evidence : from
   artifact --|> source
   actor --|> source
+  document --|> source
   actor <-- artifact : attributed_to
   activity <-- evidence : generated_by
-  activity <-- finding : generated_by
-  finding <-- evidence : from
+  activity <-- document : generated_by
+  actor <-- document : attributed_to
   actor <-- activity : associated_with
 ```
 
 Walk-through:
 
-- A **source** is either an **actor** (who acts) or an **artifact** (what was made outside our records). An artifact is `attributed_to` the actor that made it.
-- **Evidence** comes `from` a source, or from a finding we wrote. It holds the verbatim text and when it was observed.
+- A **source** is an **actor** (who acts), an **artifact** (what was made outside our records) or a **document** we wrote. An artifact is `attributed_to` the actor that made it.
+- **Evidence** comes `from` a source. It holds the verbatim text and when it was observed.
 - An **activity** is something that happened, such as an agent's session. Evidence is `generated_by` the activity that recorded it, and the activity is `associated_with` the actor responsible. So every piece of evidence answers both *who said it* (`from`) and *which run recorded it* (`generated_by`).
-- A **finding** is a document we wrote ourselves, such as a survey or an analysis, `generated_by` the activity that produced it. When a belief is drawn from one, the evidence quotes it (`from` the finding, at a pinned revision), so the quote stays verbatim if the finding is later corrected. Only load-bearing beliefs are drawn out; the rest stays prose.
+- A **document** is prose we wrote: a title and a body, revisable with old revisions left in git, `generated_by` the activity that produced it and `attributed_to` the actor who wrote it. It is an abstract shape, like `commitment`, and is never stored as a type itself. When a belief is drawn from a document, the evidence quotes it (`from` the document, at a pinned revision that doesn't seal it, so the document stays free to edit), so the quote stays verbatim if the document is later corrected.
+- The document types are the **finding** (the knowing layer's document: a survey, an analysis, an observation) and, in the committing layer, the design doc, PRD and plan. A finding needs no edges or status until something relies on it, so ideation stays free. Only load-bearing beliefs are drawn out of a document; the rest stays prose. Decisions and tasks are not documents: a decision isn't quoted until a real case needs it, and a task says what to do.
 - A **belief** holds a claim, a status, and who asserted it. Its **support links** live inside its record. Each link points at one piece of evidence and says `supports` or `disputes`. Because each link has its own ID, an undercut can target exactly one link.
 - A **question** holds its **options** inside its record. Each option links to beliefs for and against it, shaped like a belief's support links. A belief can also answer a question directly (`answers`).
 
@@ -289,21 +282,23 @@ classDiagram
   class question
   class activity
   class finding
+  class evidence
   class belief
   initiative --> actor : involves
   commitment --> initiative : part_of
   question --> initiative : part_of
   activity --> initiative : part_of
   finding --> activity : generated_by
+  evidence --> activity : generated_by
   commitment --> belief : relies_on
 ```
 
 Walk-through:
 
 - An **initiative** is one planning effort: a feature, a product's next phase, a learning effort. It records its title, purpose and goals, optionally the product it targets by default, and the actors `involved` in it, each with a role (decides, consulted, interested).
-- **Work belongs to an initiative; knowledge doesn't.** Commitments, questions and activities are `part_of` one. Evidence, beliefs, sources and findings are reached through what relies on them or the activity that produced them, so "what did this initiative learn" is a query, and a belief formed in one initiative can carry another without being copied.
+- **Work belongs to an initiative; knowledge doesn't.** Commitments, questions and activities are `part_of` one. Evidence, beliefs, sources and findings are reached through what relies on them or the activity that produced them. A finding or a piece of evidence is `generated_by` the session's activity, and that activity is `part_of` the initiative, so the trail from knowledge to initiative goes through the activity. That trail answers "what did this initiative learn", and a belief formed in one initiative can carry another without being copied. The activity is attached automatically when the record is created (part 3, section 6).
 - An initiative is a record, not just a saved search, because its goals and scope need a home. It is not folded into a PRD either: a learning effort has no product and no PRD. A product initiative usually has a PRD `part_of` it.
-- Its README, status and "where are we" page are generated from the records linked to it, never edited by hand.
+- Its README is generated from the records linked to it, never edited by hand. "Where are we" is a query, `mason where`, not a page.
 
 ## 4. Principles
 
@@ -323,7 +318,7 @@ Walk-through:
 
 **Resumable from files, not sessions.** Work must survive an interruption at any pipeline stage without session restore. Each green step is committed, so git is the checkpoint. A plan's content stays unchanged once written; progress is recorded as runs and the evidence they produce. Resuming means reading the plan plus the latest run of each step, re-running the last passing check, and continuing.
 
-**Work belongs to an initiative; knowledge doesn't.** Commitments, questions and activities are `part_of` an initiative. Evidence, beliefs, sources and findings outlive the effort that formed them, so they belong to none and are reached by following links. This keeps knowledge reusable across initiatives without copies.
+**Work belongs to an initiative; knowledge doesn't.** Commitments, questions and activities are `part_of` an initiative. Evidence, beliefs, sources and findings outlive the effort that formed them, so they belong to none and are reached by following links: a finding or evidence is `generated_by` a session's activity, which is `part_of` the initiative. This keeps knowledge reusable across initiatives without copies.
 
 **Store each relation once; newer points at older.** The author writes the link when creating the record, at the same moment they name load-bearing beliefs. Views compute the reverse direction.
 
@@ -459,24 +454,25 @@ Everything is a *record*, and each record has a type, written in `snake_case`. A
 
 | Term | Layer | Plain meaning | Example |
 |---|---|---|---|
-| `source` | knowing | Where evidence comes from. Its `kind` is either `actor` or `artifact`. | |
+| `source` | knowing | Where evidence comes from. Its `kind` is `actor`, `artifact` or `document`. | |
 | `actor` (source kind) | knowing | Something that bears responsibility for an activity, for a thing existing, or for another actor's activity. Kinds: `person`, `organization`, `software_agent` (a standing agent). Exactly the Agent of PROV (W3C's provenance standard) under another name, so that "agent" always means an AI agent. | A person; the reviewer agent |
-| `artifact` (source kind) | knowing | Something made outside our records: a document, code at a commit, a conversation record, a GitHub issue. | A web page; `validate` at a commit |
+| `artifact` (source kind) | knowing | Something made outside our records. Kinds: `page` (a web page, or a paper or PDF someone else wrote), `code` (at a commit), `conversation` (a conversation record), `issue` (a GitHub issue). A document we wrote ourselves is a `document`, not an artifact. | A web page; `validate` at a commit |
 | `activity` | knowing | Something that happened over time: an AI agent's session, or one run of a step. Has a start and end (`started_at`, `ended_at`) and a `status`. `associated_with` the actor responsible; evidence is `generated_by` it. Exactly PROV's Activity: the *how*, beside actors (*who*) and records (*what*). | The main session on 2026-11-22; one run of a step |
-| `finding` | knowing | A document we wrote ourselves: a survey, an analysis, an observation. Holds prose, tables and references whole. Can be revised. `generated_by` the activity that produced it. Beliefs drawn from it rest on evidence that quotes it. Not a source: sources are made outside our records or are actors. | A survey of data lineage tools |
-| `evidence` | knowing | A dated, verbatim observation from a source. Never changes. `observed_at` records when it was observed. | The exact error text `validate` printed |
+| `document` (source kind) | knowing and committing | Abstract type: the shared shape of prose we wrote. A title and a body, revisable with old revisions left in git, `generated_by` an activity and `attributed_to` an actor. Evidence can come `from` one, at a pinned revision. The pin doesn't propagate and doesn't seal the revision. Never stored as a type itself; the document types are `finding`, `design_doc`, `prd` and `plan`. Decisions and tasks are not documents. | |
+| `finding` | knowing | A document we wrote ourselves: a survey, an analysis, an observation. Holds prose, tables and references whole. Can be revised. `generated_by` the activity that produced it. Beliefs drawn from it rest on evidence that quotes it. The knowing layer's document: it needs no edges or status until something relies on it. | A survey of data lineage tools |
+| `evidence` | knowing | A dated, verbatim observation from a source: an actor, an artifact or a document we wrote. Never changes. `observed_at` records when it was observed. | The exact error text `validate` printed |
 | `belief` | knowing | A claim we currently hold. Can be revised. `asserted_by` records who made it: `person` (a person made or confirmed it) or `agent` (an AI agent made it and nobody has confirmed it). A flag, not a link to an actor. | "validate doesn't handle non-UTF-8 input" |
 | `support_link` | knowing | A sub-record inside a belief's record (its `support` list): a link to one piece of evidence, marked `supports` or `disputes`. Has its own ID. | The link from a belief to the error text, marked `supports` |
 | `question` | knowing | An open gap, raised about any record. | "How should validate treat non-UTF-8 files?" |
 | `option` | knowing | A sub-record inside a question's record: one possible answer, with links to beliefs for and against it. | "Reject with a clear error" |
-| `initiative` | scope | One planning effort: a title, a purpose, goals, optionally the product it targets by default, the actors involved and their roles, and a status. Work (commitments, questions, activities) is `part_of` it; knowledge (evidence, beliefs, sources, findings) belongs to none. Its README and "where are we" page are generated views. | This design effort |
+| `initiative` | scope | One planning effort: a title, a purpose, goals, optionally the product it targets by default, the actors involved and their roles, and a status. Work (commitments, questions, activities) is `part_of` it; knowledge (evidence, beliefs, sources, findings) belongs to none, and is reached through the activity that produced it. Its README is a generated view; "where are we" is the `mason where` query. | This design effort |
 | `commitment` | committing | Abstract type: the shared shape of everything in the committing layer that is chosen rather than true or false (a maturity `status`, `relies_on` links). Never stored as a type itself. | |
-| `prd` | committing | Product requirements document: the goal for one cohesive feature, and why. | |
+| `prd` | committing | A document. Product requirements document: the goal for one cohesive feature, and why. | |
 | `requirement` | committing | One requirement within a PRD. | |
 | `decision` | committing | Answers a question by choosing one of its options. Records the criteria used, who decided (`decided_by`), and optionally how to check it is being followed (`confirmation`). | |
-| `design_doc` | committing | How a whole PRD is built: components, interfaces, data flow. Pairs with the PRD (what and why, then how). | |
+| `design_doc` | committing | A document. How a whole PRD is built: components, interfaces, data flow. Pairs with the PRD (what and why, then how). | |
 | `task` | committing | A slice of the requirements and design doc, sized to ship as one change. What gets promoted to an issue. | |
-| `plan` | committing | The breakdown of one task into steps. Its content never changes once written: progress is recorded as runs, and a wrong plan gets a new revision. | |
+| `plan` | committing | A document. The breakdown of one task into steps. Its content never changes once written: progress is recorded as runs, and a wrong plan gets a new revision. | |
 | `step` | committing | The unit a small model executes: exact files, a pattern to copy, one check. Part of a plan; carries no maturity status of its own. | |
 
 ### Statuses
@@ -516,9 +512,9 @@ Edges (the named links between records) are defined with the diagrams in section
 | **invalidation** | A belief falling (incorrect or insufficient) and reaching up to the commitments that rely on it. |
 | **staleness** | A link's pinned fingerprint no longer matches its target's current one. Worked out per link when asked, never stored, and never marked down a whole chain: a record further down becomes stale only if the record above it actually changes. |
 | **early cutoff** | If re-checking a record shows it still holds, stop there. Nothing below it is touched. |
-| **pinning** | A link records the revision of its target it was made against, plus a fingerprint of only the target's meaning-bearing fields. The fingerprint decides staleness, so formatting edits never raise it; the revision is for people and for `@rN` references. |
+| **pinning** | A link records the revision of its target it was made against, plus a fingerprint of only the target's meaning-bearing fields. The fingerprint decides staleness, so formatting edits never raise it; the revision is for people and for `@rN` references. Only a pin on a link that propagates seals the revision it names. |
 | **re-pin** | A re-check that concludes "still holds" updates the link's pin to the target's current revision and fingerprint, without making a new revision of the record. The re-check itself is recorded as evidence. |
-| **generated view** | A human-readable page built from the records (e.g. "where are we"), never edited by hand. |
+| **generated view** | A human-readable page built from the records (today, each initiative's README), never edited by hand. "Where are we" is the `mason where` query. |
 
 ### Acronyms
 

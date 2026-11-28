@@ -169,22 +169,26 @@ func (n *Node) Revision(rev int) *Revision {
 	return nil
 }
 
-// Sealed reports whether something pins the revision. A sealed revision's
-// meaning can't change without a new revision.
+// Seals reports whether the link seals the revision it pins: it is pinned and
+// its edge propagates. A quote is pinned but doesn't propagate, so it records
+// a revision without freezing it.
+func (e *Edge) Seals() bool { return e.Pin != nil && e.Def.Propagates }
+
+// Sealed reports whether a propagating link pins the revision. A sealed revision's meaning can't change without a new revision.
 func (n *Node) Sealed(rev int) bool {
 	for _, e := range n.Incoming {
-		if e.Pin != nil && e.Pin.Rev == rev {
+		if e.Seals() && e.Pin.Rev == rev {
 			return true
 		}
 	}
 	return false
 }
 
-// PinnedBy lists the IDs of the records whose links pin the revision.
+// PinnedBy lists the IDs of the records whose links seal the revision.
 func (n *Node) PinnedBy(rev int) []string {
 	var ids []string
 	for _, e := range n.Incoming {
-		if e.Pin != nil && e.Pin.Rev == rev && !slices.Contains(ids, e.From.Record().ID) {
+		if e.Seals() && e.Pin.Rev == rev && !slices.Contains(ids, e.From.Record().ID) {
 			ids = append(ids, e.From.Record().ID)
 		}
 	}
@@ -210,8 +214,9 @@ func (n *Node) Record() *Node {
 
 // Stale reports whether a pinned link no longer matches its target: the
 // target is at another revision, or its meaning changed since it was pinned.
+// A pin that doesn't seal, such as a quote's, is never stale.
 func (e *Edge) Stale() bool {
-	if e.Pin == nil || e.Target == nil || e.Target.Current() == nil {
+	if !e.Seals() || e.Target == nil || e.Target.Current() == nil {
 		return false
 	}
 	return e.Pin.Rev != e.Target.Current().Rev || e.Pin.FP != e.Target.Fingerprint()
@@ -297,6 +302,34 @@ func (g *Graph) Members(ini *Node) []*Node {
 			out = append(out, e.From)
 			out = append(out, e.From.Children...)
 			queue = append(queue, e.From)
+		}
+	}
+	slices.SortFunc(out, func(a, b *Node) int { return strings.Compare(a.ID, b.ID) })
+	return out
+}
+
+// Produced returns the records made in the initiative's activities: those
+// with a generated_by link to an activity that is one of its members, sorted
+// by ID. They aren't members, because what a session finds doesn't belong to
+// the initiative. A record that is already a member is left out.
+func (g *Graph) Produced(ini *Node) []*Node {
+	members := g.Members(ini)
+	in := make(map[*Node]bool, len(members))
+	for _, m := range members {
+		in[m] = true
+	}
+	seen := map[*Node]bool{}
+	var out []*Node
+	for _, m := range members {
+		if m.Kind.Name != "activity" {
+			continue
+		}
+		for _, e := range m.Incoming {
+			if e.Name != "generated_by" || in[e.From] || seen[e.From] {
+				continue
+			}
+			seen[e.From] = true
+			out = append(out, e.From)
 		}
 	}
 	slices.SortFunc(out, func(a, b *Node) int { return strings.Compare(a.ID, b.ID) })

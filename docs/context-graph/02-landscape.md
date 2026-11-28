@@ -1,19 +1,8 @@
----
-title: "Context graph design, part 2: the landscape"
-part: 2
-status: leaning   # agreed in principle; not yet a recorded decision
-reading_time: 18 min
-created: 2026-11-22
-updated: 2026-11-22
-author: Andy Condon
-landscape_as_of: 2026-11
----
-
 # Context graph design, part 2: the landscape
 
 ## Why this exists
 
-Part 1 defined a model: small, typed, linked records that separate **what we believe and why** from **what we chose to do**, and that know what to reopen when a belief turns out wrong. Before building it, we looked at how others solve the same problems.
+Part 1 defined a model: small, typed, linked records that separate **what we believe and why** from **what we chose to do**, and that know what to reopen when a belief turns out wrong. Before building it, we looked at how others solve the same problems. The survey is as of November 2026; tools in this space change quickly.
 
 This part is that map. Its value:
 

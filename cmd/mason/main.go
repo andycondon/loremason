@@ -11,6 +11,7 @@ import (
 	"github.com/andycondon/loremason/internal/cli"
 	"github.com/andycondon/loremason/internal/index"
 	"github.com/andycondon/loremason/internal/registry"
+	"github.com/andycondon/loremason/internal/session"
 	"github.com/andycondon/loremason/internal/workspace"
 )
 
@@ -23,7 +24,11 @@ var app = &cli.App{
 	Version: Version,
 	Summary: "mason creates and checks the records of a context graph, keeps the links\nbetween them pinned, and answers questions about them.",
 	Footer: "The workspace is the nearest folder, here or above, with a .loremason folder.\n" +
-		"Set " + workspace.Env + " to use another.",
+		"Set " + workspace.Env + " to use another.\n" +
+		"\n" +
+		"Set " + session.EnvSession + " to name a session; `new` then attaches each finding and\n" +
+		"evidence it writes to the session's activity. " + session.EnvInitiative + " says which\n" +
+		"initiative the session is for, and " + session.EnvActor + " who ran it.",
 	Commands: []*cli.Command{validateCmd, newCmd, syncCmd, reviseCmd, findCmd, showCmd, dependentsCmd, staleCmd, reopenedCmd, whereCmd},
 }
 

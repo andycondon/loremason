@@ -5,10 +5,14 @@
 # prefix            ID prefix: bel for bel_7k3m9q.
 # layer             knowing, committing or scope.
 # revisable         Whether the record keeps a `revisions` list.
+# document          Marks a type as prose we wrote (finding, design doc, PRD, plan). Evidence can quote
+#                   any of them: an edge's `to` may name `document`. Loading checks that a document
+#                   is revisable with revisions left to git, has title and body in `meaning`, and has
+#                   generated_by (to activity) and attributed_to (to actor) edges and schema fields.
 # revisions_inline  Old wording kept in the file (short records) or left to git (long ones).
 # meaning           Fields a fingerprint covers. `body` stands for the body.
 # identity          Fields that suggest two records are the same thing (validate warns).
-# edges             Edge name -> to: target types (`any` for any type),
+# edges             Edge name -> to: target types (`any` for any type, `document` for any document type),
 #                   propagates: a change in the target means this record needs a re-check,
 #                   pinned: the link records the target's revision and fingerprint.
 #                   pinned defaults to propagates. Only revisable targets are ever pinned,
@@ -52,13 +56,14 @@ types:
     edges:
       attributed_to: {to: [actor], propagates: false}
     template: |
-      kind: document
+      kind: page
       url: ""
 
   activity:
     prefix: actv
     layer: knowing
     meaning: [title, started_at]
+    identity: [session]
     edges:
       associated_with: {to: [actor], propagates: false}
       part_of: {to: [initiative], propagates: false}
@@ -72,7 +77,7 @@ types:
     layer: knowing
     meaning: [body]
     edges:
-      from: {to: [actor, artifact, finding], propagates: false, pinned: true}
+      from: {to: [actor, artifact, document], propagates: false, pinned: true}
       generated_by: {to: [activity], propagates: false}
       about: {to: [any], propagates: false}
       undermines: {to: [evidence], propagates: false}
@@ -108,11 +113,13 @@ types:
   finding:
     prefix: fnd
     layer: knowing
+    document: true
     revisable: true
     revisions_inline: false
     meaning: [title, body]
     edges:
       generated_by: {to: [activity], propagates: false}
+      attributed_to: {to: [actor], propagates: false}
 
   question:
     prefix: q
@@ -158,12 +165,15 @@ types:
   prd:
     prefix: prd
     layer: committing
+    document: true
     closed: [rejected, deprecated, superseded]
     revisable: true
     revisions_inline: false
     meaning: [title, body]
     edges:
       part_of: {to: [initiative], propagates: false}
+      generated_by: {to: [activity], propagates: false}
+      attributed_to: {to: [actor], propagates: false}
       relies_on: {to: [belief], propagates: true}
     template: |
       status: proposed
@@ -212,12 +222,15 @@ types:
   design_doc:
     prefix: dd
     layer: committing
+    document: true
     closed: [rejected, deprecated, superseded]
     revisable: true
     revisions_inline: false
     meaning: [title, body]
     edges:
       part_of: {to: [initiative], propagates: false}
+      generated_by: {to: [activity], propagates: false}
+      attributed_to: {to: [actor], propagates: false}
       elaborates: {to: [prd, requirement], propagates: true}
       relies_on: {to: [belief], propagates: true}
     template: |
@@ -252,12 +265,15 @@ types:
   plan:
     prefix: plan
     layer: committing
+    document: true
     closed: [rejected, deprecated, superseded]
     revisable: true
     revisions_inline: false
     meaning: [title, body]
     edges:
       part_of: {to: [initiative], propagates: false}
+      generated_by: {to: [activity], propagates: false}
+      attributed_to: {to: [actor], propagates: false}
       derived_from: {to: [task], propagates: true}
       relies_on: {to: [belief], propagates: true}
     template: |

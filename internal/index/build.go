@@ -46,6 +46,11 @@ CREATE TABLE members (
 	PRIMARY KEY (initiative, id)
 );
 CREATE INDEX members_id ON members (id);
+CREATE TABLE produced (
+	initiative TEXT NOT NULL,
+	id TEXT NOT NULL,
+	PRIMARY KEY (initiative, id)
+);
 CREATE TABLE initiatives (
 	id TEXT PRIMARY KEY,
 	slug TEXT NOT NULL,
@@ -74,8 +79,9 @@ const Containment = "subrecord_of"
 // sub-record's containment in its record, gets a row in edges, with whether
 // it is stale, reopens its source, settles its target or is a pending
 // answer, and its role. Each initiative gets a row in initiatives and a row
-// in members for each record in it. A second file with an ID the graph
-// already has is left out.
+// in members for each record in it, and a row in produced for each record
+// produced in its activities. A second file with an ID the graph already has
+// is left out.
 func Build(path string, g *graph.Graph, m Meta) (err error) {
 	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
@@ -262,7 +268,7 @@ func (w *writer) edges() error {
 }
 
 // initiatives writes each initiative's slug, purpose and goals, and the
-// records in it, as the graph works them out.
+// records in it and produced in its activities, as the graph works them out.
 func (w *writer) initiatives() error {
 	ini, err := w.tx.Prepare(`INSERT INTO initiatives VALUES (?, ?, ?, ?)`)
 	if err != nil {
@@ -274,6 +280,11 @@ func (w *writer) initiatives() error {
 		return err
 	}
 	defer member.Close()
+	made, err := w.tx.Prepare(`INSERT INTO produced VALUES (?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer made.Close()
 	for _, f := range w.g.Files {
 		n := f.Node
 		if n.Kind.Name != "initiative" || !w.canonical(n) {
@@ -299,6 +310,14 @@ func (w *writer) initiatives() error {
 				continue
 			}
 			if _, err := member.Exec(n.ID, m.ID); err != nil {
+				return err
+			}
+		}
+		for _, m := range w.g.Produced(n) {
+			if !w.canonical(m) {
+				continue
+			}
+			if _, err := made.Exec(n.ID, m.ID); err != nil {
 				return err
 			}
 		}

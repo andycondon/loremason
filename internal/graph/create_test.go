@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ var day = time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC)
 func TestCreateFillsTheTemplate(t *testing.T) {
 	initiative, _ := registry.Load().Find("initiative")
 	root := t.TempDir()
-	rel, err := Create(root, initiative, "Reading files: safely", day)
+	rel, err := Create(root, initiative, "Reading files: safely", day, CreateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,14 +36,14 @@ func TestCreateKeepsToTheTitleRule(t *testing.T) {
 	belief, _ := registry.Load().Find("belief")
 	root := t.TempDir()
 	for _, bad := range []string{"", "   ", "a\nb", "tab\there", "bad \xff byte"} {
-		if _, err := Create(root, belief, bad, day); !errors.Is(err, ErrTitle) {
+		if _, err := Create(root, belief, bad, day, CreateOptions{}); !errors.Is(err, ErrTitle) {
 			t.Errorf("Create(%q): %v", bad, err)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(root, Dir)); err == nil {
 		t.Error("a bad title still wrote to graph/")
 	}
-	rel, err := Create(root, belief, "  spaced  ", day)
+	rel, err := Create(root, belief, "  spaced  ", day, CreateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,5 +63,36 @@ func TestSlug(t *testing.T) {
 		if got := slug(title, "ini_2m8vqe"); got != want {
 			t.Errorf("slug(%q) = %q, want %q", title, got, want)
 		}
+	}
+}
+
+func TestCreateWritesGeneratedBy(t *testing.T) {
+	reg := registry.Load()
+	for typ, want := range map[string]string{
+		// evidence's template has an empty list to fill
+		"evidence": "from: []\ngenerated_by: [actv_k3m9qx]\ncreated:",
+		// a finding's template has none, so the line is added
+		"finding": "title: Caching helps\ngenerated_by: [actv_k3m9qx]\ncreated:",
+	} {
+		ty, _ := reg.Find(typ)
+		root := t.TempDir()
+		rel, err := Create(root, ty, "Caching helps", day, CreateOptions{GeneratedBy: "actv_k3m9qx"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, _ := os.ReadFile(filepath.Join(root, rel))
+		if !strings.Contains(string(data), want) || strings.Count(string(data), "generated_by") != 1 {
+			t.Errorf("%s:\n%s", typ, data)
+		}
+	}
+}
+
+func TestCreateWithoutOptionsAddsNoLink(t *testing.T) {
+	finding, _ := registry.Load().Find("finding")
+	root := t.TempDir()
+	rel, _ := Create(root, finding, "Caching helps", day, CreateOptions{})
+	data, _ := os.ReadFile(filepath.Join(root, rel))
+	if strings.Contains(string(data), "generated_by") {
+		t.Errorf("got:\n%s", data)
 	}
 }

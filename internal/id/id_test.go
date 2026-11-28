@@ -23,3 +23,13 @@ func TestPrefix(t *testing.T) {
 		}
 	}
 }
+
+func TestDerive(t *testing.T) {
+	a := Derive("actv", "session-1")
+	if p, ok := Prefix(a); !ok || p != "actv" {
+		t.Fatalf("Derive made an invalid ID: %s", a)
+	}
+	if a != Derive("actv", "session-1") || a == Derive("actv", "session-2") {
+		t.Errorf("Derive isn't a function of its key: %s", a)
+	}
+}

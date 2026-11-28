@@ -30,3 +30,8 @@ Search is slow today.
 
 - [Add the query box](../../graph/task/task_t2t2t2.md): accepted, done
 - [Build the \*index\*](../../graph/task/task_t1t1t1.md): accepted, in progress
+
+## Findings
+
+- [Caching helps \*most\*](../../graph/finding/fnd_f2f2f2.md)
+- [Queries are mostly one word](../../graph/finding/fnd_f1f1f1.md)

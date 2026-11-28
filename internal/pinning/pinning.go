@@ -72,17 +72,18 @@ func (p *Plan) warn(f *graph.File, format string, args ...any) {
 	p.Warnings = append(p.Warnings, Action{f.Path, fmt.Sprintf(format, args...)})
 }
 
-// Sync plans what `mason sync` does, in an order that matters, because a pin
-// seals the revision it names:
+// Sync plans what `mason sync` does, in an order that matters, because a
+// propagating link's pin seals the revision it names:
 //
 //  1. write revision 1 for each revisable record that has no revisions yet;
-//  2. record the fingerprint of each current revision nothing pins yet, so
-//     drafts can change freely;
+//  2. record the fingerprint of each current revision that no propagating
+//     link pins, so drafts can change freely;
 //  3. pin each bare link that should be pinned, to the revision it names or
 //     else the current one;
 //  4. move a pin forward when every later revision of its target is
 //     non-breaking. A link pinned in step 3 gets this too, so a second sync
-//     has nothing left to do.
+//     has nothing left to do. A pin that doesn't seal, such as a quote,
+//     stays at the revision it recorded.
 //
 // Files with errors are skipped, and so are links to them.
 func Sync(g *graph.Graph, broken Broken, today string) *Plan {
@@ -121,7 +122,7 @@ func (p *Plan) recordRevision(f *graph.File, today string) []graph.Revision {
 		p.say(f, "record the fingerprint of revision %d", cur.Rev)
 	case cur.FP != fp && !n.Sealed(cur.Rev):
 		cur.FP = fp
-		p.say(f, "refresh the fingerprint of revision %d, which nothing pins yet", cur.Rev)
+		p.say(f, "refresh the fingerprint of revision %d, which no propagating link pins", cur.Rev)
 	default:
 		return rs
 	}
@@ -147,7 +148,7 @@ func (p *Plan) pin(e *graph.Edge, target []graph.Revision) {
 			r = target[i]
 		}
 		why := ""
-		if r.Rev < cur.Rev && allNonBreaking(target, r.Rev) {
+		if e.Def.Propagates && r.Rev < cur.Rev && allNonBreaking(target, r.Rev) {
 			why = fmt.Sprintf(", since every revision after r%d is non-breaking", r.Rev)
 			r = cur
 		}
@@ -155,7 +156,7 @@ func (p *Plan) pin(e *graph.Edge, target []graph.Revision) {
 		p.say(f, "pin `%s` to %s@r%d%s", at, e.Target.ID, r.Rev, why)
 		return
 	}
-	if e.Pin.Rev < cur.Rev && allNonBreaking(target, e.Pin.Rev) {
+	if e.Seals() && e.Pin.Rev < cur.Rev && allNonBreaking(target, e.Pin.Rev) {
 		// The re-check a via recorded was against an older revision, so it's
 		// dropped; the revisions' own change values say why the pin moved.
 		p.edit(f).pins[e] = graph.Pin{Rev: cur.Rev, FP: cur.FP}
@@ -190,7 +191,7 @@ func Revise(n *graph.Node, breaking bool, broken Broken, today, commit string) (
 	fp := n.Fingerprint()
 	switch {
 	case !n.Sealed(cur.Rev):
-		return nil, fmt.Errorf("nothing pins revision %d of %s yet, so it can be edited as it is; no new revision is needed", cur.Rev, n.ID)
+		return nil, fmt.Errorf("nothing seals revision %d of %s yet (no link that propagates pins it), so it can be edited as it is; no new revision is needed", cur.Rev, n.ID)
 	case !cur.FP.IsZero() && cur.FP != fp:
 		return nil, fmt.Errorf("the meaning of %s already changed after revision %d was pinned; undo the change first, so the old wording can be kept", n.ID, cur.Rev)
 	}

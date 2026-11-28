@@ -46,6 +46,9 @@ type Kind struct {
 	// Revisable kinds keep a revisions list; links can pin their revisions.
 	// Sub-record kinds never are.
 	Revisable bool `yaml:"revisable"`
+	// Document marks a type whose records are prose we wrote, so evidence can
+	// quote them. An edge's To may name `document` for all such types at once.
+	Document bool `yaml:"document"`
 }
 
 // Type is one record type.
@@ -86,7 +89,7 @@ func (e Edge) ShouldPin(target *Kind) bool {
 
 // Allows reports whether the edge may point at a node of kind k.
 func (e Edge) Allows(k *Kind) bool {
-	return slices.Contains(e.To, "any") || slices.Contains(e.To, k.Name)
+	return slices.Contains(e.To, "any") || slices.Contains(e.To, k.Name) || (k.Document && slices.Contains(e.To, "document"))
 }
 
 // Folder is the folder under graph/ that holds the type's records.
@@ -178,6 +181,32 @@ func (t *Type) checkStatuses() error {
 					return fmt.Errorf("types.yaml: the %s edge of %s lists `%s` as %s, but its schema has no such status", name, t.Name, st, k.key)
 				}
 			}
+		}
+	}
+	return nil
+}
+
+// checkDocument reports the first rule a document type breaks. Documents all
+// have the same shape, so any of them can be quoted or attributed the same way.
+func (t *Type) checkDocument() error {
+	if !t.Document {
+		return nil
+	}
+	bad := func(rule string) error {
+		return fmt.Errorf("types.yaml: %s is a document, so %s", t.Name, rule)
+	}
+	if !t.Revisable || t.RevisionsInline {
+		return bad("it must be revisable, with its revisions left to git (revisions_inline: false)")
+	}
+	if !slices.Contains(t.Meaning, "title") || !t.BodyIsMeaning() {
+		return bad("its meaning must cover title and body")
+	}
+	for _, l := range []struct{ edge, to string }{{"generated_by", "activity"}, {"attributed_to", "actor"}} {
+		if !slices.Contains(t.Edges[l.edge].To, l.to) {
+			return bad(fmt.Sprintf("it must have a %s edge to %s", l.edge, l.to))
+		}
+		if t.Schema.Properties[l.edge] == nil {
+			return bad(fmt.Sprintf("its schema must have a %s field", l.edge))
 		}
 	}
 	return nil
@@ -305,6 +334,9 @@ func parse() (*Registry, error) {
 			return nil, err
 		}
 		if err := t.checkStatuses(); err != nil {
+			return nil, err
+		}
+		if err := t.checkDocument(); err != nil {
 			return nil, err
 		}
 	}

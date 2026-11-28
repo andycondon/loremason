@@ -34,6 +34,11 @@ func readmeWorkspace(t *testing.T) string {
 		"task/task_t1t1t1.md":        task("task_t1t1t1", "Build the *index*", iniA, "progress: in_progress"),
 		"task/task_t2t2t2.md":        task("task_t2t2t2", "Add the query box", iniA, "progress: done"),
 		"task/task_t3t3t3.md":        task("task_t3t3t3", "Other initiative's task", iniB),
+		"activity/actv_a1a1a1.md":    record("actv_a1a1a1", "Session one", "started_at: 2026-11-22", "part_of: "+iniA),
+		"activity/actv_b2b2b2.md":    record("actv_b2b2b2", "Other session", "started_at: 2026-11-22", "part_of: "+iniB),
+		"finding/fnd_f1f1f1.md":      record("fnd_f1f1f1", "Queries are mostly one word", "generated_by: [actv_a1a1a1]"),
+		"finding/fnd_f2f2f2.md":      record("fnd_f2f2f2", "Caching helps *most*", "generated_by: [actv_a1a1a1]"),
+		"finding/fnd_f3f3f3.md":      record("fnd_f3f3f3", "Other initiative's finding", "generated_by: [actv_b2b2b2]"),
 		"initiative/" + iniB + ".md": initiative(iniB, "other"),
 	})
 	return string(README(overview(t, w, "search-redesign")))

@@ -68,6 +68,7 @@ func README(o *index.Overview) []byte {
 	section(&b, "Design docs", dir, o.DesignDocs)
 	section(&b, "PRDs", dir, o.PRDs)
 	section(&b, "Tasks", dir, o.Tasks)
+	section(&b, "Findings", dir, o.Findings)
 	return []byte(b.String())
 }
 

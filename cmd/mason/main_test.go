@@ -57,6 +57,10 @@ const help = "mason creates and checks the records of a context graph, keeps the
 	"The workspace is the nearest folder, here or above, with a .loremason folder.\n" +
 	"Set LOREMASON_WORKSPACE to use another.\n" +
 	"\n" +
+	"Set LOREMASON_SESSION to name a session; `new` then attaches each finding and\n" +
+	"evidence it writes to the session's activity. LOREMASON_INITIATIVE says which\n" +
+	"initiative the session is for, and LOREMASON_ACTOR who ran it.\n" +
+	"\n" +
 	"Flags:\n" +
 	"  --version   print the version and exit\n" +
 	"  --help      show this help\n"

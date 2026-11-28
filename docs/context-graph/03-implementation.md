@@ -1,13 +1,3 @@
----
-title: "Context graph design, part 3: the implementation"
-part: 3
-status: leaning   # agreed in principle; not yet a recorded decision
-reading_time: 17 min
-created: 2026-11-22
-updated: 2026-11-25
-author: Andy Condon
----
-
 # Context graph design, part 3: the implementation
 
 ## Why this exists
@@ -168,7 +158,8 @@ task:
 ```
 
 - **Meaning fields** are the ones a fingerprint covers (section 5).
-- **Identity fields** let `validate` warn that a new record looks like an existing one and suggest using that instead. This mainly helps sources: two `artifact` records with the same URL are probably the same thing.
+- **`document: true`** marks a type as a document: prose we wrote, quotable as evidence. It's set on `finding`, `design_doc`, `prd` and `plan`. A document type must have the shape: revisable, with `title` and `body` among its meaning fields, `generated_by` (to `activity`) and `attributed_to` (to `actor`) edges, and both as fields in its schema. The registry checks this when it loads, so the next document type needs one line, and a type with the wrong shape is refused. It's the same idea as `commitment`: a shared shape, never stored as a type. An edge's `to` may name `document` beside types and `any`, meaning every document type. Evidence's `from` is `{to: [actor, artifact, document], propagates: false, pinned: true}`.
+- **Identity fields** let `validate` warn that a new record looks like an existing one and suggest using that instead. This mainly helps sources: two `artifact` records with the same URL are probably the same thing, and two `activity` records with the same `session` (section 6) are the same session.
 - **`propagates`** says whether a change in the target means this record needs a re-check. Part 1, section 3.2 lists those edges. Writing it down per edge type is how the "per-edge propagation" in part 1, section 8 starts.
 - **Statuses with a meaning** are data too, each list checked against the type's schema:
   - `fallen` lists a type's statuses that mean the record no longer holds;
@@ -196,13 +187,13 @@ A link appears in one of two forms:
 | Form | Written as | Used for |
 |---|---|---|
 | **Bare** | `relies_on: [bel_7k3m9q]` | What a person or agent writes. Also every link that doesn't propagate (`part_of` an initiative, `mentions`, `answers`). |
-| **Pinned** | `{to: bel_7k3m9q, rev: 1, fp: "fp1:3a9c0e1b77d2"}` | What a link that propagates becomes. It records the target's revision and fingerprint at the moment the link was made or last checked. |
+| **Pinned** | `{to: bel_7k3m9q, rev: 1, fp: "fp1:3a9c0e1b77d2"}` | What a link that propagates becomes, and evidence `from` a document. It records the target's revision and fingerprint at the moment the link was made or last checked. |
 
-**People never type fingerprints.** They write bare links, and `mason sync` pins each new link that propagates to its target's current state. A bare link that propagates is valid but not yet watched, so it can never be stale. `mason sync` runs as part of the skills that write records, so in practice links are pinned within the same change.
+**People never type fingerprints.** They write bare links, and `mason sync` pins each new link that propagates, and each new evidence `from` a document, to its target's current state. A bare link that propagates is valid but not yet watched, so it can never be stale. `mason sync` runs as part of the skills that write records, so in practice links are pinned within the same change.
 
 A pinned link can carry one more field: `via: ev_…`. It names the evidence recording the last re-check that concluded "still holds" (section 5), so the reason for a re-pin is one click away.
 
-Some edges never propagate. `part_of` to an initiative, `involves`, `interested_in`, `answers` and `mentions` are always bare. Evidence `from` a finding is pinned, so the quote can always be traced to the exact revision it came from, but it doesn't propagate: revising a finding doesn't make its old quotes wrong.
+Some edges never propagate. `part_of` to an initiative, `involves`, `interested_in`, `answers` and `mentions` are always bare. Evidence `from` a document (a finding, design doc, PRD or plan) is pinned, so the quote can be traced to the revision it was taken from, but it doesn't propagate and it doesn't seal that revision (section 5): revising a document doesn't make its old quotes wrong.
 
 ## 5. Revisions, fingerprints and re-checks
 
@@ -227,19 +218,28 @@ revisions:
 - **For long documents, the old text stays in git.** That covers findings, design docs, PRDs, tasks, plans and decisions. Their entries hold a `commit` instead of the old text, so a file doesn't fill up with old drafts. Staleness never needs the old text, only the fingerprints, which are always in the file.
 - **A record with no `revisions` list is at revision 1.** That's how a new record starts, so `@r1` can be named straight away. `mason sync` writes the entry, with its date and fingerprint.
 
-### Drafting stays cheap: a revision is sealed when something pins it
+### Drafting stays cheap: a revision is sealed when something propagating pins it
 
-Until another record pins a revision, it can be edited freely. `mason sync` keeps its recorded fingerprint up to date, and no new revision is made.
+Until another record pins a revision with a link that propagates, it can be edited freely. `mason sync` keeps its recorded fingerprint up to date, and no new revision is made.
 
-**The first pin seals the revision.** After that, a change of substance needs a new revision. **The revision comes first, then the edit:**
+**A pin seals a revision only when its link propagates.** The first such pin seals it. After that, a change of substance needs a new revision. **The revision comes first, then the edit:**
 
 1. `mason revise <id> --breaking` (or `--non-breaking`) keeps the current wording inline, or for long records the commit that holds it, and opens the next revision. It needs one of the two flags, so an agent never meets a prompt.
 2. Edit the record.
-3. `mason sync` records the new revision's fingerprint, since nothing pins it yet.
+3. `mason sync` records the new revision's fingerprint, since no propagating link pins it yet.
 
 Doing it in that order means the old wording is always still in the file when it's kept, with no need for git. If someone changes a sealed record's substance without a revision, `validate` fails and says to undo the change, run `mason revise`, then make it again. `revise` refuses to run in that state, so the changed wording can't be kept by mistake as the old one.
 
-This is what keeps the structure out of the way while ideas are forming. A design doc, finding or plan can go through many drafts in a day. Revisions only start once other work is built on it.
+**Quotes don't seal.** The one pinned link that doesn't propagate is evidence `from` a document. Its pin records the revision and fingerprint at the moment of quoting, and that's all it does:
+
+- It doesn't seal the revision, so the document stays free to edit. `mason sync` keeps refreshing the unsealed revision's fingerprint as before.
+- It's never stale, and `sync` never moves it forward.
+- Its fingerprint isn't checked against the revision's, since the revision may have moved on.
+- The quote stays traceable. The evidence holds the verbatim text, and the pin's revision plus git history (the document as it was when the evidence was written) show where it came from.
+
+The seal exists so that a change reaches the work built on it. A quote doesn't need that, because it doesn't propagate and already holds its text. Findings keep evolving after someone quotes them, so sealing on a quote would get in the way of ideation.
+
+This is what keeps the structure out of the way while ideas are forming. A design doc, finding or plan can go through many drafts in a day. Revisions only start once other work is built on it through a link that propagates.
 
 Status changes and new support links are never substance. They're edited in place, and git keeps their history.
 
@@ -289,6 +289,7 @@ erDiagram
   nodes ||--o{ aliases : "id"
   nodes ||--o{ members : "belongs to"
   nodes ||--o| initiatives : "is"
+  nodes ||--o{ produced : "generated by a session of"
   nodes {
     text id PK
     text type
@@ -325,6 +326,10 @@ erDiagram
     text purpose
     json goals
   }
+  produced {
+    text initiative FK
+    text id FK
+  }
   aliases {
     text alias PK
     text id FK
@@ -341,6 +346,7 @@ erDiagram
 - **`nodes_fts`** is SQLite's built-in full-text search (FTS5). It lets a person or agent find "the belief about non-UTF-8 files" from plain words.
 - **`aliases`** maps each alias a record has had to its ID, so `show` and `dependents` accept an old one.
 - **`members`** lists the records in each initiative, sub-records included. A record is in an initiative when following `part_of` from it reaches the initiative, so requirements are in it through their PRD and steps through their plan.
+- **`produced`** lists the records generated by an activity that is a member of the initiative: the findings and evidence its sessions made. They aren't members, because knowledge doesn't belong to an initiative; this is the trail that answers "what did this initiative learn".
 - **`initiatives`** holds each initiative's slug, purpose and goals, for `mason where` and the generated README.
 - A **`meta`** table records what the index was built from: the loremason version, the fingerprint method, the index's schema version, a hash of the record types (`types.yaml` and the JSON schemas), and the files' signature.
 
@@ -369,11 +375,26 @@ Queries print plain text, one stable line per result, which people and agents bo
 
 Writing commands are kept separate and few. `mason new <type>` creates a record with a fresh ID, `mason revise <id>` makes a new revision, and `mason sync` fills pins, refreshes unsealed fingerprints, re-pins across non-breaking revisions and regenerates views. `validate` only reads, and fails on any error.
 
-`mason sync` works in a fixed order, because a pin seals the revision it names: first it writes revision 1 where it's missing, then it records fingerprints of revisions nothing pins yet, then it pins bare links, then it re-pins across non-breaking revisions. It leaves a file with errors alone and says so, because re-writing a link list it can't read could lose what a person wrote. `mason sync --dry-run` says what it would do. Rewritten fields always take one form: links as a block list of `{to, rev, fp, via}` maps, revisions as a block list of maps. Every other line keeps its bytes, comments and spacing.
+`mason sync` works in a fixed order, because a propagating pin seals the revision it names: first it writes revision 1 where it's missing, then it records fingerprints of revisions no propagating link pins yet, then it pins bare links, then it re-pins across non-breaking revisions. It leaves a file with errors alone and says so, because re-writing a link list it can't read could lose what a person wrote. `mason sync --dry-run` says what it would do. Rewritten fields always take one form: links as a block list of `{to, rev, fp, via}` maps, revisions as a block list of maps. Every other line keeps its bytes, comments and spacing.
+
+**Sessions attach what they write to an activity.** Knowledge belongs to no initiative (part 1, section 3.4), so a finding's trail to its initiative goes through the activity of the session that wrote it. `mason new` attaches that activity itself for findings and evidence, so nobody has to remember to. The session is named by environment variables:
+- `LOREMASON_SESSION` is any key the harness gives the session, such as an agent's session ID set by a session-start hook.
+- `LOREMASON_INITIATIVE` names the initiative by slug, ID or alias, as `mason where` accepts.
+- `LOREMASON_ACTOR` is optional, and names who the activity is `associated_with`. It must be a reference such as `who_4d9snc`.
+
+A `LOREMASON_ACTOR` that isn't a reference, or a `LOREMASON_SESSION` that spans lines, is a usage error, since either would break the activity's header.
+
+When `mason new` creates a finding or a piece of evidence, it attaches the session's activity, creating it on first use. These are the knowledge with no other path to its initiative. Design docs, PRDs and plans are commitments, already `part_of` the initiative. They have a `generated_by` link that can be filled in by hand, but `mason new` doesn't fill it. A new activity is `part_of` the initiative, has a `started_at`, is `associated_with` the actor when one is given (written as a block list), and holds the key in its `session` field. `started_at` is local time with its offset.
+- **One activity per session.** Its ID is derived from the session key, so concurrent commands find the same file and never create two. A command that finds the file already there uses it, and a file whose `session` doesn't match the key is an error. `validate` warns when two activities claim one session, since `session` is the activity's identity field.
+- **Without a session, nothing fails.** The record is created unattached and `mason new` prints a one-line note to stderr saying so. `validate` doesn't warn about an unattached document, so a hand-written finding stays free.
+- **A session with no initiative** is a usage error when its activity doesn't exist yet, naming `LOREMASON_INITIATIVE`. Once the activity exists, the initiative is read from it, and a `LOREMASON_INITIATIVE` that names another one is ignored, with a note to stderr.
+- **Ending a session** (`ended_at`, `status`) is left to the harness for now, for example a session-end hook. Nothing reads them yet.
+
+Nothing is kept outside the records, so parallel sessions in one checkout don't collide.
 
 ## 7. Generated pages
 
-Each initiative's `README.md` is built from the records in it and written to `initiatives/<slug>/README.md`, so browsing an initiative on GitHub still starts there. It shows the title, purpose, goals and body of the `initiative` record, who is involved and their roles, and the initiative's design docs, PRDs and tasks. Each is linked by title to its record file and shows its status, and a task its progress. Closed records stay listed, because the page is the list of what exists.
+Each initiative's `README.md` is built from the records in it and written to `initiatives/<slug>/README.md`, so browsing an initiative on GitHub still starts there. It shows the title, purpose, goals and body of the `initiative` record, who is involved and their roles, and the initiative's design docs, PRDs and tasks. Each is linked by title to its record file and shows its status, and a task its progress. After the tasks comes a Findings section: the findings the initiative's activities produced (section 6), linked by title and showing no status, since findings have none. It's left out when there are none. Closed records stay listed, because the page is the list of what exists.
 
 After its title, the page has a hidden marker line (line 3) and a visible line saying it's generated and from which record. It's a read-only snapshot: nothing reads it back except to compare it with a fresh render. Its rules:
 - **Kept current.** `mason sync` regenerates it, and `validate` fails when it no longer matches the records, so a hand edit can't quietly drift.
@@ -393,7 +414,7 @@ Before loremason, each initiative was a folder holding JSON logs, markdown findi
 | `stakeholders.json` | `actor` records, with an `involves` link on the initiative carrying each role. |
 | `questions.json` | `question` records, `part_of` the initiative. |
 | `decisions.json` | `decision` records. Each decision's options move to the question it answers. Its free-text context becomes beliefs only where they're load-bearing; otherwise it stays as the decision's body. |
-| `findings/` | `finding` records with their prose unchanged, plus an `activity` for the session that wrote each one. |
+| `findings/` | `finding` records with their prose unchanged, each `generated_by` an `activity` for the session that wrote it, which is `part_of` the initiative. |
 | `tasks/`, `plans/` | `task` and `plan` records. Old plans keep their steps in the body; only new plans get `step` records. |
 | `quizzes/` | An `artifact` for the conversation, plus evidence quoting the answers. |
 | Scratchpad (`CONTEXT.md`) | Not migrated as a record. Its useful content becomes questions, beliefs or leanings by hand, and `mason where` answers what it used to. |
@@ -457,7 +478,7 @@ None of these changes the file format. Each can be added without rewriting recor
 | **meaning fields** | The fields a fingerprint covers. A change elsewhere is formatting or metadata. |
 | **identity fields** | Fields that suggest two records are the same thing, such as an artifact's URL. |
 | **bare link / pinned link** | A link as written, or with the target's revision and fingerprint recorded. |
-| **sealed** | A revision that something has pinned. From then on, a change of substance needs a new revision. |
+| **sealed** | A revision that a link that propagates has pinned. A quote's pin (evidence `from` a document) doesn't seal. From then on, a change of substance needs a new revision. |
 | **canonical form** | The exact text a fingerprint is computed from, fixed so that the same meaning always gives the same fingerprint. |
 | **`via`** | On a pinned link: the evidence recording the re-check that last re-pinned it. |
 | **generated page** | A page built from records, committed, and never edited by hand. |
