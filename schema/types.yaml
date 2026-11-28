@@ -37,6 +37,14 @@
 #                   an open question is one that isn't. Optional.
 # pending           On an edge: statuses of the source (from its type's schema) at which the link is
 #                   an answer still waiting to settle its target. Optional.
+# within            On an edge: names another edge of the same type. The target's parent record must be a
+#                   target of the record's edge of that name: `within: answers` on decision.chooses means
+#                   the chosen option's question must be one the same decision answers. Validate warns.
+#                   Optional.
+# target_status     On an edge: statuses (from every target type's schema) the target should be in
+#                   (supersedes -> superseded). Validate warns when it isn't. Optional.
+# one_in_force      On an edge: at most one source in force (status not closed; for an edge that
+#                   settles, one that settles) per target. Validate warns on a second. Optional.
 # subrecords        Header field holding a list of sub-records, each with its own short id.
 # template          Header lines `mason new` writes after id and title. {title}, {slug} and {today} are replaced.
 # body              Body `mason new` writes.
@@ -106,6 +114,7 @@ types:
     meaning: [claim]
     identity: [claim]
     fallen: [incorrect, insufficient]
+    closed: [withdrawn]
     edges:
       answers: {to: [question], propagates: false, settles: [held]}
     subrecords:
@@ -215,12 +224,12 @@ types:
     meaning: [title, criteria, confirmation, body]
     edges:
       part_of: {to: [initiative], propagates: false}
-      answers: {to: [question], propagates: false, settles: [accepted], pending: [proposed, leaning]}
-      chooses: {to: [option], propagates: false}
+      answers: {to: [question], propagates: false, settles: [accepted], pending: [proposed, leaning], one_in_force: true}
+      chooses: {to: [option], propagates: false, within: answers}
       decided_by: {to: [actor], propagates: false}
       consults: {to: [actor], propagates: false}
       informs: {to: [actor], propagates: false}
-      supersedes: {to: [decision], propagates: false}
+      supersedes: {to: [decision], propagates: false, target_status: [superseded]}
       amends: {to: [decision], propagates: false}
       relies_on: {to: [belief], propagates: true}
     template: |
@@ -285,7 +294,7 @@ types:
       part_of: {to: [initiative], propagates: false}
       generated_by: {to: [activity], propagates: false}
       attributed_to: {to: [actor], propagates: false}
-      derived_from: {to: [task], propagates: true}
+      derived_from: {to: [task], propagates: true, one_in_force: true}
       relies_on: {to: [belief], propagates: true}
     template: |
       status: proposed

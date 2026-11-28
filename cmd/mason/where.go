@@ -64,6 +64,12 @@ func printView(w io.Writer, v *index.View) {
 				if l.Reopens {
 					why = append(why, "reopens")
 				}
+				if l.Orphaned {
+					why = append(why, orphanedReason(c.Target))
+				}
+				if l.Doubted {
+					why = append(why, fmt.Sprintf("%s's support is undercut or undermined", c.Target.ID))
+				}
 				fmt.Fprintf(w, "    %s  %s  (%s)\n", l.Field, linkLine(l.Link), strings.Join(why, ", "))
 			}
 		}

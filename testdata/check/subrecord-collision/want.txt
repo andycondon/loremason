@@ -1,3 +1,4 @@
 graph/belief/bel_7k3m9q.md:9: error: two entries have the id `s1`
 graph/belief/bel_7k3m9q.md:10: error: `support[2].id` is "S 2"; it must be a short local ID such as s1
+graph/belief/bel_7k3m9q.md:10: warning: the belief is held, but bel_7k3m9q/S 2 disputes it; a rebut means the belief is incorrect: set its status, or remove the link
 graph/belief/bel_7k3m9q.md:10: error: unknown field `note` in `support[2]`; known fields are direction, evidence, id

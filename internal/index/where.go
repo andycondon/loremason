@@ -46,6 +46,12 @@ type RecheckLink struct {
 	Link         // Other is the record holding the link
 	Stale   bool // the link is pinned to a revision the target has moved past
 	Reopens bool // the link reopens its source, because the target has fallen
+	// Orphaned: the link rests on a target that is no longer in force, such as
+	// a withdrawn belief or a superseded task.
+	Orphaned bool
+	// Doubted: the link relies on a belief whose support is undercut or whose
+	// evidence is undermined.
+	Doubted bool
 }
 
 // Overview is what an initiative's README shows.
@@ -261,11 +267,13 @@ func (x *Index) blocked(ini string) ([]Blocked, error) {
 	return out, nil
 }
 
-// openQuestions returns the initiative's questions that nothing settles, with their
+// openQuestions returns the initiative's questions that nothing settles, and
+// those that something settles while another answer still waits, with their
 // pending answers.
 func (x *Index) openQuestions(ini string) ([]Question, error) {
 	qs, err := x.summaries(`SELECT `+summaryCols+` FROM nodes n JOIN members m ON m.id = n.id
-		WHERE m.initiative = ? AND n.type = 'question' AND n.settled = 0 ORDER BY n.id`, ini)
+		WHERE m.initiative = ? AND n.type = 'question' AND (n.settled = 0 OR EXISTS (
+			SELECT 1 FROM edges e WHERE e.dst = n.id AND e.name = 'answers' AND e.pending = 1)) ORDER BY n.id`, ini)
 	if err != nil {
 		return nil, err
 	}
@@ -282,13 +290,14 @@ func (x *Index) openQuestions(ini string) ([]Question, error) {
 }
 
 // recheck returns the links of the initiative's members, and of their
-// sub-records, that are stale or reopen their source, grouped by the record
-// that changed.
+// sub-records, that are stale, reopen their source, rest on a record no
+// longer in force or rely on a doubted belief, grouped by the record that
+// changed.
 func (x *Index) recheck(ini string) ([]Change, error) {
 	rows, err := x.db.Query(`SELECT t.id, t.type, t.title, t.status, COALESCE(t.revision, 0),
-		e.name, e.pinned_rev, e.pinned_fp, e.stale, e.reopens, s.id, s.type, s.title, s.status
+		e.name, e.pinned_rev, e.pinned_fp, e.stale, e.reopens, e.orphaned, e.doubted, s.id, s.type, s.title, s.status
 		FROM edges e JOIN members m ON m.id = e.src JOIN nodes t ON t.id = e.dst JOIN nodes s ON s.id = e.src
-		WHERE m.initiative = ? AND (e.stale = 1 OR e.reopens = 1) ORDER BY t.id, s.id, e.name`, ini)
+		WHERE m.initiative = ? AND (e.stale = 1 OR e.reopens = 1 OR e.orphaned = 1 OR e.doubted = 1) ORDER BY t.id, s.id, e.name`, ini)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +310,7 @@ func (x *Index) recheck(ini string) ([]Change, error) {
 		var pinRev sql.NullInt64
 		var fp string
 		if err := rows.Scan(&t.ID, &t.Type, &t.Title, &t.Status, &rev,
-			&l.Field, &pinRev, &fp, &l.Stale, &l.Reopens, &l.Other.ID, &l.Other.Type, &l.Other.Title, &l.Other.Status); err != nil {
+			&l.Field, &pinRev, &fp, &l.Stale, &l.Reopens, &l.Orphaned, &l.Doubted, &l.Other.ID, &l.Other.Type, &l.Other.Title, &l.Other.Status); err != nil {
 			return nil, err
 		}
 		if pinRev.Valid {

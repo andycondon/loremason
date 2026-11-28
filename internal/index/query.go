@@ -51,8 +51,15 @@ type Dependent struct {
 // what it was.
 type StaleGroup struct {
 	Target   Summary
-	Revision int    // the target's current revision
-	Links    []Link // Other is the record holding the link
+	Revision int         // the target's current revision
+	Links    []StaleLink // Other is the record holding the link
+}
+
+// StaleLink is a link to a changed record that needs a re-check.
+type StaleLink struct {
+	Link
+	Stale    bool // the link is pinned to a revision the target has moved past
+	Orphaned bool // the link rests on a target that is no longer in force
 }
 
 // Reopening is a commitment resting on a belief that has fallen.
@@ -354,13 +361,13 @@ func (x *Index) Dependents(id string) ([]Dependent, error) {
 }
 
 // Stale returns the records that have changed since links were written
-// against them, one group per record by ID, with the links that are out of
-// date.
+// against them, or that are no longer in force under a link that relies on
+// them, one group per record by ID, with the links that are out of date.
 func (x *Index) Stale() ([]StaleGroup, error) {
 	rows, err := x.db.Query(`SELECT t.id, t.type, t.title, t.status, COALESCE(t.revision, 0),
-		e.name, e.pinned_rev, e.pinned_fp, s.id, s.type, s.title, s.status
+		e.name, e.pinned_rev, e.pinned_fp, e.stale, e.orphaned, s.id, s.type, s.title, s.status
 		FROM edges e JOIN nodes t ON t.id = e.dst JOIN nodes s ON s.id = e.src
-		WHERE e.stale = 1 ORDER BY t.id, s.id, e.name`)
+		WHERE e.stale = 1 OR e.orphaned = 1 ORDER BY t.id, s.id, e.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -369,11 +376,11 @@ func (x *Index) Stale() ([]StaleGroup, error) {
 	for rows.Next() {
 		var t Summary
 		var rev int
-		var l Link
+		var l StaleLink
 		var pinRev sql.NullInt64
 		var fp string
 		if err := rows.Scan(&t.ID, &t.Type, &t.Title, &t.Status, &rev,
-			&l.Field, &pinRev, &fp, &l.Other.ID, &l.Other.Type, &l.Other.Title, &l.Other.Status); err != nil {
+			&l.Field, &pinRev, &fp, &l.Stale, &l.Orphaned, &l.Other.ID, &l.Other.Type, &l.Other.Title, &l.Other.Status); err != nil {
 			return nil, err
 		}
 		if pinRev.Valid {

@@ -103,9 +103,15 @@ func TestTypeCheckFallen(t *testing.T) {
 		t.Errorf("a status the schema lacks: %v", err)
 	}
 	task.Fallen = []string{"rejected"} // task's status comes from a shared definition
+	task.Closed = nil
 	if err := task.checkStatuses(); err != nil {
 		t.Errorf("a status through a $ref: %v", err)
 	}
+	task.Closed = []string{"rejected"}
+	if err := task.checkStatuses(); err == nil || !strings.Contains(err.Error(), "both fallen and closed") {
+		t.Errorf("a status both fallen and closed: %v", err)
+	}
+	task.Closed = nil
 	task.Fallen = []string{"held"}
 	if err := task.checkStatuses(); err == nil {
 		t.Error("held isn't a task status")
@@ -124,8 +130,34 @@ func TestTypeClosed(t *testing.T) {
 			t.Errorf("IsClosed(%q) = %v", status, !want)
 		}
 	}
-	if typ(t, "belief").IsClosed("withdrawn") || typ(t, "step").IsClosed("rejected") {
+	if !typ(t, "belief").IsClosed("withdrawn") || typ(t, "belief").IsClosed("incorrect") {
+		t.Error("a belief is closed once withdrawn, not when incorrect")
+	}
+	if typ(t, "step").IsClosed("rejected") {
 		t.Error("a type with no closed statuses has none closed")
+	}
+}
+
+func TestRegistryRefusesBadConstraints(t *testing.T) {
+	r := Load()
+	task := *r.Types["task"]
+	task.Edges = maps.Clone(task.Edges)
+	e := task.Edges["implements"]
+	e.Within = "nope"
+	task.Edges["implements"] = e
+	if err := r.checkConstraints(&task); err == nil || !strings.Contains(err.Error(), "within `nope`") {
+		t.Errorf("within naming an unknown edge: %v", err)
+	}
+	e.Within = ""
+	e.TargetStatus = []string{"gone"}
+	task.Edges["implements"] = e
+	if err := r.checkConstraints(&task); err == nil || !strings.Contains(err.Error(), "`gone`") {
+		t.Errorf("target_status with an unknown status: %v", err)
+	}
+	e.TargetStatus = []string{"accepted"}
+	task.Edges["implements"] = e
+	if err := r.checkConstraints(&task); err != nil {
+		t.Errorf("a known status: %v", err)
 	}
 }
 

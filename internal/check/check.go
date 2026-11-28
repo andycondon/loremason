@@ -51,11 +51,14 @@ func Graph(g *graph.Graph, loaded diag.List, reg *registry.Registry) *Result {
 		c.revisionNumbers(f)
 		c.sealed(f)
 		c.fixed(f)
+		c.disputedBelief(f)
 	}
 	for _, e := range g.Edges {
 		c.target(e)
 		c.revisionRefs(e)
+		c.constraints(e)
 	}
+	c.oneInForce()
 	c.duplicates()
 	c.ds.Sort()
 	return &Result{Graph: g, Records: len(g.Files), Diagnostics: c.ds}

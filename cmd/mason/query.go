@@ -79,12 +79,26 @@ var staleCmd = &cli.Command{
 			for _, g := range groups {
 				fmt.Fprintf(w, "%s  r%d\n", line(g.Target), g.Revision)
 				for _, l := range g.Links {
-					fmt.Fprintf(w, "  %s  %s\n", l.Field, linkLine(l))
+					fmt.Fprintf(w, "  %s  %s%s\n", l.Field, linkLine(l.Link), orphanedNote(l.Orphaned, g.Target))
 				}
 			}
 			return err
 		})
 	},
+}
+
+// orphanedNote is the reason a link to a record that is no longer in force
+// needs a look, as a suffix for its line, or "" when the link isn't one.
+func orphanedNote(orphaned bool, target index.Summary) string {
+	if !orphaned {
+		return ""
+	}
+	return "  (" + orphanedReason(target) + ")"
+}
+
+// orphanedReason says what a link rests on.
+func orphanedReason(target index.Summary) string {
+	return fmt.Sprintf("rests on %s, which is %s", target.ID, target.Status)
 }
 
 var reopenedCmd = &cli.Command{

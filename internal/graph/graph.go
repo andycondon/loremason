@@ -262,6 +262,57 @@ func (e *Edge) Reopens() bool {
 		e.Target.Type().IsFallen(e.Target.Status())
 }
 
+// InForce reports whether the node's record is still in force: its status
+// isn't one its type lists as closed. A type with no closed statuses is
+// always in force.
+func (n *Node) InForce() bool { return !n.Type().IsClosed(n.Record().Status()) }
+
+// Orphaned reports whether the link rests on a record that is no longer in
+// force: it propagates, its source is in force, and its target's status is one
+// that the target's type lists as closed, such as a withdrawn belief or a
+// superseded task. It is independent of Reopens: a withdrawn belief doesn't
+// reopen what relied on it, but whoever relied on it should look again.
+func (e *Edge) Orphaned() bool {
+	return e.Def.Propagates && e.Target != nil && e.From.InForce() && !e.Target.InForce()
+}
+
+// Doubted reports whether a belief that still stands has lost some of its
+// footing: a support link of it is undercut (evidence `undercuts` the link)
+// or its evidence is undermined (evidence `undermines` that evidence). It
+// stays so until the link is removed or the belief's status changes, so a
+// belief that has fallen or been withdrawn isn't doubted, it is settled.
+// The rule is for beliefs; see 01-model.md, section 3.2.
+func (n *Node) Doubted() bool {
+	if n.IsSubrecord() || n.Type().Name != "belief" || n.Type().IsFallen(n.Status()) || n.Type().IsClosed(n.Status()) {
+		return false
+	}
+	for _, link := range n.Children {
+		for _, in := range link.Incoming {
+			if in.Name == "undercuts" {
+				return true
+			}
+		}
+		for _, out := range link.Outgoing {
+			if out.Name != "evidence" || out.Target == nil {
+				continue
+			}
+			for _, in := range out.Target.Incoming {
+				if in.Name == "undermines" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// Doubts reports whether the link relies on a belief that is doubted: it
+// propagates, its source is a commitment in force, and its target is doubted.
+func (e *Edge) Doubts() bool {
+	return e.Def.Propagates && e.Target != nil &&
+		e.From.Layer() == registry.Committing && e.From.InForce() && e.Target.Doubted()
+}
+
 // Settles reports whether the link settles its target: its edge lists the
 // source's status as one that settles, such as an accepted decision
 // answering a question.

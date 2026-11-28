@@ -86,6 +86,10 @@ type Edge struct {
 	Pinned     *bool    `yaml:"pinned"`     // whether the link pins its target; nil means as Propagates
 	Settles    []string `yaml:"settles"`    // the source's statuses at which the link settles its target; each is one of the source type's statuses
 	Pending    []string `yaml:"pending"`    // the source's statuses at which the link is an answer still waiting; each is one of the source type's statuses
+	// Constraints the check reports as warnings.
+	Within       string   `yaml:"within"`        // another edge of the same type: the target's own link by that edge must lead to a target of that edge on the same record
+	TargetStatus []string `yaml:"target_status"` // the statuses the target should be in; each is one of every target type's statuses
+	OneInForce   bool     `yaml:"one_in_force"`  // at most one source in force (and, for an edge that settles, settling) per target
 }
 
 // ShouldPin reports whether a link of this edge to a node of kind target
@@ -182,6 +186,11 @@ func (t *Type) checkStatuses() error {
 			}
 		}
 	}
+	for _, st := range t.Fallen {
+		if slices.Contains(t.Closed, st) {
+			return fmt.Errorf("types.yaml: %s lists `%s` as both fallen and closed; a status is one or the other", t.Name, st)
+		}
+	}
 	for _, name := range slices.Sorted(maps.Keys(t.Edges)) {
 		e := t.Edges[name]
 		for _, k := range []struct {
@@ -218,6 +227,31 @@ func (r *Registry) checkSealed(t *Type) error {
 	for _, st := range s.Status {
 		if !slices.Contains(statuses, st) {
 			return fmt.Errorf("types.yaml: %s is sealed at `%s`, but its schema has no such status", t.Name, st)
+		}
+	}
+	return nil
+}
+
+// checkConstraints reports a within that isn't another edge of the type, and
+// a target_status that a target type's schema doesn't allow.
+func (r *Registry) checkConstraints(t *Type) error {
+	for _, name := range slices.Sorted(maps.Keys(t.Edges)) {
+		e := t.Edges[name]
+		if e.Within != "" {
+			if _, ok := t.Edges[e.Within]; !ok || e.Within == name {
+				return fmt.Errorf("types.yaml: the %s edge of %s is within `%s`, but %s has no such other edge", name, t.Name, e.Within, t.Name)
+			}
+		}
+		for _, st := range e.TargetStatus {
+			for _, to := range e.To {
+				target := r.Types[to]
+				if target == nil {
+					return fmt.Errorf("types.yaml: the %s edge of %s has a target_status, so each target must be a record type, not `%s`", name, t.Name, to)
+				}
+				if !slices.Contains(target.statuses(), st) {
+					return fmt.Errorf("types.yaml: the %s edge of %s lists `%s` as target_status, but %s has no such status", name, t.Name, st, to)
+				}
+			}
 		}
 	}
 	return nil
@@ -397,6 +431,9 @@ func parse() (*Registry, error) {
 	}
 	for _, name := range r.Names() {
 		if err := r.checkSealed(r.Types[name]); err != nil {
+			return nil, err
+		}
+		if err := r.checkConstraints(r.Types[name]); err != nil {
 			return nil, err
 		}
 	}

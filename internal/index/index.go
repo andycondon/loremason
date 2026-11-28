@@ -52,7 +52,7 @@ const (
 // the tables or what is stored in them change, so older indexes are rebuilt.
 // It isn't the loremason version in the workspace's config; that is
 // Meta.Version.
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // Index is an open index. Close it when done.
 type Index struct {
