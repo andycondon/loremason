@@ -458,6 +458,11 @@ func TestCalendarDate(t *testing.T) {
 		"2024-02-29":           true,
 		"2026-02-29":           false,
 		"2026-02-30T10:00:00Z": false,
+		"2026-11-22T24:00Z":    false,
+		"2026-11-22T25:00Z":    false,
+		"2026-11-22T10:00:60Z": false,
+		"2026-11-22 10:00 Z":   true,
+		"2026-11-22t10:00:00z": true,
 		"22 November":          true, // not a date: the pattern's to reject
 		42:                     true,
 	} {

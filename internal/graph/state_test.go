@@ -236,7 +236,16 @@ func TestConcernsIgnoreASourceNotInForce(t *testing.T) {
 		file("dec_d1d1d1", "status: accepted", "relies_on: [bel_b1b1b1]"),
 		file("dec_d2d2d2", "status: rejected", "relies_on: [bel_b1b1b1]"),
 		file("task_d3d3d3", "status: accepted", "blocked_by: [bel_b1b1b1]"),
+		file("bel_b2b2b2", "status: held"),
+		file("dec_d4d4d4", "status: accepted", `relies_on: [{to: bel_b2b2b2, rev: 1, fp: "fp1:000000000000"}]`),
+		file("dec_d5d5d5", "status: rejected", `relies_on: [{to: bel_b2b2b2, rev: 1, fp: "fp1:000000000000"}]`),
 	)
+	if got := edge(t, g, "dec_d4d4d4", "relies_on").Concerns(); got != Stale {
+		t.Errorf("accepted source, stale pin: Concerns = %q, want stale", got)
+	}
+	if got := edge(t, g, "dec_d5d5d5", "relies_on").Concerns(); got.Has(Stale) {
+		t.Errorf("rejected source, stale pin: Concerns = %q, want no stale", got)
+	}
 	if got := edge(t, g, "dec_d1d1d1", "relies_on").Concerns(); got != Orphaned {
 		t.Errorf("accepted source: Concerns = %q, want orphaned", got)
 	}

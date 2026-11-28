@@ -487,10 +487,33 @@ func parse() (*Registry, error) {
 	return r, nil
 }
 
+// ParseTime parses a date or a time as common.json's time allows: a date
+// alone is midnight UTC, and a time with no offset is UTC. ok is false when
+// the text isn't one. The schema's format check and the graph's reading of
+// observed_at both use it, so what validates is what can be compared.
+func ParseTime(s string) (t time.Time, ok bool) {
+	v := strings.TrimSpace(s)
+	if len(v) > 10 {
+		v = v[:10] + "T" + strings.Join(strings.Fields(v[11:]), "") // the separator may be a t or a space
+	}
+	v = strings.Replace(v, "z", "Z", 1)
+	for _, layout := range []string{
+		time.DateOnly,
+		"2006-01-02T15:04:05.999999999Z07:00", "2006-01-02T15:04:05.999999999",
+		"2006-01-02T15:04Z07:00", "2006-01-02T15:04",
+	} {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
 var looksLikeDate = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}`)
 
 // calendarDate checks that text starting with a date names a real day, such
-// as no 30 February. The schema's pattern checks the rest of the shape.
+// as no 30 February, and a time of day that exists, such as no 24:00. The
+// schema's pattern checks the rest of the shape.
 func calendarDate(v any) error {
 	s, ok := v.(string)
 	if !ok || !looksLikeDate.MatchString(s) {
@@ -498,6 +521,9 @@ func calendarDate(v any) error {
 	}
 	if _, err := time.Parse(time.DateOnly, s[:len(time.DateOnly)]); err != nil {
 		return fmt.Errorf("there's no such day")
+	}
+	if _, ok := ParseTime(s); !ok {
+		return fmt.Errorf("there's no such time")
 	}
 	return nil
 }

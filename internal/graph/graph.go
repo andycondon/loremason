@@ -510,25 +510,10 @@ func (n *Node) doubtedBy() []*Node {
 // status changes, or a link that relies on it is re-checked (see doubts).
 func (n *Node) Doubted() bool { return len(n.doubtedBy()) > 0 }
 
-// observedAt parses the node's observed_at, a date or a time as
-// common.json's time allows: a date alone is midnight UTC, and a time with
-// no offset is UTC. It is false when there is none or it can't be parsed.
+// observedAt parses the node's observed_at (see registry.ParseTime). It is
+// false when there is none or it can't be parsed.
 func (n *Node) observedAt() (time.Time, bool) {
-	v := strings.TrimSpace(n.Fields.Text("observed_at"))
-	if len(v) > 10 {
-		v = v[:10] + "T" + strings.Join(strings.Fields(v[11:]), "") // the separator may be a t or a space
-	}
-	v = strings.Replace(v, "z", "Z", 1)
-	for _, layout := range []string{
-		time.DateOnly,
-		"2006-01-02T15:04:05.999999999Z07:00", "2006-01-02T15:04:05.999999999",
-		"2006-01-02T15:04Z07:00", "2006-01-02T15:04",
-	} {
-		if t, err := time.Parse(layout, v); err == nil {
-			return t, true
-		}
-	}
-	return time.Time{}, false
+	return registry.ParseTime(n.Fields.Text("observed_at"))
 }
 
 // observedNotAfter reports whether evidence was observed no later than
