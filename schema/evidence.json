@@ -24,7 +24,7 @@
       "$ref": "common.json#/$defs/links"
     },
     "generated_by": {
-      "$ref": "common.json#/$defs/links"
+      "$ref": "common.json#/$defs/link"
     },
     "about": {
       "$ref": "common.json#/$defs/links"

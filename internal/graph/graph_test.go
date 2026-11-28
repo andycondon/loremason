@@ -131,7 +131,7 @@ func TestNodeRevisions(t *testing.T) {
 	}
 }
 
-func TestNodeSealedAndPinnedBy(t *testing.T) {
+func TestNodeSealedAndSealedBy(t *testing.T) {
 	pin := func(rev string) string { return "  - {to: bel_7k3m9q, rev: " + rev + ", fp: \"fp1:000000000000\"}" }
 	bel := load(t,
 		file("bel_7k3m9q", "revisions:", "  - {rev: 1}", "  - {rev: 2}"),
@@ -142,11 +142,11 @@ func TestNodeSealedAndPinnedBy(t *testing.T) {
 		t.Error("only the pinned revision is sealed; a bare link seals nothing")
 	}
 	// Each record once, however many of its links pin the revision.
-	if got := bel.PinnedBy(1); !slices.Equal(got, []string{"task_2b4cdf", "task_9w4hzd"}) {
-		t.Errorf("PinnedBy(1) = %v", got)
+	if got := bel.SealedBy(1); !slices.Equal(got, []string{"task_2b4cdf", "task_9w4hzd"}) {
+		t.Errorf("SealedBy(1) = %v", got)
 	}
-	if got := bel.PinnedBy(2); got != nil {
-		t.Errorf("PinnedBy(2) = %v", got)
+	if got := bel.SealedBy(2); got != nil {
+		t.Errorf("SealedBy(2) = %v", got)
 	}
 }
 

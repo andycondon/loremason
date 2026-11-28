@@ -62,9 +62,9 @@ func TestNewAttachesToTheSession(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			m := regexp.MustCompile(`generated_by: \[(actv_[0-9a-z]{6})\]`).FindStringSubmatch(string(data))
-			if m == nil {
-				t.Fatalf("not attached:\n%s", data)
+			m := regexp.MustCompile(`generated_by: (actv_[0-9a-z]{6})`).FindStringSubmatch(string(data))
+			if m == nil || strings.Contains(string(data), "generated_by: [") {
+				t.Fatalf("not attached as one value:\n%s", data)
 			}
 			actv := filepath.Join(filepath.Dir(filepath.Dir(strings.TrimSuffix(out, "\n"))), "activity", m[1]+".md")
 			if a, err := os.ReadFile(actv); err != nil || !strings.Contains(string(a), "part_of: "+sessionIni) || !strings.Contains(string(a), "session: sess-1") {
@@ -212,7 +212,7 @@ func TestNewOneSessionOneActivity(t *testing.T) {
 	}
 	id := strings.TrimSuffix(filepath.Base(acts[0]), ".md")
 	for _, p := range paths {
-		if data, _ := os.ReadFile(p); !strings.Contains(string(data), "generated_by: ["+id+"]") {
+		if data, _ := os.ReadFile(p); !strings.Contains(string(data), "generated_by: "+id) {
 			t.Errorf("%s isn't linked to %s:\n%s", p, id, data)
 		}
 	}
@@ -246,8 +246,8 @@ func TestValidateAcceptsGeneratedByAndAttributedTo(t *testing.T) {
 	newWorkspace(t, map[string]string{
 		"activity/actv_k3m9qx.md": "---\nid: actv_k3m9qx\ntitle: Session\nsession: s\nstarted_at: 2026-11-22\ncreated: 2026-11-22\n---\n",
 		"actor/who_4d9snc.md":     "---\nid: who_4d9snc\ntitle: Someone\nkind: person\ncreated: 2026-11-22\n---\n",
-		"finding/fnd_k3m9qx.md":   "---\nid: fnd_k3m9qx\ntitle: F\ngenerated_by: [actv_k3m9qx]\nattributed_to: [who_4d9snc]\ncreated: 2026-11-22\n---\n\nText.\n",
-		"design-doc/dd_c5r1tw.md": "---\nid: dd_c5r1tw\ntitle: D\nstatus: proposed\ngenerated_by: [actv_k3m9qx]\nattributed_to: [who_4d9snc]\ncreated: 2026-11-22\n---\n\nText.\n",
+		"finding/fnd_k3m9qx.md":   "---\nid: fnd_k3m9qx\ntitle: F\ngenerated_by: actv_k3m9qx\nattributed_to: [who_4d9snc]\ncreated: 2026-11-22\n---\n\nText.\n",
+		"design-doc/dd_c5r1tw.md": "---\nid: dd_c5r1tw\ntitle: D\nstatus: proposed\ngenerated_by: actv_k3m9qx\nattributed_to: [who_4d9snc]\ncreated: 2026-11-22\n---\n\nText.\n",
 	})
 	mason("sync")
 	if code, out, errOut := mason("validate"); code != 0 {
@@ -260,9 +260,9 @@ func TestREADMEListsFindingsOfEverySessionOfTheInitiative(t *testing.T) {
 		"initiative/" + sessionIni + ".md": "---\nid: " + sessionIni + "\ntitle: Search\nslug: search\nstatus: active\ncreated: 2026-11-22\n---\n\nBody.\n",
 		"activity/actv_k3m9qx.md":          "---\nid: actv_k3m9qx\ntitle: One\nsession: a\nstarted_at: 2026-11-22\npart_of: " + sessionIni + "\ncreated: 2026-11-22\n---\n",
 		"activity/actv_p4n2xa.md":          "---\nid: actv_p4n2xa\ntitle: Two\nsession: b\nstarted_at: 2026-11-23\npart_of: " + sessionIni + "\ncreated: 2026-11-23\n---\n",
-		"finding/fnd_a1a1a1.md":            "---\nid: fnd_a1a1a1\ntitle: Alpha\ngenerated_by: [actv_k3m9qx]\ncreated: 2026-11-22\n---\n\nA.\n",
-		"finding/fnd_b2b2b2.md":            "---\nid: fnd_b2b2b2\ntitle: Beta\ngenerated_by: [actv_k3m9qx]\ncreated: 2026-11-22\n---\n\nB.\n",
-		"finding/fnd_c3c3c3.md":            "---\nid: fnd_c3c3c3\ntitle: Gamma\ngenerated_by: [actv_p4n2xa]\ncreated: 2026-11-23\n---\n\nC.\n",
+		"finding/fnd_a1a1a1.md":            "---\nid: fnd_a1a1a1\ntitle: Alpha\ngenerated_by: actv_k3m9qx\ncreated: 2026-11-22\n---\n\nA.\n",
+		"finding/fnd_b2b2b2.md":            "---\nid: fnd_b2b2b2\ntitle: Beta\ngenerated_by: actv_k3m9qx\ncreated: 2026-11-22\n---\n\nB.\n",
+		"finding/fnd_c3c3c3.md":            "---\nid: fnd_c3c3c3\ntitle: Gamma\ngenerated_by: actv_p4n2xa\ncreated: 2026-11-23\n---\n\nC.\n",
 	})
 	if code, _, errOut := mason("sync"); code != 0 {
 		t.Fatalf("sync: exit %d, %s", code, errOut)

@@ -30,7 +30,7 @@
       "$ref": "common.json#/$defs/links"
     },
     "generated_by": {
-      "$ref": "common.json#/$defs/links"
+      "$ref": "common.json#/$defs/link"
     },
     "attributed_to": {
       "$ref": "common.json#/$defs/links"

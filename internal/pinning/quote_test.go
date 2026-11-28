@@ -27,7 +27,7 @@ func TestQuotedFindingStaysFreeToEdit(t *testing.T) {
 		t.Errorf("editing a quoted finding drew diagnostics:\n%s", got)
 	}
 	p := sync(t, w)
-	if got := actions(p); !strings.Contains(got, "refresh the fingerprint of revision 1, which no propagating link pins") {
+	if got := actions(p); !strings.Contains(got, "refresh the fingerprint of revision 1, which nothing seals") {
 		t.Errorf("sync didn't refresh the finding's fingerprint:\n%s", got)
 	}
 	if n := w.Node("fnd_k3m9qx"); n.Current().FP != n.Fingerprint() {

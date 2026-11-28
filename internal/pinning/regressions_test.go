@@ -53,7 +53,7 @@ func TestPinnedBeforeSyncIsResolvedBySync(t *testing.T) {
 		"belief/bel_7k3m9q.md": testws.Belief,
 		"task/task_9w4hzd.md":  "---\nid: task_9w4hzd\ntitle: Do it\nstatus: accepted\nrelies_on:\n  - {to: bel_7k3m9q, rev: 1, fp: \"" + testws.BeliefFP + "\"}\ncreated: 2026-11-22\n---\n",
 	})
-	if got := problems(t, w); !strings.Contains(got, "warning: revision 1 is pinned but isn't written down yet; run `mason sync`") {
+	if got := problems(t, w); !strings.Contains(got, "warning: revision 1 is sealed but isn't written down yet; run `mason sync`") {
 		t.Error(got)
 	}
 	sync(t, w)

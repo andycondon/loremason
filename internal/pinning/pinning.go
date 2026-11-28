@@ -122,7 +122,7 @@ func (p *Plan) recordRevision(f *graph.File, today string) []graph.Revision {
 		p.say(f, "record the fingerprint of revision %d", cur.Rev)
 	case cur.FP != fp && !n.Sealed(cur.Rev):
 		cur.FP = fp
-		p.say(f, "refresh the fingerprint of revision %d, which no propagating link pins", cur.Rev)
+		p.say(f, "refresh the fingerprint of revision %d, which nothing seals", cur.Rev)
 	default:
 		return rs
 	}
@@ -191,7 +191,7 @@ func Revise(n *graph.Node, breaking bool, broken Broken, today, commit string) (
 	fp := n.Fingerprint()
 	switch {
 	case !n.Sealed(cur.Rev):
-		return nil, fmt.Errorf("nothing seals revision %d of %s yet (no link that propagates pins it), so it can be edited as it is; no new revision is needed", cur.Rev, n.ID)
+		return nil, fmt.Errorf("nothing seals revision %d of %s yet (no propagating link pins it and its status doesn't), so it can be edited as it is; no new revision is needed", cur.Rev, n.ID)
 	case !cur.FP.IsZero() && cur.FP != fp:
 		return nil, fmt.Errorf("the meaning of %s already changed after revision %d was pinned; undo the change first, so the old wording can be kept", n.ID, cur.Rev)
 	}

@@ -51,6 +51,8 @@ type Node struct {
 	Revisions []Revision
 	// Incoming are the edges that point at this node.
 	Incoming []*Edge
+	// Outgoing are the edges whose link this node holds.
+	Outgoing []*Edge
 }
 
 // Edge is one link, from the node whose field holds it.
@@ -174,26 +176,52 @@ func (n *Node) Revision(rev int) *Revision {
 // a revision without freezing it.
 func (e *Edge) Seals() bool { return e.Pin != nil && e.Def.Propagates }
 
-// Sealed reports whether a propagating link pins the revision. A sealed revision's meaning can't change without a new revision.
-func (n *Node) Sealed(rev int) bool {
+// SealedBy says why a revision is sealed: the IDs of the records whose
+// propagating links pin it, then, for the current revision, the reasons the
+// type's sealed key gives ("accepted", "settled", "its plan plan_x is
+// accepted"). It's nil when nothing seals the revision. A sealed revision's
+// meaning can't change without a new revision.
+func (n *Node) SealedBy(rev int) []string {
+	var reasons []string
 	for _, e := range n.Incoming {
-		if e.Seals() && e.Pin.Rev == rev {
-			return true
+		if e.Seals() && e.Pin.Rev == rev && !slices.Contains(reasons, e.From.Record().ID) {
+			reasons = append(reasons, e.From.Record().ID)
 		}
 	}
-	return false
+	if cur := n.Current(); cur != nil && cur.Rev == rev && !n.IsSubrecord() {
+		reasons = append(reasons, n.sealedByState()...)
+	}
+	return reasons
 }
 
-// PinnedBy lists the IDs of the records whose links seal the revision.
-func (n *Node) PinnedBy(rev int) []string {
-	var ids []string
-	for _, e := range n.Incoming {
-		if e.Seals() && e.Pin.Rev == rev && !slices.Contains(ids, e.From.Record().ID) {
-			ids = append(ids, e.From.Record().ID)
+// sealedByState gives the reasons the type's sealed key seals the node as it is now.
+func (n *Node) sealedByState() []string {
+	s := n.Type().Sealed
+	var reasons []string
+	if s.Via == "" {
+		if slices.Contains(s.Status, n.Status()) {
+			reasons = append(reasons, n.Status())
+		}
+	} else {
+		for _, e := range n.Outgoing {
+			if e.Name == s.Via && e.Target != nil && slices.Contains(s.Status, e.Target.Status()) {
+				reasons = append(reasons, fmt.Sprintf("its %s %s is %s", e.Target.Type().Name, e.Target.ID, e.Target.Status()))
+			}
 		}
 	}
-	return ids
+	if s.Settled {
+		for _, e := range n.Incoming {
+			if e.Settles() {
+				reasons = append(reasons, "settled")
+				break
+			}
+		}
+	}
+	return reasons
 }
+
+// Sealed reports whether anything seals the revision: see SealedBy.
+func (n *Node) Sealed(rev int) bool { return len(n.SealedBy(rev)) > 0 }
 
 // Type returns the record type of the node's record.
 func (n *Node) Type() *registry.Type { return n.Record().File.Type }

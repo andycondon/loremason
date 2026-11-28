@@ -44,6 +44,7 @@ func Load(root string, reg *registry.Registry) (*Graph, diag.List, error) {
 		}
 	}
 	for _, e := range l.g.Edges {
+		e.From.Outgoing = append(e.From.Outgoing, e)
 		if e.Target = l.g.Resolve(e.To); e.Target != nil {
 			e.Target.Incoming = append(e.Target.Incoming, e)
 		}

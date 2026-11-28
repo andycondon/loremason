@@ -74,7 +74,7 @@ func TestQuotedFindingIsFreeButPinnedDesignDocIsNot(t *testing.T) {
 	if strings.Contains(got, "fnd_k3m9qx") || strings.Contains(got, "ev_p4n2xa") {
 		t.Errorf("the quoted finding or its quote was reported:\n%s", got)
 	}
-	if !strings.Contains(got, "the meaning changed, but revision 1 is pinned by task_9w4hzd") {
+	if !strings.Contains(got, "the meaning changed, but revision 1 is sealed (task_9w4hzd)") {
 		t.Errorf("the pinned design doc wasn't held to its revision:\n%s", got)
 	}
 }

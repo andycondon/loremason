@@ -20,6 +20,12 @@
 # fallen            Statuses (from the type's schema) that mean the record no longer holds.
 #                   A propagating link from a committing record to a record in one of
 #                   them reopens the committing record. Optional.
+# sealed            When the current revision is sealed by state, not only by a pin (a pinned
+#                   revision is sealed whatever this says). Optional, with up to three parts:
+#                   status: statuses (from the type's schema) at which it is sealed;
+#                   settled: true seals it once a link settles it (a question has no status);
+#                   via: an edge of the type; status then names statuses of the record
+#                   that edge leads to (a step is sealed by its plan's status).
 # closed            Statuses (from the type's schema) that mean the record is no longer in force.
 #                   A committing record in one of them isn't reopened by a fallen target. Optional.
 # settles           On an edge: statuses of the source (from its type's schema) at which the link
@@ -44,7 +50,6 @@ types:
     identity: [title]
     edges:
       acts_for: {to: [actor], propagates: false}
-      interested_in: {to: [any], propagates: false}
     template: |
       kind: person
 
@@ -85,7 +90,6 @@ types:
     template: |
       observed_at: {today}
       from: []
-      generated_by: []
     body: |
       The verbatim quote or observation. Never edited once written.
 
@@ -124,6 +128,7 @@ types:
   question:
     prefix: q
     layer: knowing
+    sealed: {settled: true}
     revisable: true
     revisions_inline: true
     meaning: [question]
@@ -199,6 +204,7 @@ types:
     prefix: dec
     layer: committing
     closed: [rejected, deprecated, superseded]
+    sealed: {status: [accepted, rejected, deprecated, superseded]}
     revisable: true
     revisions_inline: false
     meaning: [title, criteria, confirmation, body]
@@ -278,11 +284,13 @@ types:
       relies_on: {to: [belief], propagates: true}
     template: |
       status: proposed
+      part_of: []
       derived_from: []
 
   step:
     prefix: step
     layer: committing
+    sealed: {via: part_of, status: [accepted, rejected, deprecated, superseded]}
     revisable: true
     revisions_inline: true
     meaning: [title, body]

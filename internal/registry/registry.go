@@ -58,6 +58,7 @@ type Type struct {
 	Layer           string           `yaml:"layer"`            // Knowing, Committing or Scope
 	RevisionsInline bool             `yaml:"revisions_inline"` // old wording is kept in the file, not left to git
 	Meaning         []string         `yaml:"meaning"`          // fields a fingerprint covers; "body" for the body
+	Sealed          Sealed           `yaml:"sealed"`           // when the current revision is sealed by state, not only by a pin
 	Closed          []string         `yaml:"closed"`           // statuses meaning the record is no longer in force; each is one of the schema's statuses
 	Fallen          []string         `yaml:"fallen"`           // statuses meaning the record no longer holds; each is one of the schema's statuses
 	Subrecords      map[string]*Kind `yaml:"subrecords"`       // by the field that lists them
@@ -65,6 +66,16 @@ type Type struct {
 	Body            string           `yaml:"body"`             // the body `mason new` writes
 
 	Schema *jsonschema.Schema `yaml:"-"`
+}
+
+// Sealed says when a record's current revision is sealed by state. Status
+// lists the statuses that seal it, the type's own or, with Via, those of the
+// record its Via edge leads to (a step's plan). Settled seals a record once a
+// link settles it (a question). The zero value seals nothing.
+type Sealed struct {
+	Status  []string `yaml:"status"`
+	Settled bool     `yaml:"settled"`
+	Via     string   `yaml:"via"` // an edge of the type; Status then names the target's statuses
 }
 
 // Edge is a kind of link.
@@ -181,6 +192,31 @@ func (t *Type) checkStatuses() error {
 					return fmt.Errorf("types.yaml: the %s edge of %s lists `%s` as %s, but its schema has no such status", name, t.Name, st, k.key)
 				}
 			}
+		}
+	}
+	return nil
+}
+
+// checkSealed reports a sealed status that neither the type's schema nor, with
+// via, a target of its via edge allows, and a via that isn't one of the type's edges.
+func (r *Registry) checkSealed(t *Type) error {
+	s := t.Sealed
+	statuses := t.statuses()
+	if s.Via != "" {
+		e, ok := t.Edges[s.Via]
+		if !ok {
+			return fmt.Errorf("types.yaml: %s is sealed via `%s`, but it has no such edge", t.Name, s.Via)
+		}
+		statuses = nil
+		for _, to := range e.To {
+			if target := r.Types[to]; target != nil {
+				statuses = append(statuses, target.statuses()...)
+			}
+		}
+	}
+	for _, st := range s.Status {
+		if !slices.Contains(statuses, st) {
+			return fmt.Errorf("types.yaml: %s is sealed at `%s`, but its schema has no such status", t.Name, st)
 		}
 	}
 	return nil
@@ -337,6 +373,11 @@ func parse() (*Registry, error) {
 			return nil, err
 		}
 		if err := t.checkDocument(); err != nil {
+			return nil, err
+		}
+	}
+	for _, name := range r.Names() {
+		if err := r.checkSealed(r.Types[name]); err != nil {
 			return nil, err
 		}
 	}
