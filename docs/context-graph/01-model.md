@@ -1,13 +1,3 @@
----
-title: "Context graph design, part 1: the model"
-part: 1
-status: leaning   # agreed in principle; not yet a recorded decision
-reading_time: 15 min
-created: 2026-11-22
-updated: 2026-11-22
-author: Andy Condon
----
-
 # Context graph design, part 1: the model
 
 ## Why this exists

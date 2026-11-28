@@ -1,13 +1,3 @@
----
-title: "Context graph design, part 3: the implementation"
-part: 3
-status: leaning   # agreed in principle; not yet a recorded decision
-reading_time: 17 min
-created: 2026-11-22
-updated: 2026-11-25
-author: Andy Condon
----
-
 # Context graph design, part 3: the implementation
 
 ## Why this exists
