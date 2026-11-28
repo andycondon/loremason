@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/andycondon/loremason/internal/diag"
 	"github.com/andycondon/loremason/internal/record"
@@ -276,27 +277,96 @@ func (n *Node) Record() *Node {
 	return n
 }
 
+// Concern is a reason a link needs a re-check, as bit flags: a link can have
+// several.
+type Concern uint8
+
+const (
+	// Stale: the pinned target is at another revision, or its meaning changed
+	// since it was pinned.
+	Stale Concern = 1 << iota
+	// Reopens: the target has fallen, so the commitment resting on it reopens.
+	Reopens
+	// Orphaned: the target is no longer in force without having fallen, such
+	// as a withdrawn belief or a superseded task.
+	Orphaned
+	// Doubted: the target is a belief whose support is undercut or whose
+	// evidence is undermined, and no re-check since says otherwise.
+	Doubted
+)
+
+// concerns is every concern, in the order String lists them.
+var concerns = []Concern{Stale, Reopens, Orphaned, Doubted}
+
+// Has reports whether c includes every concern in o.
+func (c Concern) Has(o Concern) bool { return c&o == o }
+
+// String gives the reason in words, a comma between several. It is "" for none.
+func (c Concern) String() string {
+	var parts []string
+	for _, f := range concerns {
+		if !c.Has(f) {
+			continue
+		}
+		switch f {
+		case Stale:
+			parts = append(parts, "stale")
+		case Reopens:
+			parts = append(parts, "reopens")
+		case Orphaned:
+			parts = append(parts, "rests on a record no longer in force")
+		case Doubted:
+			parts = append(parts, "rests on a belief whose support is undercut or undermined")
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// Concerns says why the link needs a re-check, or 0 when it doesn't. Only a
+// link that propagates to a target, from a record in the committing layer that
+// is still in force (not closed or fallen, as a rejected or superseded one
+// is), is ever a concern: every source of a propagating edge is committing.
+func (e *Edge) Concerns() Concern {
+	if !e.Def.Propagates || e.Target == nil || e.From.Layer() != registry.Committing || !e.From.InForce() {
+		return 0
+	}
+	var c Concern
+	if e.Pin != nil && e.Target.Current() != nil &&
+		(e.Pin.Rev != e.Target.Current().Rev || e.Pin.FP != e.Target.Fingerprint()) {
+		c |= Stale
+	}
+	switch {
+	case e.Target.Type().IsFallen(e.Target.Status()):
+		c |= Reopens
+	case !e.Target.InForce():
+		c |= Orphaned
+	}
+	if e.doubts() {
+		c |= Doubted
+	}
+	return c
+}
+
 // Stale reports whether a pinned link no longer matches its target: the
 // target is at another revision, or its meaning changed since it was pinned.
 // A pin that doesn't seal, such as a quote's, is never stale.
-func (e *Edge) Stale() bool {
-	if !e.Seals() || e.Target == nil || e.Target.Current() == nil {
-		return false
-	}
-	return e.Pin.Rev != e.Target.Current().Rev || e.Pin.FP != e.Target.Fingerprint()
-}
+func (e *Edge) Stale() bool { return e.Concerns().Has(Stale) }
 
-// Reopens reports whether the link reopens its source: it propagates, its
-// source is a record in the committing layer that is still in force (not
-// closed, as a rejected or superseded one is), and its target's status is one
-// that the target's type lists as fallen. A target that no longer holds for
-// another reason, such as a withdrawn belief, reopens nothing.
-func (e *Edge) Reopens() bool {
-	return e.Def.Propagates && e.Target != nil &&
-		e.From.Layer() == registry.Committing &&
-		e.From.InForce() &&
-		e.Target.Type().IsFallen(e.Target.Status())
-}
+// Reopens reports whether the link reopens its source: its target's status is
+// one that the target's type lists as fallen. A target that no longer holds
+// for another reason, such as a withdrawn belief, reopens nothing.
+func (e *Edge) Reopens() bool { return e.Concerns().Has(Reopens) }
+
+// Orphaned reports whether the link rests on a record that is no longer in
+// force, such as a withdrawn belief, a superseded task, or a step of a
+// superseded plan. A target that has fallen reopens its source instead (see
+// Reopens), so it isn't reported here too. A withdrawn belief doesn't reopen
+// what relied on it, but whoever relied on it should look again.
+func (e *Edge) Orphaned() bool { return e.Concerns().Has(Orphaned) }
+
+// Doubts reports whether the link relies on a belief that is doubted and no
+// re-check has cleared it: see doubts.
+func (e *Edge) Doubts() bool { return e.Concerns().Has(Doubted) }
 
 // InForce reports whether the node's record is still in force: its status
 // is neither one its type lists as closed nor as fallen. A type with no such
@@ -320,17 +390,6 @@ func (n *Node) InForce() bool {
 		}
 	}
 	return !led
-}
-
-// Orphaned reports whether the link rests on a record that is no longer in
-// force: it propagates, its source is in force, and its target isn't, such
-// as a withdrawn belief, a superseded task, or a step of a superseded plan.
-// A target that has fallen reopens its source instead (see Reopens), so it
-// isn't reported here too. A withdrawn belief doesn't reopen what relied on
-// it, but whoever relied on it should look again.
-func (e *Edge) Orphaned() bool {
-	return e.Def.Propagates && e.Target != nil && e.From.InForce() && !e.Target.InForce() &&
-		!e.Target.Type().IsFallen(e.Target.Status())
 }
 
 // DoubtedBy returns the evidence that makes a belief doubted, sorted by ID:
@@ -379,25 +438,43 @@ func (n *Node) DoubtedBy() []*Node {
 // status changes, or a link that relies on it is re-checked (see Doubts).
 func (n *Node) Doubted() bool { return len(n.DoubtedBy()) > 0 }
 
-// ObservedNotAfter reports whether evidence was observed no later than
-// other: by its observed_at, and when those are equal, by ID, which is the
-// order the files are read in. A missing observed_at is the earliest.
-func (n *Node) ObservedNotAfter(other *Node) bool {
-	if c := strings.Compare(n.Fields.Text("observed_at"), other.Fields.Text("observed_at")); c != 0 {
-		return c < 0
+// ObservedAt parses the node's observed_at, a date or a time as
+// common.json's time allows: a date alone is midnight UTC, and a time with
+// no offset is UTC. It is false when there is none or it can't be parsed.
+func (n *Node) ObservedAt() (time.Time, bool) {
+	v := strings.TrimSpace(n.Fields.Text("observed_at"))
+	if len(v) > 10 {
+		v = v[:10] + "T" + strings.Join(strings.Fields(v[11:]), "") // the separator may be a t or a space
 	}
-	return n.ID <= other.ID
+	v = strings.Replace(v, "z", "Z", 1)
+	for _, layout := range []string{
+		time.DateOnly,
+		"2006-01-02T15:04:05.999999999Z07:00", "2006-01-02T15:04:05.999999999",
+		"2006-01-02T15:04Z07:00", "2006-01-02T15:04",
+	} {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
-// Doubts reports whether the link relies on a belief that is doubted: it
-// propagates, its source is a commitment in force, and its target is doubted.
-// A re-check clears it: the link's pin names, in via, evidence observed no
-// earlier than any of the evidence that makes the belief doubted. A newer
-// undermining or undercutting doubts it again.
-func (e *Edge) Doubts() bool {
-	if !e.Def.Propagates || e.Target == nil || e.From.Layer() != registry.Committing || !e.From.InForce() {
-		return false
-	}
+// ObservedNotAfter reports whether evidence was observed no later than
+// other, comparing the instants of their observed_at. Equal times count, so
+// a tie clears a doubt. Either one's observed_at missing or unparsable is
+// false: such evidence clears nothing.
+func (n *Node) ObservedNotAfter(other *Node) bool {
+	a, ok := n.ObservedAt()
+	b, ok2 := other.ObservedAt()
+	return ok && ok2 && !a.After(b)
+}
+
+// doubts is the doubted part of Concerns: the target is doubted, and no
+// re-check clears it. A re-check clears it when the link's pin names, in via,
+// evidence observed on or after all of the evidence that makes the belief
+// doubted (see ObservedAt). A newer undermining or undercutting doubts it
+// again.
+func (e *Edge) doubts() bool {
 	by := e.Target.DoubtedBy()
 	if len(by) == 0 {
 		return false

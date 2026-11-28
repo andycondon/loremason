@@ -3,6 +3,7 @@ package graph
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 // ---- InForce, Orphaned, Doubted, Doubts ----
@@ -172,6 +173,9 @@ func TestRecheckClearsADoubtUntilNewerEvidenceArrives(t *testing.T) {
 	newerUndermine := ev("ev_e5e5e5", "2026-11-25T10:00:00Z", "undermines: [ev_e1e1e1]")
 	same := ev("ev_e0e0e0", "2026-11-23T10:00:00Z", "about: [bel_b1b1b1]") // same time, earlier ID
 
+	undermineAt := func(when string) string { return ev("ev_e2e2e2", when, "undermines: [ev_e1e1e1]") }
+	at := func(id, when string) string { return ev(id, when, "about: [bel_b1b1b1]") }
+
 	for _, c := range []struct {
 		name  string
 		via   string
@@ -183,12 +187,61 @@ func TestRecheckClearsADoubtUntilNewerEvidenceArrives(t *testing.T) {
 		{"re-checked with newer evidence", "ev_e4e4e4", []string{undermine, newer}, false},
 		{"newer undermine after the re-check", "ev_e4e4e4", []string{undermine, newer, newerUndermine}, true},
 		{"re-checked by the evidence itself", "ev_e2e2e2", []string{undermine}, false},
-		{"same time, ordered by ID, earlier", "ev_e0e0e0", []string{undermine, same}, true},
+		{"same time clears, whatever the IDs", "ev_e0e0e0", []string{undermine, same}, false},
+		{"offset before: 12:00+05:00 is 07:00Z", "ev_e3e3e3", []string{undermineAt("2026-11-23T08:00:00Z"), at("ev_e3e3e3", "2026-11-23T12:00:00+05:00")}, true},
+		{"offset after: 12:00+02:00 is 10:00Z", "ev_e3e3e3", []string{undermineAt("2026-11-23T08:00:00Z"), at("ev_e3e3e3", "2026-11-23T12:00:00+02:00")}, false},
+		{"dates tie and clear", "ev_e3e3e3", []string{undermineAt("2026-11-23"), at("ev_e3e3e3", "2026-11-23")}, false},
+		{"an earlier date doesn't clear", "ev_e3e3e3", []string{undermineAt("2026-11-23"), at("ev_e3e3e3", "2026-11-22")}, true},
+		{"unparsable observed_at clears nothing", "ev_e3e3e3", []string{undermine, at("ev_e3e3e3", "yesterday")}, true},
 		{"re-checked and nothing against it", "ev_e4e4e4", []string{newer}, false},
 	} {
 		g := doubtGraph(t, "supports", c.via, c.extra...)
 		if got := doubts(t, g); got != c.want {
 			t.Errorf("%s: Doubts = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+func TestObservedAt(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want string // RFC 3339 in UTC, or "" when it can't be read
+	}{
+		{"2026-11-22", "2026-11-22T00:00:00Z"},
+		{"2026-11-22T14:30:00Z", "2026-11-22T14:30:00Z"},
+		{"2026-11-22t14:30z", "2026-11-22T14:30:00Z"},
+		{"2026-11-22 14:30:00 +05:00", "2026-11-22T09:30:00Z"},
+		{"2026-11-22T14:30:00.5", "2026-11-22T14:30:00Z"},
+		{"", ""},
+		{"soon", ""},
+	} {
+		g := load(t, ev("ev_e1e1e1", c.in))
+		got, ok := g.Node("ev_e1e1e1").ObservedAt()
+		switch {
+		case c.want == "" && ok:
+			t.Errorf("%q: read as %v, want unreadable", c.in, got)
+		case c.want != "" && (!ok || got.UTC().Truncate(time.Second).Format(time.RFC3339) != c.want):
+			t.Errorf("%q: got %v (%v), want %s", c.in, got, ok, c.want)
+		}
+	}
+}
+
+// One guard for every concern: a link from a record that isn't in force has
+// none, even a pin that is behind its target.
+func TestConcernsIgnoreASourceNotInForce(t *testing.T) {
+	g := load(t,
+		file("bel_b1b1b1", "status: withdrawn"),
+		file("dec_d1d1d1", "status: accepted", "relies_on: [bel_b1b1b1]"),
+		file("dec_d2d2d2", "status: rejected", "relies_on: [bel_b1b1b1]"),
+		file("task_d3d3d3", "status: accepted", "blocked_by: [bel_b1b1b1]"),
+	)
+	if got := edge(t, g, "dec_d1d1d1", "relies_on").Concerns(); got != Orphaned {
+		t.Errorf("accepted source: Concerns = %q, want orphaned", got)
+	}
+	if got := edge(t, g, "dec_d2d2d2", "relies_on").Concerns(); got != 0 {
+		t.Errorf("rejected source: Concerns = %q, want none", got)
+	}
+	if got := edge(t, g, "task_d3d3d3", "blocked_by").Concerns(); got != 0 {
+		t.Errorf("link that doesn't propagate: Concerns = %q, want none", got)
 	}
 }
