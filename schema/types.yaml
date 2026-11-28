@@ -30,8 +30,11 @@
 #                   settled: true seals it once a link settles it (a question has no status);
 #                   via: an edge of the type; status then names statuses of the record
 #                   that edge leads to (a step is sealed by its plan's status).
-# closed            Statuses (from the type's schema) that mean the record is no longer in force.
-#                   A committing record in one of them isn't reopened by a fallen target. Optional.
+# closed            Statuses (from the type's schema) that mean the record is no longer in force,
+#                   for any type (a belief: withdrawn). A committing record in one of them isn't
+#                   reopened by a fallen target. A propagating link from a record in force to a
+#                   closed record is reported for a re-check ("rests on X, which is <status>").
+#                   Optional.
 # settles           On an edge: statuses of the source (from its type's schema) at which the link
 #                   settles its target. A record with an incoming link that settles it is settled;
 #                   an open question is one that isn't. Optional.
@@ -42,7 +45,8 @@
 #                   the chosen option's question must be one the same decision answers. Validate warns.
 #                   Optional.
 # target_status     On an edge: statuses (from every target type's schema) the target should be in
-#                   (supersedes -> superseded). Validate warns when it isn't. Optional.
+#                   (supersedes -> superseded). Validate warns when it isn't, but only when the
+#                   source is in force and sealed by its status (for a decision, accepted). Optional.
 # one_in_force      On an edge: at most one source in force (status not closed; for an edge that
 #                   settles, one that settles) per target. Validate warns on a second. Optional.
 # subrecords        Header field holding a list of sub-records, each with its own short id.
