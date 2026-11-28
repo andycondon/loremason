@@ -16,13 +16,11 @@ import (
 // in types.yaml, because it reads a belief's own fields.
 func (c *checker) disputedBelief(f *graph.File) {
 	n := f.Node
-	if n.Type().Name != "belief" || f.Misplaced() || !n.InForce() {
+	if !n.HasSupport() || f.Misplaced() || !n.InForce() {
 		return
 	}
-	for _, link := range n.Children {
-		if link.Fields.Text("direction") == "disputes" {
-			c.ds.Warnf(f.At(link.Fields.KeyLine("direction")), "the belief is %s, but %s disputes it; a rebut means the belief is incorrect: set its status, or remove the link", statusOf(n), link.ID)
-		}
+	for _, link := range n.SupportLinks(graph.Disputes) {
+		c.ds.Warnf(f.At(link.Fields.KeyLine("direction")), "the belief is %s, but %s disputes it; a rebut means the belief is incorrect: set its status, or remove the link", statusOf(n), link.ID)
 	}
 }
 

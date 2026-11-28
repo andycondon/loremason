@@ -410,7 +410,7 @@ func (n *Node) InForce() bool {
 // doubted, so it has none. The rule is for beliefs; see 01-model.md, section
 // 3.2.
 func (n *Node) DoubtedBy() []*Node {
-	if n.IsSubrecord() || n.Type().Name != "belief" || !n.InForce() {
+	if !n.HasSupport() || !n.InForce() {
 		return nil
 	}
 	var by []*Node
@@ -419,21 +419,18 @@ func (n *Node) DoubtedBy() []*Node {
 			by = append(by, ev)
 		}
 	}
-	for _, link := range n.Children {
-		if link.Fields.Text("direction") != "supports" {
-			continue
-		}
+	for _, link := range n.SupportLinks(Supports) {
 		for _, in := range link.Incoming {
-			if in.Name == "undercuts" {
+			if in.Name == EdgeUndercuts {
 				add(in.From)
 			}
 		}
 		for _, out := range link.Outgoing {
-			if out.Name != "evidence" || out.Target == nil {
+			if out.Name != EdgeEvidence || out.Target == nil {
 				continue
 			}
 			for _, in := range out.Target.Incoming {
-				if in.Name == "undermines" {
+				if in.Name == EdgeUndermines {
 					add(in.From)
 				}
 			}
