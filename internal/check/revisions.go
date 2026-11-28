@@ -36,9 +36,9 @@ func (c *checker) sealed(f *graph.File) {
 	}
 	switch {
 	case !n.Sealed(cur.Rev):
-		if reasons := n.StateSeals(); cur.FP.IsZero() && len(reasons) > 0 && !n.IsSubrecord() {
-			// The status counts only once the revision is written down.
-			c.ds.Warnf(cur.At.Pos, "revision %d isn't written down yet, and its status (%s) will seal it once it is; run `mason sync`", cur.Rev, andList(reasons))
+		// What the record's state seals counts only once the revision is written down.
+		if _, pending := n.Seals(cur.Rev); len(pending) > 0 {
+			c.ds.Warnf(cur.At.Pos, "revision %d isn't written down yet, and %s will seal it once it is; run `mason sync`", cur.Rev, andList(pendingReasons(pending)))
 		}
 	case cur.FP.IsZero():
 		// Sealed before sync wrote the revision down: sync records it.
@@ -46,6 +46,24 @@ func (c *checker) sealed(f *graph.File) {
 	case cur.FP != n.Fingerprint():
 		c.ds.Errorf(f.At(meaningLine(f)), "the meaning changed, but revision %d is sealed (%s): undo the change, run `mason revise %s --breaking` (or `--non-breaking`), then make it again", cur.Rev, andList(n.SealedBy(cur.Rev)), n.ID)
 	}
+}
+
+// pendingReasons says what will seal a revision, in the words of the message:
+// "its status (accepted)", "its plan plan_x is accepted" for a step, or
+// "its answer" for a question, which has no status.
+func pendingReasons(seals []graph.Seal) []string {
+	var out []string
+	for _, s := range seals {
+		switch {
+		case s.Answered:
+			out = append(out, "its answer")
+		case s.String() == s.Status:
+			out = append(out, fmt.Sprintf("its status (%s)", s.Status))
+		default:
+			out = append(out, s.String()) // such as "its plan plan_x is accepted"
+		}
+	}
+	return out
 }
 
 // meaningLine is where a record's meaning starts: its first meaning field,
@@ -86,7 +104,7 @@ func (c *checker) revisionRefs(e *graph.Edge) {
 			c.ds.Errorf(e.At.Pos, "`%s`: the pin's fingerprint isn't the one recorded for revision %d of %s; write the link as just `%s` and run `mason sync` to pin it again", at, rev, rec.ID, e.To.Name)
 		}
 	}
-	if e.Pin != nil && !e.Seals() && !e.Pin.FP.IsZero() {
+	if e.Quotes() && !e.Pin.FP.IsZero() {
 		c.quoteDrift(e, rev)
 	}
 	if e.Pin != nil && !e.Def.ShouldPin(e.Target.Kind) {

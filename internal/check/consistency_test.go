@@ -107,3 +107,15 @@ func TestEdgeConstraintsWarn(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) { wantWarning(t, c.name, warnings(t, c.records), c.want) })
 	}
 }
+
+// A question has no status: what will seal it once written down is its
+// answer, and the warning says so.
+func TestQuestionPendingSealNamesItsAnswer(t *testing.T) {
+	_, got := run(t, testws.New(t, map[string]string{
+		"question/q_a1a1a1.md":   rec("q_a1a1a1", "Which?", "part_of: []"),
+		"decision/dec_d1d1d1.md": rec("dec_d1d1d1", "Pick", "status: accepted", "answers: [q_a1a1a1]"),
+	}).Root)
+	if !strings.Contains(got, "its answer will seal it once it is") || strings.Contains(got, "its status (settled)") {
+		t.Errorf("diagnostics:\n%s", got)
+	}
+}

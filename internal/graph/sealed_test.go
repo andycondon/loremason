@@ -96,3 +96,32 @@ func TestStatusHolderSurvivesACycle(t *testing.T) {
 		t.Errorf("a step's status holder = %v, want its plan", h)
 	}
 }
+
+// Seals splits a revision's seals into those in force and those pending: a
+// record's state seals the current revision only once its fingerprint is
+// recorded, and a question's seal is its answer, not a status.
+func TestSeals(t *testing.T) {
+	g := load(t,
+		file("dec_9w4hzd", withRevs("status: accepted")...),
+		file("dec_2b4cdf", "status: accepted"), // implicit revision 1: pending
+		file("q_2wq8dn", "question: Which?"),
+		file("dec_6n1xtb", "status: accepted", "answers: [q_2wq8dn]"),
+	)
+	for _, c := range []struct {
+		id      string
+		active  []string
+		pending []string
+	}{
+		{"dec_9w4hzd", []string{"accepted"}, nil},
+		{"dec_2b4cdf", nil, []string{"accepted"}},
+		{"q_2wq8dn", nil, []string{"settled"}},
+	} {
+		active, pending := g.Node(c.id).Seals(1)
+		if !slices.Equal(sealStrings(active), c.active) || !slices.Equal(sealStrings(pending), c.pending) {
+			t.Errorf("%s: active %v, pending %v; want %v, %v", c.id, active, pending, c.active, c.pending)
+		}
+	}
+	if _, pending := g.Node("q_2wq8dn").Seals(1); len(pending) != 1 || !pending[0].Answered {
+		t.Errorf("a question's pending seal should be its answer: %v", pending)
+	}
+}

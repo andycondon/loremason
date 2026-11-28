@@ -181,25 +181,93 @@ func (n *Node) Revision(rev int) *Revision {
 // a revision without freezing it.
 func (e *Edge) Seals() bool { return e.Pin != nil && e.Def.Propagates }
 
-// SealedBy says why a revision is sealed: the IDs of the records whose
-// propagating links pin it, then, for the current revision of a record (not
-// a sub-record), the reasons the type's sealed key gives ("accepted",
-// "settled", "its plan plan_x is accepted"). Those apply only once the
-// revision's fingerprint is recorded: a revision `mason revise` just opened
-// has none, so it can be edited until `mason sync` records it. It's nil when
-// nothing seals the revision. A sealed revision's meaning can't change
-// without a new revision.
-func (n *Node) SealedBy(rev int) []string {
-	var reasons []string
+// Quotes reports whether the link quotes its target: it is pinned, but its
+// edge doesn't propagate, so it records a revision without freezing it.
+func (e *Edge) Quotes() bool { return e.Pin != nil && !e.Def.Propagates }
+
+// A Seal is one reason a revision can't change its meaning in place. Exactly
+// one of By, Holder and Answered says which: a propagating link pinned the
+// revision (By); the status of the record, or of the one it takes its status
+// from, is one the type seals at (Status, held by Holder); or an answer
+// settled the question (Answered).
+type Seal struct {
+	By       *Edge
+	Status   string
+	Holder   *Node // whose status it is; the sealed record itself, or the one it takes its status from
+	Answered bool
+	of       *Node // the record sealed, to say whether Holder is another
+}
+
+// String is the reason as people read it: the ID of the record whose link
+// pins the revision, the status ("accepted"), "its plan plan_x is accepted",
+// or "settled".
+func (s Seal) String() string {
+	switch {
+	case s.By != nil:
+		return s.By.From.Record().ID
+	case s.Answered:
+		return "settled"
+	case s.Holder != nil && s.Holder != s.of:
+		return fmt.Sprintf("its %s %s is %s", s.Holder.Type().Name, s.Holder.ID, s.Status)
+	}
+	return s.Status
+}
+
+// Seals splits what seals a revision into the seals in force and those still
+// pending. A link that pins the revision seals at once. The record's own
+// state (its status, or its answer) seals only the current revision, and only
+// once its fingerprint is recorded: a revision `mason revise` just opened has
+// none, so it can be edited until `mason sync` records it. Until then the
+// state's seals are pending. A sub-record's revision is its record's, and it
+// has no state seals of its own.
+func (n *Node) Seals(rev int) (active, pending []Seal) {
+	var seen []string
 	for _, e := range n.Incoming {
-		if e.Seals() && e.Pin.Rev == rev && !slices.Contains(reasons, e.From.Record().ID) {
-			reasons = append(reasons, e.From.Record().ID)
+		if id := e.From.Record().ID; e.Seals() && e.Pin.Rev == rev && !slices.Contains(seen, id) {
+			seen = append(seen, id)
+			active = append(active, Seal{By: e})
 		}
 	}
-	if cur := n.Current(); cur != nil && cur.Rev == rev && !n.IsSubrecord() && !cur.Implicit && !cur.FP.IsZero() {
-		reasons = append(reasons, n.StateSeals()...)
+	cur := n.Current()
+	if cur == nil || cur.Rev != rev || n.IsSubrecord() {
+		return active, nil
 	}
-	return reasons
+	if cur.Implicit || cur.FP.IsZero() {
+		return active, n.stateSeals()
+	}
+	return append(active, n.stateSeals()...), nil
+}
+
+// stateSeals are the seals the type's sealed key gives the node as it is now,
+// whether or not its revision's fingerprint has been recorded.
+func (n *Node) stateSeals() []Seal {
+	s := n.Type().Sealed
+	var seals []Seal
+	if h := n.StatusHolder(); h != nil && slices.Contains(s.Status, h.Status()) {
+		seals = append(seals, Seal{Status: h.Status(), Holder: h, of: n.Record()})
+	}
+	if s.Settled && n.SettledByAnswer() {
+		seals = append(seals, Seal{Answered: true})
+	}
+	return seals
+}
+
+// SealedBy says why a revision is sealed, as Seals gives the active seals:
+// the IDs of the records whose propagating links pin it, then the reasons the
+// state gives for the current revision ("accepted", "settled", "its plan
+// plan_x is accepted"). It's nil when nothing seals the revision. A sealed
+// revision's meaning can't change without a new revision.
+func (n *Node) SealedBy(rev int) []string {
+	active, _ := n.Seals(rev)
+	return sealStrings(active)
+}
+
+func sealStrings(seals []Seal) []string {
+	var out []string
+	for _, s := range seals {
+		out = append(out, s.String())
+	}
+	return out
 }
 
 // Quoted reports whether a link that doesn't seal, a quote, pins the
@@ -207,7 +275,7 @@ func (n *Node) SealedBy(rev int) []string {
 // the quoted wording is kept.
 func (n *Node) Quoted(rev int) bool {
 	for _, e := range n.Incoming {
-		if e.Pin != nil && !e.Def.Propagates && e.Pin.Rev == rev {
+		if e.Quotes() && e.Pin.Rev == rev {
 			return true
 		}
 	}
@@ -244,23 +312,8 @@ func (n *Node) StatusHolder() *Node {
 }
 
 // StateSeals gives the reasons the type's sealed key seals the node as it is
-// now, whether or not its revision's fingerprint has been recorded; SealedBy
-// applies them only once it has.
-func (n *Node) StateSeals() []string {
-	s := n.Type().Sealed
-	var reasons []string
-	if h := n.StatusHolder(); h != nil && slices.Contains(s.Status, h.Status()) {
-		if h == n.Record() {
-			reasons = append(reasons, h.Status())
-		} else {
-			reasons = append(reasons, fmt.Sprintf("its %s %s is %s", h.Type().Name, h.ID, h.Status()))
-		}
-	}
-	if s.Settled && n.SettledByAnswer() {
-		reasons = append(reasons, "settled")
-	}
-	return reasons
-}
+// now, whether or not its revision's fingerprint has been recorded.
+func (n *Node) StateSeals() []string { return sealStrings(n.stateSeals()) }
 
 // SealedByStatus reports whether the status of the record, or of the one it
 // takes its status from, is one its type's sealed key lists, as an accepted
