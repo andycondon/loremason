@@ -11,17 +11,17 @@ import (
 // schema/types.yaml (within, target_status, one_in_force). All are warnings.
 // The design is in docs/context-graph/01-model.md, sections 3.2 and 4.
 
-// disputedBelief warns about a belief that is not fallen but has a support
+// disputedBelief warns about a belief still in force that has a support
 // link that disputes it. The rule is for beliefs and is written here, not
 // in types.yaml, because it reads a belief's own fields.
 func (c *checker) disputedBelief(f *graph.File) {
 	n := f.Node
-	if n.Type().Name != "belief" || f.Misplaced() || n.Type().IsFallen(n.Status()) {
+	if n.Type().Name != "belief" || f.Misplaced() || !n.InForce() {
 		return
 	}
 	for _, link := range n.Children {
 		if link.Fields.Text("direction") == "disputes" {
-			c.ds.Warnf(f.At(link.Fields.KeyLine("direction")), "the belief is %s, but %s disputes it; a rebut means the belief is incorrect: set its status, or remove the link", n.Status(), link.ID)
+			c.ds.Warnf(f.At(link.Fields.KeyLine("direction")), "the belief is %s, but %s disputes it; a rebut means the belief is incorrect: set its status, or remove the link", statusOf(n), link.ID)
 		}
 	}
 }
@@ -36,10 +36,12 @@ func (c *checker) constraints(e *graph.Edge) {
 	if e.Def.Within != "" && t.Parent != nil {
 		parent := t.Parent
 		if !c.linksTo(e.From, e.Def.Within, parent) {
-			c.ds.Warnf(e.At.Pos, "`%s` points at `%s`, an option of %s, but %s has no `%s` link to %s", e.At.Field, e.To, parent.ID, e.From.ID, e.Def.Within, parent.ID)
+			c.ds.Warnf(e.At.Pos, "`%s` points at `%s`, a sub-record of %s, but %s has no `%s` link to %s", e.At.Field, e.To, parent.ID, e.From.ID, e.Def.Within, parent.ID)
 		}
 	}
-	if len(e.Def.TargetStatus) > 0 && !slices.Contains(e.Def.TargetStatus, t.Record().Status()) {
+	// The target's status matters once the source is in force and sealed by
+	// its own status, such as an accepted decision; a draft may point ahead.
+	if len(e.Def.TargetStatus) > 0 && e.From.InForce() && e.From.SealedByStatus() && !slices.Contains(e.Def.TargetStatus, t.Record().Status()) {
 		c.ds.Warnf(e.At.Pos, "`%s` points at %s, which is %s; it should be %s", e.At.Field, t.ID, statusOf(t), orList(e.Def.TargetStatus))
 	}
 }

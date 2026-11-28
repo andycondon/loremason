@@ -63,6 +63,7 @@ type Edge struct {
 	To     Ref
 	Target *Node // what To resolves to; nil when it doesn't
 	Pin    *Pin  // set when the link records the target's revision
+	Via    *Edge // the pin's via, the link to the evidence for its last re-check; nil when there's none
 	At     Loc
 	Item   record.Value // the link as written: a reference, or a {to: …} map
 }
@@ -179,8 +180,11 @@ func (e *Edge) Seals() bool { return e.Pin != nil && e.Def.Propagates }
 // SealedBy says why a revision is sealed: the IDs of the records whose
 // propagating links pin it, then, for the current revision, the reasons the
 // type's sealed key gives ("accepted", "settled", "its plan plan_x is
-// accepted"). It's nil when nothing seals the revision. A sealed revision's
-// meaning can't change without a new revision.
+// accepted"). The reasons of state apply only once the revision's
+// fingerprint is recorded: a revision that `mason revise` just opened has
+// none, so it can be edited until `mason sync` records it. It's nil when
+// nothing seals the revision. A sealed revision's meaning can't change
+// without a new revision.
 func (n *Node) SealedBy(rev int) []string {
 	var reasons []string
 	for _, e := range n.Incoming {
@@ -188,14 +192,28 @@ func (n *Node) SealedBy(rev int) []string {
 			reasons = append(reasons, e.From.Record().ID)
 		}
 	}
-	if cur := n.Current(); cur != nil && cur.Rev == rev && !n.IsSubrecord() {
-		reasons = append(reasons, n.sealedByState()...)
+	if cur := n.Current(); cur != nil && cur.Rev == rev && !n.IsSubrecord() && !cur.Implicit && !cur.FP.IsZero() {
+		reasons = append(reasons, n.StateSeals()...)
 	}
 	return reasons
 }
 
-// sealedByState gives the reasons the type's sealed key seals the node as it is now.
-func (n *Node) sealedByState() []string {
+// Quoted reports whether a link that doesn't seal, a quote, pins the
+// revision. A quote doesn't seal a revision, but it lets it be revised, so
+// the quoted wording is kept.
+func (n *Node) Quoted(rev int) bool {
+	for _, e := range n.Incoming {
+		if e.Pin != nil && !e.Def.Propagates && e.Pin.Rev == rev {
+			return true
+		}
+	}
+	return false
+}
+
+// StateSeals gives the reasons the type's sealed key seals the node as it is
+// now, whether or not its revision's fingerprint has been recorded; SealedBy
+// applies them only once it has.
+func (n *Node) StateSeals() []string {
 	s := n.Type().Sealed
 	var reasons []string
 	if s.Via == "" {
@@ -218,6 +236,22 @@ func (n *Node) sealedByState() []string {
 		}
 	}
 	return reasons
+}
+
+// SealedByStatus reports whether the record's own status, or its via
+// target's, is one its type's sealed key lists, as an accepted decision is.
+// It leaves out a question's settling.
+func (n *Node) SealedByStatus() bool {
+	s := n.Type().Sealed
+	if s.Via == "" {
+		return slices.Contains(s.Status, n.Status())
+	}
+	for _, e := range n.Outgoing {
+		if e.Name == s.Via && e.Target != nil && slices.Contains(s.Status, e.Target.Status()) {
+			return true
+		}
+	}
+	return false
 }
 
 // Sealed reports whether anything seals the revision: see SealedBy.
@@ -258,38 +292,70 @@ func (e *Edge) Stale() bool {
 func (e *Edge) Reopens() bool {
 	return e.Def.Propagates && e.Target != nil &&
 		e.From.Layer() == registry.Committing &&
-		!e.From.Type().IsClosed(e.From.Status()) &&
+		e.From.InForce() &&
 		e.Target.Type().IsFallen(e.Target.Status())
 }
 
 // InForce reports whether the node's record is still in force: its status
-// isn't one its type lists as closed. A type with no closed statuses is
-// always in force.
-func (n *Node) InForce() bool { return !n.Type().IsClosed(n.Record().Status()) }
-
-// Orphaned reports whether the link rests on a record that is no longer in
-// force: it propagates, its source is in force, and its target's status is one
-// that the target's type lists as closed, such as a withdrawn belief or a
-// superseded task. It is independent of Reopens: a withdrawn belief doesn't
-// reopen what relied on it, but whoever relied on it should look again.
-func (e *Edge) Orphaned() bool {
-	return e.Def.Propagates && e.Target != nil && e.From.InForce() && !e.Target.InForce()
+// is neither one its type lists as closed nor as fallen. A type with no such
+// statuses is always in force. A record with no status of its own whose
+// type is sealed via another record, as a step is by its plan, follows that
+// record: it is in force unless every record it leads to by that link is not.
+func (n *Node) InForce() bool {
+	rec := n.Record()
+	t := rec.Type()
+	if status := rec.Status(); status != "" || t.Sealed.Via == "" {
+		return !t.IsClosed(status) && !t.IsFallen(status)
+	}
+	led := false
+	for _, e := range rec.Outgoing {
+		if e.Name != t.Sealed.Via || e.Target == nil {
+			continue
+		}
+		led = true
+		if e.Target.InForce() {
+			return true
+		}
+	}
+	return !led
 }
 
-// Doubted reports whether a belief that still stands has lost some of its
-// footing: a support link of it is undercut (evidence `undercuts` the link)
-// or its evidence is undermined (evidence `undermines` that evidence). It
-// stays so until the link is removed or the belief's status changes, so a
-// belief that has fallen or been withdrawn isn't doubted, it is settled.
-// The rule is for beliefs; see 01-model.md, section 3.2.
-func (n *Node) Doubted() bool {
-	if n.IsSubrecord() || n.Type().Name != "belief" || n.Type().IsFallen(n.Status()) || n.Type().IsClosed(n.Status()) {
-		return false
+// Orphaned reports whether the link rests on a record that is no longer in
+// force: it propagates, its source is in force, and its target isn't, such
+// as a withdrawn belief, a superseded task, or a step of a superseded plan.
+// A target that has fallen reopens its source instead (see Reopens), so it
+// isn't reported twice. Otherwise it is independent of Reopens: a withdrawn
+// belief doesn't reopen what relied on it, but whoever relied on it should
+// look again.
+func (e *Edge) Orphaned() bool {
+	return e.Def.Propagates && e.Target != nil && e.From.InForce() && !e.Target.InForce() &&
+		!e.Target.Type().IsFallen(e.Target.Status())
+}
+
+// DoubtedBy returns the evidence that makes a belief doubted, sorted by ID:
+// evidence that `undercuts` one of the belief's support links, or that
+// `undermines` evidence a support link cites. Only a link that supports the
+// belief counts; evidence undercutting a link that disputes it says nothing
+// against the belief. A belief that has fallen or is closed is settled, not
+// doubted, so it has none. The rule is for beliefs; see 01-model.md, section
+// 3.2.
+func (n *Node) DoubtedBy() []*Node {
+	if n.IsSubrecord() || n.Type().Name != "belief" || !n.InForce() {
+		return nil
+	}
+	var by []*Node
+	add := func(ev *Node) {
+		if !slices.Contains(by, ev) {
+			by = append(by, ev)
+		}
 	}
 	for _, link := range n.Children {
+		if link.Fields.Text("direction") != "supports" {
+			continue
+		}
 		for _, in := range link.Incoming {
 			if in.Name == "undercuts" {
-				return true
+				add(in.From)
 			}
 		}
 		for _, out := range link.Outgoing {
@@ -298,19 +364,52 @@ func (n *Node) Doubted() bool {
 			}
 			for _, in := range out.Target.Incoming {
 				if in.Name == "undermines" {
-					return true
+					add(in.From)
 				}
 			}
 		}
 	}
-	return false
+	slices.SortFunc(by, func(a, b *Node) int { return strings.Compare(a.ID, b.ID) })
+	return by
+}
+
+// Doubted reports whether a belief that still stands has lost some of its
+// footing: see DoubtedBy. It stays so until the link is removed, the belief's
+// status changes, or a link that relies on it is re-checked (see Doubts).
+func (n *Node) Doubted() bool { return len(n.DoubtedBy()) > 0 }
+
+// ObservedNotAfter reports whether evidence was observed no later than
+// other: by its observed_at, and when those are equal, by ID, which is the
+// order the files are read in. A missing observed_at is the earliest.
+func (n *Node) ObservedNotAfter(other *Node) bool {
+	if c := strings.Compare(n.Fields.Text("observed_at"), other.Fields.Text("observed_at")); c != 0 {
+		return c < 0
+	}
+	return n.ID <= other.ID
 }
 
 // Doubts reports whether the link relies on a belief that is doubted: it
 // propagates, its source is a commitment in force, and its target is doubted.
+// A re-check clears it: the link's pin names, in via, evidence observed no
+// earlier than any of the evidence that makes the belief doubted. A newer
+// undermining or undercutting doubts it again.
 func (e *Edge) Doubts() bool {
-	return e.Def.Propagates && e.Target != nil &&
-		e.From.Layer() == registry.Committing && e.From.InForce() && e.Target.Doubted()
+	if !e.Def.Propagates || e.Target == nil || e.From.Layer() != registry.Committing || !e.From.InForce() {
+		return false
+	}
+	by := e.Target.DoubtedBy()
+	if len(by) == 0 {
+		return false
+	}
+	if e.Via == nil || e.Via.Target == nil {
+		return true
+	}
+	for _, ev := range by {
+		if !ev.ObservedNotAfter(e.Via.Target) {
+			return true
+		}
+	}
+	return false
 }
 
 // Settles reports whether the link settles its target: its edge lists the
@@ -321,7 +420,10 @@ func (e *Edge) Settles() bool { return slices.Contains(e.Def.Settles, e.From.Sta
 // Pending reports whether the link is an answer still waiting: its edge
 // lists the source's status as pending, such as a proposed decision
 // answering a question.
-func (e *Edge) Pending() bool { return slices.Contains(e.Def.Pending, e.From.Status()) }
+// A dropped target waits for no answer.
+func (e *Edge) Pending() bool {
+	return slices.Contains(e.Def.Pending, e.From.Status()) && (e.Target == nil || !e.Target.Dropped())
+}
 
 // Attr returns a text field of a link written as a map, such as role on
 // involves, or "" when the link is a plain reference or has no such field.
@@ -346,11 +448,18 @@ func (n *Node) Progress() string {
 	return n.Type().Default("progress")
 }
 
+// Dropped reports whether the node has a dropped field, the reason a question
+// was given up on.
+func (n *Node) Dropped() bool {
+	_, dropped := n.Fields.Get("dropped")
+	return dropped
+}
+
 // Settled reports whether the node needs no more answering: it is dropped (it
 // has a dropped field), or a link to it settles it. It is asked of any node;
 // for a question, open means not settled.
 func (n *Node) Settled() bool {
-	if _, dropped := n.Fields.Get("dropped"); dropped {
+	if n.Dropped() {
 		return true
 	}
 	for _, e := range n.Incoming {

@@ -25,7 +25,7 @@ func TestQuotedFindingStaysFreeToEdit(t *testing.T) {
 	w.Edit("finding/fnd_k3m9qx.md", "First thoughts.", "Second thoughts, much changed.")
 	// Editing is allowed. It only warns that the quote no longer matches.
 	got := problems(t, w)
-	if errs, _ := checked(t, w).Diagnostics.Count(); errs != 0 || !strings.Contains(got, "the text quoted from fnd_k3m9qx@r1 has changed since it was quoted") {
+	if errs, _ := checked(t, w).Diagnostics.Count(); errs != 0 || !strings.Contains(got, "fnd_k3m9qx has changed since it was quoted at r1; run `mason revise fnd_k3m9qx`") {
 		t.Errorf("editing a quoted finding should only warn about the quote:\n%s", got)
 	}
 	p := sync(t, w)
@@ -120,7 +120,7 @@ func TestQuoteOfAnOlderRevisionComparesWithThatRevision(t *testing.T) {
 
 // Editing a quoted finding in place warns; restoring the text clears it.
 func TestQuoteDriftClearsWhenTheTextIsRestored(t *testing.T) {
-	const drift = "the text quoted from fnd_k3m9qx@r1 has changed since it was quoted"
+	const drift = "fnd_k3m9qx has changed since it was quoted at r1; run `mason revise fnd_k3m9qx`"
 	w := testws.New(t, map[string]string{"finding/fnd_k3m9qx.md": quotedFinding, "evidence/ev_p4n2xa.md": quote})
 	sync(t, w)
 	if got := problems(t, w); got != "" {

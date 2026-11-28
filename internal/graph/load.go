@@ -216,12 +216,14 @@ func (l *loader) addEdges(from *Node) {
 			if !ok {
 				continue
 			}
-			l.g.Edges = append(l.g.Edges, &Edge{From: from, Name: name, Def: defs[name], To: to, Pin: p, At: at, Item: item})
+			edge := &Edge{From: from, Name: name, Def: defs[name], To: to, Pin: p, At: at, Item: item}
+			l.g.Edges = append(l.g.Edges, edge)
 			// A pin's via is a link of its own, to the evidence for the last
 			// re-check, so it's checked and indexed like any other.
 			if via, ok := m.Get("via"); isMap && p != nil && ok {
 				if to, at, ok := ref(from.File, via); ok {
-					l.g.Edges = append(l.g.Edges, &Edge{From: from, Name: "via", Def: viaDef, To: to, At: at, Item: via})
+					edge.Via = &Edge{From: from, Name: "via", Def: viaDef, To: to, At: at, Item: via}
+					l.g.Edges = append(l.g.Edges, edge.Via)
 				}
 			}
 		}

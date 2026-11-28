@@ -145,6 +145,10 @@ func (p *Plan) recordFixed(f *graph.File) {
 	if f.Record == nil || !n.RecordedFingerprint().IsZero() {
 		return
 	}
+	if n.HasTemplateBody() {
+		p.warn(f, "%s still has the template body; write it, then run mason sync", n.ID)
+		return
+	}
 	fp := n.Fingerprint()
 	p.edit(f).fp = &fp
 	p.say(f, "record the fingerprint of %s", n.ID)
@@ -194,9 +198,11 @@ func allNonBreaking(revs []graph.Revision, after int) bool {
 }
 
 // Revise plans `mason revise`. It keeps the current revision's wording (or,
-// for long records, the commit holding it) and opens a new revision. The
-// edit comes after, and the next sync records the new revision's
-// fingerprint. commit holds the file as it is now, or is empty when there's
+// for long records, the commit holding it) and opens a new revision with no
+// fingerprint, so nothing seals it yet. The edit comes after, and the next
+// sync records the new revision's fingerprint. A revision that is only
+// quoted can be revised too: the quote keeps naming it, and its fingerprint
+// is kept, which clears the drift warning. commit holds the file as it is now, or is empty when there's
 // no such commit.
 func Revise(n *graph.Node, breaking bool, broken Broken, today, commit string) (*Plan, error) {
 	f := n.File
@@ -210,7 +216,7 @@ func Revise(n *graph.Node, breaking bool, broken Broken, today, commit string) (
 	cur := &rs[len(rs)-1]
 	fp := n.Fingerprint()
 	switch {
-	case !n.Sealed(cur.Rev):
+	case !n.Sealed(cur.Rev) && !n.Quoted(cur.Rev):
 		return nil, fmt.Errorf("nothing seals revision %d of %s yet (no propagating link pins it and its status doesn't), so it can be edited as it is; no new revision is needed", cur.Rev, n.ID)
 	case !cur.FP.IsZero() && cur.FP != fp:
 		return nil, fmt.Errorf("the meaning of %s already changed after revision %d was pinned; undo the change first, so the old wording can be kept", n.ID, cur.Rev)
@@ -230,7 +236,7 @@ func Revise(n *graph.Node, breaking bool, broken Broken, today, commit string) (
 	default:
 		p.warn(f, "no commit holds revision %d's text, since the file has changes not yet committed (or isn't in git), so its old wording won't be recoverable; commit before revising to keep it", cur.Rev)
 	}
-	rs = append(rs, graph.Revision{Rev: cur.Rev + 1, Date: today, FP: fp, Breaking: breaking})
+	rs = append(rs, graph.Revision{Rev: cur.Rev + 1, Date: today, Breaking: breaking})
 	p.edit(f).revisions = rs
 	kind := "non-breaking"
 	if breaking {

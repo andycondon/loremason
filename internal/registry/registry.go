@@ -241,6 +241,11 @@ func (r *Registry) checkConstraints(t *Type) error {
 			if _, ok := t.Edges[e.Within]; !ok || e.Within == name {
 				return fmt.Errorf("types.yaml: the %s edge of %s is within `%s`, but %s has no such other edge", name, t.Name, e.Within, t.Name)
 			}
+			for _, to := range e.To {
+				if !r.isSubrecordKind(to) {
+					return fmt.Errorf("types.yaml: the %s edge of %s is within `%s`, so each target must be a sub-record type, not `%s`", name, t.Name, e.Within, to)
+				}
+			}
 		}
 		for _, st := range e.TargetStatus {
 			for _, to := range e.To {
@@ -255,6 +260,19 @@ func (r *Registry) checkConstraints(t *Type) error {
 		}
 	}
 	return nil
+}
+
+// isSubrecordKind reports whether a name is a kind of sub-record, such as
+// option, of some record type.
+func (r *Registry) isSubrecordKind(name string) bool {
+	for _, t := range r.Types {
+		for _, k := range t.Subrecords {
+			if k.Name == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // checkDocument reports the first rule a document type breaks. Documents all

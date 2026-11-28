@@ -36,8 +36,12 @@ func (c *checker) sealed(f *graph.File) {
 	}
 	switch {
 	case !n.Sealed(cur.Rev):
+		if reasons := n.StateSeals(); cur.FP.IsZero() && len(reasons) > 0 && !n.IsSubrecord() {
+			// The status counts only once the revision is written down.
+			c.ds.Warnf(cur.At.Pos, "revision %d isn't written down yet, and its status (%s) will seal it once it is; run `mason sync`", cur.Rev, andList(reasons))
+		}
 	case cur.FP.IsZero():
-		// Pinned before sync wrote the revision down: sync records it.
+		// Sealed by a pin before sync wrote the revision down: sync records it.
 		c.ds.Warnf(cur.At.Pos, "revision %d is sealed but isn't written down yet; run `mason sync`", cur.Rev)
 	case cur.FP != n.Fingerprint():
 		c.ds.Errorf(f.At(meaningLine(f)), "the meaning changed, but revision %d is sealed (%s): undo the change, run `mason revise %s --breaking` (or `--non-breaking`), then make it again", cur.Rev, andList(n.SealedBy(cur.Rev)), n.ID)
@@ -91,8 +95,10 @@ func (c *checker) revisionRefs(e *graph.Edge) {
 }
 
 // quoteDrift warns when the text a quote took from its target has changed.
-// A quote is history, so there's no command to fix it: restore the text or
-// write new evidence. The quoted text is the target's current wording when
+// Revising the target while its quoted revision is current keeps that
+// revision's wording and fingerprint, which clears the warning; a quote
+// whose revision is already past can only be fixed by restoring the text or
+// writing new evidence. The quoted text is the target's current wording when
 // the pin names the current revision, or else what the revision recorded.
 // Nothing is compared when the fingerprint of the quoted text isn't known.
 func (c *checker) quoteDrift(e *graph.Edge, rev int) {
@@ -106,6 +112,10 @@ func (c *checker) quoteDrift(e *graph.Edge, rev int) {
 		quoted = r.FP
 	}
 	if quoted.IsZero() || quoted == e.Pin.FP {
+		return
+	}
+	if cur := rec.Current(); cur != nil && cur.Rev == rev {
+		c.ds.Warnf(e.At.Pos, "`%s`: %s has changed since it was quoted at r%d; run `mason revise %s` before editing (undo the change first), so the quoted revision is kept", e.Item.Path, rec.ID, rev, rec.ID)
 		return
 	}
 	c.ds.Warnf(e.At.Pos, "`%s`: the text quoted from %s@r%d has changed since it was quoted; restore the text, or write new evidence", e.Item.Path, rec.ID, rev)

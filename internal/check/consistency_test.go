@@ -62,7 +62,7 @@ func TestEdgeConstraintsWarn(t *testing.T) {
 		{"chooses another question's option", map[string]string{
 			"question/q_a1a1a1.md": q("q_a1a1a1"), "question/q_b2b2b2.md": q("q_b2b2b2"),
 			"decision/dec_d1d1d1.md": dec("dec_d1d1d1", "proposed", "answers: [q_a1a1a1]", "chooses: [q_b2b2b2/o1]"),
-		}, "an option of q_b2b2b2"},
+		}, "a sub-record of q_b2b2b2"},
 		{"chooses its own question's option", map[string]string{
 			"question/q_a1a1a1.md":   q("q_a1a1a1"),
 			"decision/dec_d1d1d1.md": dec("dec_d1d1d1", "proposed", "answers: [q_a1a1a1]", "chooses: [q_a1a1a1/o1]"),
@@ -81,6 +81,10 @@ func TestEdgeConstraintsWarn(t *testing.T) {
 			"decision/dec_d1d1d1.md": dec("dec_d1d1d1", "accepted"),
 			"decision/dec_d2d2d2.md": dec("dec_d2d2d2", "accepted", "supersedes: [dec_d1d1d1]"),
 		}, "dec_d1d1d1, which is accepted; it should be superseded"},
+		{"a proposed decision supersedes an accepted one", map[string]string{
+			"decision/dec_d1d1d1.md": dec("dec_d1d1d1", "accepted"),
+			"decision/dec_d2d2d2.md": dec("dec_d2d2d2", "proposed", "supersedes: [dec_d1d1d1]"),
+		}, ""},
 		{"supersedes a superseded decision", map[string]string{
 			"decision/dec_d1d1d1.md": dec("dec_d1d1d1", "superseded"),
 			"decision/dec_d2d2d2.md": dec("dec_d2d2d2", "accepted", "supersedes: [dec_d1d1d1]"),
