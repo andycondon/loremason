@@ -3,6 +3,7 @@ package pinning
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -153,5 +154,35 @@ func TestReviseRefuses(t *testing.T) {
 		if _, err := tryRevise(t, w, id, true); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v", id, err)
 		}
+	}
+}
+
+// A via names the evidence for an earlier re-check; a quiet re-pin across
+// non-breaking revisions keeps it.
+func TestNonBreakingRepinKeepsTheVia(t *testing.T) {
+	w := testws.New(t, map[string]string{
+		"requirement/req_5txk3a.md": "---\nid: req_5txk3a\ntitle: Unreadable files\nstatement: validate reports unreadable files\nstatus: accepted\ncreated: 2026-11-22\n---\n",
+		"task/task_9w4hzd.md":       "---\nid: task_9w4hzd\ntitle: Report them\nstatus: accepted\nimplements: req_5txk3a\ncreated: 2026-11-22\n---\n",
+		"evidence/ev_m3q8vb.md":     "---\nid: ev_m3q8vb\ntitle: It still holds\nobserved_at: 2026-11-29\nabout: task_9w4hzd\ncreated: 2026-11-29\n---\n",
+	})
+	sync(t, w)
+	pin := regexp.MustCompile(`\{to: req_5txk3a, rev: 1, fp: "[^"]+"\}`)
+	task := w.Read("task/task_9w4hzd.md")
+	if !pin.MatchString(task) {
+		t.Fatalf("the link isn't pinned:\n%s", task)
+	}
+	w.Write("task/task_9w4hzd.md", pin.ReplaceAllStringFunc(task, func(s string) string { return strings.TrimSuffix(s, "}") + ", via: ev_m3q8vb}" }))
+	sync(t, w)
+
+	revise(t, w, "req_5txk3a", false)
+	w.Edit("requirement/req_5txk3a.md", "reports unreadable files", "reports unreadable files clearly")
+	if got := actions(sync(t, w)); !strings.Contains(got, "re-pin `implements[0]` to req_5txk3a@r2") {
+		t.Fatalf("got %s", got)
+	}
+	if got := w.Read("task/task_9w4hzd.md"); !strings.Contains(got, "rev: 2") || !strings.Contains(got, "via: ev_m3q8vb}") {
+		t.Errorf("the re-pin lost the via:\n%s", got)
+	}
+	if stale := w.Stale(); len(stale) != 0 {
+		t.Errorf("stale: %v", stale)
 	}
 }

@@ -202,9 +202,10 @@ func (p *Plan) pin(e *graph.Edge, target []graph.Revision) {
 		return
 	}
 	if e.Seals() && e.Pin.Rev < cur.Rev && allNonBreaking(target, e.Pin.Rev) {
-		// The re-check a via recorded was against an older revision, so it's
-		// dropped; the revisions' own change values say why the pin moved.
-		p.edit(f).pins[e] = graph.Pin{Rev: cur.Rev, FP: cur.FP}
+		// A via is kept: it is the evidence for an earlier re-check, and a
+		// non-breaking change says nothing against it. The revisions' own
+		// change values say why the pin moved.
+		p.edit(f).pins[e] = graph.Pin{Rev: cur.Rev, FP: cur.FP, Via: e.Pin.Via}
 		p.say(f, "re-pin `%s` to %s@r%d: every revision since r%d is non-breaking", at, e.Target.ID, cur.Rev, e.Pin.Rev)
 	}
 }
@@ -275,7 +276,7 @@ func Recheck(e *graph.Edge, evidence *graph.Node) (*Plan, error) {
 	switch {
 	case e.Pin == nil || e.Target == nil:
 		return nil, fmt.Errorf("`%s` in %s isn't a pinned link", e.Item.Path, e.From.File.Path)
-	case evidence.Kind.Name != "evidence":
+	case !graph.ViaEdge.Allows(evidence.Kind):
 		return nil, fmt.Errorf("%s is of type %s; the reason for a re-check is evidence", evidence.ID, evidence.Kind.Name)
 	}
 	cur := e.Target.Current()

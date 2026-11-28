@@ -222,7 +222,7 @@ func (l *loader) addEdges(from *Node) {
 			// re-check, so it's checked and indexed like any other.
 			if via, ok := m.Get("via"); isMap && p != nil && ok {
 				if to, at, ok := ref(from.File, via); ok {
-					edge.Via = &Edge{From: from, Name: "via", Def: viaDef, To: to, At: at, Item: via}
+					edge.Via = &Edge{From: from, Name: "via", Def: ViaEdge, To: to, At: at, Item: via}
 					l.g.Edges = append(l.g.Edges, edge.Via)
 				}
 			}
@@ -230,8 +230,9 @@ func (l *loader) addEdges(from *Node) {
 	}
 }
 
-// viaDef is the edge from a pin to the evidence for its last re-check.
-var viaDef = registry.Edge{To: []string{"evidence"}}
+// ViaEdge is the edge from a pin to the evidence for its last re-check; it
+// says which records can be a via's target.
+var ViaEdge = registry.Edge{To: []string{"evidence"}}
 
 // ref reads a reference. ok is false when the value isn't one; the schema
 // check reports why.
