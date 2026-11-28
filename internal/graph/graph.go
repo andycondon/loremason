@@ -393,23 +393,18 @@ func (c Concern) Each() []Concern {
 // Has reports whether c includes every concern in o.
 func (c Concern) Has(o Concern) bool { return c&o == o }
 
-// String gives the reason in words, a comma between several. It is "" for none.
+// String names the concerns, a comma between several: "stale, reopens". It is
+// "" for none. Sentences for people are the command's to word, since they name
+// the target.
 func (c Concern) String() string {
 	var parts []string
 	for _, f := range c.Each() {
-		switch f {
-		case Stale:
-			parts = append(parts, "stale")
-		case Reopens:
-			parts = append(parts, "reopens")
-		case Orphaned:
-			parts = append(parts, "rests on a record no longer in force")
-		case Doubted:
-			parts = append(parts, "rests on a belief whose support is undercut or undermined")
-		}
+		parts = append(parts, concernNames[f])
 	}
 	return strings.Join(parts, ", ")
 }
+
+var concernNames = map[Concern]string{Stale: "stale", Reopens: "reopens", Orphaned: "orphaned", Doubted: "doubted"}
 
 // Concerns says why the link needs a re-check, or 0 when it doesn't. Only a
 // link that propagates to a target, from a record in the committing layer that

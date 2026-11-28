@@ -78,3 +78,27 @@ func TestCheckFixedRefusesWhatCannotKeepAFingerprint(t *testing.T) {
 		t.Errorf("evidence: %v", err)
 	}
 }
+
+// Only a committing record can rest on another, so a propagating edge on any
+// other layer is refused.
+func TestCheckPropagationRefusesANonCommittingSource(t *testing.T) {
+	r := Load()
+	for _, name := range r.Names() {
+		if err := r.Types[name].checkPropagation(); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	d := *typ(t, "belief")
+	d.Layer = Knowing
+	d.Edges = map[string]Edge{"relies_on": {To: []string{"belief"}, Propagates: true}}
+	d.Subrecords = nil
+	if err := d.checkPropagation(); err == nil || !strings.Contains(err.Error(), "relies_on edge of") {
+		t.Errorf("got %v", err)
+	}
+	sub := *typ(t, "belief")
+	sub.Edges = nil
+	sub.Subrecords = map[string]*Kind{"support": {Name: "support_link", Edges: map[string]Edge{"evidence": {Propagates: true}}}}
+	if err := sub.checkPropagation(); err == nil || !strings.Contains(err.Error(), "support_link") {
+		t.Errorf("sub-record: got %v", err)
+	}
+}

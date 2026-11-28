@@ -279,6 +279,27 @@ func (r *Registry) checkConstraints(t *Type) error {
 	return nil
 }
 
+// checkPropagation reports a propagating edge on a type outside the committing
+// layer, or on one of its sub-records. The graph's concerns assume that every
+// source of a propagating edge is committing.
+func (t *Type) checkPropagation() error {
+	if t.Layer == Committing {
+		return nil
+	}
+	kinds := []*Kind{&t.Kind}
+	for _, field := range slices.Sorted(maps.Keys(t.Subrecords)) {
+		kinds = append(kinds, t.Subrecords[field])
+	}
+	for _, k := range kinds {
+		for _, name := range slices.Sorted(maps.Keys(k.Edges)) {
+			if k.Edges[name].Propagates {
+				return fmt.Errorf("types.yaml: the %s edge of %s propagates, but %s is in the %s layer; only a committing record can rest on another", name, k.Name, t.Name, t.Layer)
+			}
+		}
+	}
+	return nil
+}
+
 // isSubrecordKind reports whether a name is a kind of sub-record, such as
 // option, of some record type.
 func (r *Registry) isSubrecordKind(name string) bool {
@@ -481,6 +502,9 @@ func parse() (*Registry, error) {
 			return nil, err
 		}
 		if err := r.checkConstraints(r.Types[name]); err != nil {
+			return nil, err
+		}
+		if err := r.Types[name].checkPropagation(); err != nil {
 			return nil, err
 		}
 	}
