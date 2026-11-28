@@ -19,6 +19,9 @@
     "generated_by": {
       "$ref": "common.json#/$defs/links"
     },
+    "attributed_to": {
+      "$ref": "common.json#/$defs/links"
+    },
     "mentions": {
       "$ref": "common.json#/$defs/links"
     },

@@ -169,22 +169,27 @@ func (n *Node) Revision(rev int) *Revision {
 	return nil
 }
 
-// Sealed reports whether something pins the revision. A sealed revision's
-// meaning can't change without a new revision.
+// Seals reports whether the link seals the revision it pins: it is pinned and
+// its edge propagates. A quote is pinned but doesn't propagate, so it records
+// a revision without freezing it.
+func (e *Edge) Seals() bool { return e.Pin != nil && e.Def.Propagates }
+
+// Sealed reports whether something pins the revision in a way that seals it.
+// A sealed revision's meaning can't change without a new revision.
 func (n *Node) Sealed(rev int) bool {
 	for _, e := range n.Incoming {
-		if e.Pin != nil && e.Pin.Rev == rev {
+		if e.Seals() && e.Pin.Rev == rev {
 			return true
 		}
 	}
 	return false
 }
 
-// PinnedBy lists the IDs of the records whose links pin the revision.
+// PinnedBy lists the IDs of the records whose links seal the revision.
 func (n *Node) PinnedBy(rev int) []string {
 	var ids []string
 	for _, e := range n.Incoming {
-		if e.Pin != nil && e.Pin.Rev == rev && !slices.Contains(ids, e.From.Record().ID) {
+		if e.Seals() && e.Pin.Rev == rev && !slices.Contains(ids, e.From.Record().ID) {
 			ids = append(ids, e.From.Record().ID)
 		}
 	}
@@ -210,8 +215,9 @@ func (n *Node) Record() *Node {
 
 // Stale reports whether a pinned link no longer matches its target: the
 // target is at another revision, or its meaning changed since it was pinned.
+// A pin that doesn't seal is never stale.
 func (e *Edge) Stale() bool {
-	if e.Pin == nil || e.Target == nil || e.Target.Current() == nil {
+	if !e.Seals() || e.Target == nil || e.Target.Current() == nil {
 		return false
 	}
 	return e.Pin.Rev != e.Target.Current().Rev || e.Pin.FP != e.Target.Fingerprint()

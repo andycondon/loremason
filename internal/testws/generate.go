@@ -251,7 +251,7 @@ func (g *generator) actor(id string) string {
 }
 
 func (g *generator) artifact(id string, actors []string) string {
-	kind := []string{"document", "code", "conversation", "issue"}[g.rng.IntN(4)]
+	kind := []string{"page", "code", "conversation", "issue"}[g.rng.IntN(4)]
 	h := []string{"kind: " + kind, "url: https://example.com/" + id, "attributed_to: " + g.pick(actors), "created: " + g.date()}
 	return record(id, g.unique("artifact", 3), h, "")
 }

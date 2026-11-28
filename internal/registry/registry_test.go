@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -314,7 +315,7 @@ func isLinks(s *jsonschema.Schema) bool {
 
 func TestRegistryAndSchemasAgree(t *testing.T) {
 	r := Load()
-	known := []string{"any"}
+	known := []string{"any", "document"}
 	for name, typ := range r.Types {
 		known = append(known, name)
 		for _, sub := range typ.Subrecords {
@@ -421,6 +422,72 @@ func TestCalendarDate(t *testing.T) {
 	} {
 		if err := calendarDate(v); (err == nil) != ok {
 			t.Errorf("calendarDate(%v): %v", v, err)
+		}
+	}
+}
+
+// ---- Documents ----
+
+var documentTypes = []string{"finding", "design_doc", "prd", "plan"}
+
+func TestEdgeAllowsDocument(t *testing.T) {
+	from := typ(t, "evidence").Edges["from"]
+	for _, name := range documentTypes {
+		if !from.Allows(&typ(t, name).Kind) {
+			t.Errorf("evidence can't come from %s", name)
+		}
+	}
+	for _, name := range []string{"actor", "artifact"} {
+		if !from.Allows(&typ(t, name).Kind) {
+			t.Errorf("evidence can't come from %s", name)
+		}
+	}
+	for _, name := range []string{"decision", "task", "belief"} {
+		if from.Allows(&typ(t, name).Kind) {
+			t.Errorf("evidence can come from %s, which isn't a document", name)
+		}
+	}
+}
+
+func TestCheckDocumentPassesForTheDocumentTypes(t *testing.T) {
+	for _, name := range documentTypes {
+		typ := typ(t, name)
+		if !typ.Document {
+			t.Errorf("%s isn't marked a document", name)
+		}
+		if err := typ.checkDocument(); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if typ(t, "task").Document || typ(t, "decision").Document {
+		t.Error("only finding, design doc, PRD and plan are documents")
+	}
+}
+
+func TestCheckDocumentFindsABrokenShape(t *testing.T) {
+	// A copy of design_doc, broken one way at a time.
+	broken := func(change func(*Type)) error {
+		d := *typ(t, "design_doc")
+		d.Edges = maps.Clone(d.Edges)
+		d.Meaning = slices.Clone(d.Meaning)
+		change(&d)
+		return d.checkDocument()
+	}
+	for _, c := range []struct {
+		name   string
+		change func(*Type)
+		want   string
+	}{
+		{"a missing edge", func(d *Type) { delete(d.Edges, "generated_by") }, "generated_by edge to activity"},
+		{"an edge to the wrong type", func(d *Type) { d.Edges["attributed_to"] = Edge{To: []string{"artifact"}} }, "attributed_to edge to actor"},
+		{"a missing schema field", func(d *Type) { d.Schema = typ(t, "task").Schema }, "schema must have a generated_by field"},
+		{"no body in meaning", func(d *Type) { d.Meaning = []string{"title"} }, "title and body"},
+		{"not revisable", func(d *Type) { d.Revisable = false }, "revisable"},
+		{"revisions kept inline", func(d *Type) { d.RevisionsInline = true }, "left to git"},
+	} {
+		err := broken(c.change)
+		if err == nil || !strings.Contains(err.Error(), c.want) || !strings.Contains(err.Error(), "design_doc") {
+			t.Errorf("%s: got %v, want one naming design_doc and %q", c.name, err, c.want)
 		}
 	}
 }

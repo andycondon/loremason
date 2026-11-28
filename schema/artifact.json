@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/andycondon/loremason/schema/artifact.json",
   "title": "artifact",
-  "description": "Something made outside the graph: a document, code, a conversation, an issue.",
+  "description": "Something made outside the graph: a web page or paper, code, a conversation, an issue.",
   "type": "object",
   "required": [
     "id",
@@ -19,7 +19,7 @@
     },
     "kind": {
       "enum": [
-        "document",
+        "page",
         "code",
         "conversation",
         "issue"

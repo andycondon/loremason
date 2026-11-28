@@ -20,6 +20,10 @@
     "started_at": {
       "$ref": "common.json#/$defs/time"
     },
+    "session": {
+      "description": "The key the harness gave the session.",
+      "$ref": "common.json#/$defs/line"
+    },
     "ended_at": {
       "$ref": "common.json#/$defs/time"
     },
