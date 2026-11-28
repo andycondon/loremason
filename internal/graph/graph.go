@@ -309,6 +309,34 @@ func (g *Graph) Members(ini *Node) []*Node {
 	return out
 }
 
+// Produced returns the records made in the initiative's activities: those
+// with a generated_by link to an activity that is one of its members, sorted
+// by ID. They don't become members, because what a session finds doesn't
+// belong to the initiative. A record that is itself a member is left out.
+func (g *Graph) Produced(ini *Node) []*Node {
+	members := g.Members(ini)
+	in := make(map[*Node]bool, len(members))
+	for _, m := range members {
+		in[m] = true
+	}
+	seen := map[*Node]bool{}
+	var out []*Node
+	for _, m := range members {
+		if m.Kind.Name != "activity" {
+			continue
+		}
+		for _, e := range m.Incoming {
+			if e.Name != "generated_by" || in[e.From] || seen[e.From] {
+				continue
+			}
+			seen[e.From] = true
+			out = append(out, e.From)
+		}
+	}
+	slices.SortFunc(out, func(a, b *Node) int { return strings.Compare(a.ID, b.ID) })
+	return out
+}
+
 // Behind returns the target's revisions after the one the link pins.
 func (e *Edge) Behind() []Revision {
 	if e.Pin == nil || e.Target == nil {

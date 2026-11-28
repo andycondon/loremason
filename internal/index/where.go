@@ -60,6 +60,7 @@ type Overview struct {
 	DesignDocs []Entry
 	PRDs       []Entry
 	Tasks      []Entry
+	Findings   []Entry // findings made in the initiative's activities; not members, and with no status
 }
 
 // Person is someone an initiative involves, and their role in it.
@@ -349,7 +350,30 @@ func (x *Index) Overview(slug string) (*Overview, error) {
 			return nil, err
 		}
 	}
+	if o.Findings, err = x.findings(id); err != nil {
+		return nil, err
+	}
 	return o, nil
+}
+
+// findings returns the findings made in the initiative's activities, by title
+// (ignoring ASCII case) then ID.
+func (x *Index) findings(ini string) ([]Entry, error) {
+	rows, err := x.db.Query(`SELECT `+summaryCols+`, n.path, n.progress FROM nodes n JOIN produced p ON p.id = n.id
+		WHERE p.initiative = ? AND n.type = 'finding' ORDER BY n.title COLLATE NOCASE, n.id`, ini)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Entry
+	for rows.Next() {
+		var e Entry
+		if err := rows.Scan(&e.ID, &e.Type, &e.Title, &e.Status, &e.Path, &e.Progress); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // people returns the actors the initiative involves, in the order its record

@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/andycondon/loremason/internal/testws"
 )
 
 func TestNew(t *testing.T) {
@@ -38,13 +40,14 @@ func TestNewMistakes(t *testing.T) {
 
 const sessionIni = "ini_a1b2c3"
 
-func sessionWorkspace(t *testing.T) {
+func sessionWorkspace(t *testing.T) *testws.Workspace {
 	t.Helper()
-	newWorkspace(t, map[string]string{
+	w := newWorkspace(t, map[string]string{
 		"initiative/" + sessionIni + ".md": "---\nid: " + sessionIni + "\ntitle: Search\nslug: search\nstatus: active\ncreated: 2026-11-22\n---\n\nBody.\n",
 	})
 	t.Setenv("LOREMASON_SESSION", "sess-1")
 	t.Setenv("LOREMASON_INITIATIVE", "search")
+	return w
 }
 
 func TestNewAttachesToTheSession(t *testing.T) {
@@ -119,5 +122,22 @@ func TestNewSessionNeedsAnInitiative(t *testing.T) {
 	t.Setenv("LOREMASON_INITIATIVE", "serch")
 	if code, _, errOut := mason("new", "finding", "--title", "X"); code == 0 || !strings.Contains(errOut, "did you mean `search`?") {
 		t.Errorf("exit %d, stderr %q", code, errOut)
+	}
+}
+
+func TestNewFindingIsListedInTheInitiativesREADME(t *testing.T) {
+	w := sessionWorkspace(t)
+	if code, _, errOut := mason("new", "finding", "--title", "Caching helps"); code != 0 {
+		t.Fatalf("new: exit %d, %s", code, errOut)
+	}
+	if code, _, errOut := mason("sync"); code != 0 {
+		t.Fatalf("sync: exit %d, %s", code, errOut)
+	}
+	data, err := os.ReadFile(filepath.Join(w.Root, "initiatives", "search", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "\n## Findings\n\n- [Caching helps](../../graph/finding/fnd_") {
+		t.Errorf("README:\n%s", data)
 	}
 }

@@ -480,6 +480,38 @@ func TestOverviewHoldsWhatTheREADMEShows(t *testing.T) {
 	}
 }
 
+func TestOverviewListsFindingsMadeInTheInitiativesActivities(t *testing.T) {
+	w := newWS(t, map[string]string{
+		"initiative/" + iniA + ".md": initiative(iniA, "alpha"),
+		"initiative/" + iniB + ".md": initiative(iniB, "beta"),
+		"activity/actv_a1a1a1.md":    record("actv_a1a1a1", "Session one", "started_at: 2026-11-22", "part_of: "+iniA),
+		"activity/actv_b2b2b2.md":    record("actv_b2b2b2", "Session two", "started_at: 2026-11-22", "part_of: "+iniB),
+		"finding/fnd_f1f1f1.md":      record("fnd_f1f1f1", "banana", "generated_by: [actv_a1a1a1]"),
+		"finding/fnd_f2f2f2.md":      record("fnd_f2f2f2", "Apple", "generated_by: [actv_a1a1a1]"),
+		"finding/fnd_f3f3f3.md":      record("fnd_f3f3f3", "Elsewhere", "generated_by: [actv_b2b2b2]"),
+		"finding/fnd_f4f4f4.md":      record("fnd_f4f4f4", "Loose"),
+		"evidence/ev_e1e1e1.md":      record("ev_e1e1e1", "Seen", "observed_at: 2026-11-22", "from: [who_k1m2n3]", "generated_by: [actv_a1a1a1]"),
+		"actor/who_k1m2n3.md":        record("who_k1m2n3", "Zed", "kind: person"),
+	})
+	x := open(t, w)
+	o, err := x.Overview("alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range o.Findings {
+		got = append(got, e.ID+":"+e.Status+":"+e.Path)
+	}
+	want := []string{"fnd_f2f2f2::graph/finding/fnd_f2f2f2.md", "fnd_f1f1f1::graph/finding/fnd_f1f1f1.md"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("findings = %v, want %v (by title, no status; evidence, another initiative's and an unattached finding left out)", got, want)
+	}
+	var rows int
+	if err := x.db.QueryRow(`SELECT count(*) FROM produced WHERE initiative = ?`, iniA).Scan(&rows); err != nil || rows != 3 {
+		t.Errorf("produced rows for %s = %d, %v; want 3 (two findings and the evidence)", iniA, rows, err)
+	}
+}
+
 func TestOverviewOfAnUnknownSlug(t *testing.T) {
 	w := newWS(t, map[string]string{"initiative/" + iniA + ".md": initiative(iniA, "alpha")})
 	_, err := open(t, w).Overview("alpa")
