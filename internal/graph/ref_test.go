@@ -41,8 +41,8 @@ func TestParseRefAgreesWithTheSchema(t *testing.T) {
 }
 
 func TestSubrecordID(t *testing.T) {
-	if got := SubrecordID("bel_7k3m9q", "s1"); got != "bel_7k3m9q/s1" {
-		t.Errorf("SubrecordID = %q", got)
+	if got := subrecordID("bel_7k3m9q", "s1"); got != "bel_7k3m9q/s1" {
+		t.Errorf("subrecordID = %q", got)
 	}
 }
 

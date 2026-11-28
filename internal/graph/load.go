@@ -167,10 +167,10 @@ func (l *loader) addNodes(f *File) {
 			switch {
 			case local == "":
 				// the schema check says what's missing
-			case n.Child(local) != nil:
+			case n.child(local) != nil:
 				l.ds.Errorf(f.At(entry.KeyLine("id")), "two entries have the id `%s`", local)
 			default:
-				c := &Node{ID: SubrecordID(n.ID, local), Kind: f.Type.Subrecords[field], File: f, Fields: entry, Parent: n, Local: local}
+				c := &Node{ID: subrecordID(n.ID, local), Kind: f.Type.Subrecords[field], File: f, Fields: entry, Parent: n, Local: local}
 				n.Children = append(n.Children, c)
 				if l.g.nodes[c.ID] == nil { // a duplicate record's sub-records still resolve
 					l.g.nodes[c.ID] = c

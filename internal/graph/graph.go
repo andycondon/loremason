@@ -113,7 +113,7 @@ func (g *Graph) Resolve(r Ref) *Node {
 	}
 	if parent := g.Parent(r); parent != nil {
 		_, local, _ := splitSubrecord(r.Name)
-		return parent.Child(local)
+		return parent.child(local)
 	}
 	return nil
 }
@@ -254,10 +254,10 @@ func (n *Node) Seals(rev int) (active, pending []Seal) {
 func (n *Node) stateSeals() []Seal {
 	s := n.Type().Sealed
 	var seals []Seal
-	if h := n.StatusHolder(); h != nil && slices.Contains(s.Status, h.Status()) {
+	if h := n.statusHolder(); h != nil && slices.Contains(s.Status, h.Status()) {
 		seals = append(seals, Seal{Status: h.Status(), Holder: h, of: n.Record()})
 	}
-	if s.Settled && n.SettledByAnswer() {
+	if s.Settled && n.settledByAnswer() {
 		seals = append(seals, Seal{Answered: true})
 	}
 	return seals
@@ -293,12 +293,12 @@ func (n *Node) Quoted(rev int) bool {
 	return false
 }
 
-// StatusHolder returns the node whose status decides the record's state: the
+// statusHolder returns the node whose status decides the record's state: the
 // record itself, or, for a record with no status of its own whose type has a
 // status_from edge, the record that edge leads to (the first it resolves,
 // followed further if that has none either). It is nil when the edges lead
 // round a cycle.
-func (n *Node) StatusHolder() *Node {
+func (n *Node) statusHolder() *Node {
 	rec := n.Record()
 	seen := map[*Node]bool{}
 	for !seen[rec] {
@@ -322,16 +322,16 @@ func (n *Node) StatusHolder() *Node {
 	return nil
 }
 
-// StateSeals gives the reasons the type's sealed key seals the node as it is
+// stateSealStrings gives the reasons the type's sealed key seals the node as it is
 // now, whether or not its revision's fingerprint has been recorded.
-func (n *Node) StateSeals() []string { return sealStrings(n.stateSeals()) }
+func (n *Node) stateSealStrings() []string { return sealStrings(n.stateSeals()) }
 
 // SealedByStatus reports whether the status of the record, or of the one it
 // takes its status from, is one its type's sealed key lists, as an accepted
-// decision's is. Unlike StateSeals, it ignores settling and whether the
+// decision's is. Unlike stateSealStrings, it ignores settling and whether the
 // fingerprint is recorded.
 func (n *Node) SealedByStatus() bool {
-	h := n.StatusHolder()
+	h := n.statusHolder()
 	return h != nil && slices.Contains(n.Type().Sealed.Status, h.Status())
 }
 
@@ -451,15 +451,15 @@ func (e *Edge) Reopens() bool { return e.Concerns().Has(Reopens) }
 // what relied on it, but whoever relied on it should look again.
 func (e *Edge) Orphaned() bool { return e.Concerns().Has(Orphaned) }
 
-// Doubts reports whether the link relies on a belief that is doubted and no
+// reliesOnDoubted reports whether the link relies on a belief that is doubted and no
 // re-check has cleared it: see doubts.
-func (e *Edge) Doubts() bool { return e.Concerns().Has(Doubted) }
+func (e *Edge) reliesOnDoubted() bool { return e.Concerns().Has(Doubted) }
 
 // InForce reports whether the node's record is still in force: its status
-// holder's status (see StatusHolder) is neither one its type lists as closed
+// holder's status (see statusHolder) is neither one its type lists as closed
 // nor as fallen. A type with no such statuses is always in force.
 func (n *Node) InForce() bool {
-	h := n.StatusHolder()
+	h := n.statusHolder()
 	if h == nil {
 		return true
 	}
@@ -467,14 +467,14 @@ func (n *Node) InForce() bool {
 	return !t.IsClosed(h.Status()) && !t.IsFallen(h.Status())
 }
 
-// DoubtedBy returns the evidence that makes a belief doubted, sorted by ID:
+// doubtedBy returns the evidence that makes a belief doubted, sorted by ID:
 // evidence that `undercuts` one of the belief's support links, or that
 // `undermines` evidence a support link cites. Only a link that supports the
 // belief counts; evidence undercutting a link that disputes it says nothing
 // against the belief. A belief that has fallen or is closed is settled, not
 // doubted, so it has none. The rule is for beliefs; see 01-model.md, section
 // 3.2.
-func (n *Node) DoubtedBy() []*Node {
+func (n *Node) doubtedBy() []*Node {
 	if !n.HasSupport() || !n.InForce() {
 		return nil
 	}
@@ -506,14 +506,14 @@ func (n *Node) DoubtedBy() []*Node {
 }
 
 // Doubted reports whether a belief that still stands has lost some of its
-// footing: see DoubtedBy. It stays so until the link is removed, the belief's
-// status changes, or a link that relies on it is re-checked (see Doubts).
-func (n *Node) Doubted() bool { return len(n.DoubtedBy()) > 0 }
+// footing: see doubtedBy. It stays so until the link is removed, the belief's
+// status changes, or a link that relies on it is re-checked (see doubts).
+func (n *Node) Doubted() bool { return len(n.doubtedBy()) > 0 }
 
-// ObservedAt parses the node's observed_at, a date or a time as
+// observedAt parses the node's observed_at, a date or a time as
 // common.json's time allows: a date alone is midnight UTC, and a time with
 // no offset is UTC. It is false when there is none or it can't be parsed.
-func (n *Node) ObservedAt() (time.Time, bool) {
+func (n *Node) observedAt() (time.Time, bool) {
 	v := strings.TrimSpace(n.Fields.Text("observed_at"))
 	if len(v) > 10 {
 		v = v[:10] + "T" + strings.Join(strings.Fields(v[11:]), "") // the separator may be a t or a space
@@ -531,23 +531,23 @@ func (n *Node) ObservedAt() (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// ObservedNotAfter reports whether evidence was observed no later than
+// observedNotAfter reports whether evidence was observed no later than
 // other, comparing the instants of their observed_at. Equal times count, so
 // a tie clears a doubt. Either one's observed_at missing or unparsable is
 // false: such evidence clears nothing.
-func (n *Node) ObservedNotAfter(other *Node) bool {
-	a, ok := n.ObservedAt()
-	b, ok2 := other.ObservedAt()
+func (n *Node) observedNotAfter(other *Node) bool {
+	a, ok := n.observedAt()
+	b, ok2 := other.observedAt()
 	return ok && ok2 && !a.After(b)
 }
 
 // doubts is the doubted part of Concerns: the target is doubted, and no
 // re-check clears it. A re-check clears it when the link's pin names, in via,
 // evidence observed on or after all of the evidence that makes the belief
-// doubted (see ObservedAt). A newer undermining or undercutting doubts it
+// doubted (see observedAt). A newer undermining or undercutting doubts it
 // again.
 func (e *Edge) doubts() bool {
-	by := e.Target.DoubtedBy()
+	by := e.Target.doubtedBy()
 	if len(by) == 0 {
 		return false
 	}
@@ -555,7 +555,7 @@ func (e *Edge) doubts() bool {
 		return true
 	}
 	for _, ev := range by {
-		if !ev.ObservedNotAfter(e.Via.Target) {
+		if !ev.observedNotAfter(e.Via.Target) {
 			return true
 		}
 	}
@@ -571,7 +571,7 @@ func (e *Edge) Settles() bool { return slices.Contains(e.Def.Settles, e.From.Sta
 // lists the source's status as pending, such as a proposed decision
 // answering a question. A dropped target waits for no answer.
 func (e *Edge) Pending() bool {
-	return slices.Contains(e.Def.Pending, e.From.Status()) && (e.Target == nil || !e.Target.Dropped())
+	return slices.Contains(e.Def.Pending, e.From.Status()) && (e.Target == nil || !e.Target.dropped())
 }
 
 // Attr returns a text field of a link written as a map, such as role on
@@ -597,17 +597,17 @@ func (n *Node) Progress() string {
 	return n.Type().Default("progress")
 }
 
-// Dropped reports whether the node has a dropped field, the reason a question
+// dropped reports whether the node has a dropped field, the reason a question
 // was given up on.
-func (n *Node) Dropped() bool {
+func (n *Node) dropped() bool {
 	_, dropped := n.Fields.Get("dropped")
 	return dropped
 }
 
-// SettledByAnswer reports whether a link to the node settles it, such as an
+// settledByAnswer reports whether a link to the node settles it, such as an
 // accepted decision answering a question. A dropped node isn't settled by an
 // answer, though Settled counts it.
-func (n *Node) SettledByAnswer() bool {
+func (n *Node) settledByAnswer() bool {
 	for _, e := range n.Incoming {
 		if e.Settles() {
 			return true
@@ -617,9 +617,9 @@ func (n *Node) SettledByAnswer() bool {
 }
 
 // Settled reports whether the node needs no more answering: it is dropped (it
-// has a dropped field), or a link to it settles it (SettledByAnswer). It is
+// has a dropped field), or a link to it settles it (settledByAnswer). It is
 // asked of any node.
-func (n *Node) Settled() bool { return n.Dropped() || n.SettledByAnswer() }
+func (n *Node) Settled() bool { return n.dropped() || n.settledByAnswer() }
 
 // Open reports whether the node still wants answering: its type can be
 // settled (a question), and it is not settled, or a link to it is an answer
@@ -693,8 +693,8 @@ func (g *Graph) Produced(ini *Node) []*Node {
 	return out
 }
 
-// Behind returns the target's revisions after the one the link pins.
-func (e *Edge) Behind() []Revision {
+// behind returns the target's revisions after the one the link pins.
+func (e *Edge) behind() []Revision {
 	if e.Pin == nil || e.Target == nil {
 		return nil
 	}
@@ -707,8 +707,8 @@ func (e *Edge) Behind() []Revision {
 	return revs
 }
 
-// Child returns a sub-record by its local id, or nil.
-func (n *Node) Child(local string) *Node {
+// child returns a sub-record by its local id, or nil.
+func (n *Node) child(local string) *Node {
 	for _, c := range n.Children {
 		if c.Local == local {
 			return c

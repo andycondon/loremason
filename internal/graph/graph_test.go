@@ -112,8 +112,8 @@ func TestNodeShape(t *testing.T) {
 	if bel.Record() != bel || s2.Record() != bel {
 		t.Error("Record is the node itself, or its parent")
 	}
-	if bel.Child("s2") != s2 || bel.Child("s9") != nil || !slices.Equal(bel.Locals(), []string{"s1", "s2"}) {
-		t.Errorf("Child and Locals: %v", bel.Locals())
+	if bel.child("s2") != s2 || bel.child("s9") != nil || !slices.Equal(bel.Locals(), []string{"s1", "s2"}) {
+		t.Errorf("child and Locals: %v", bel.Locals())
 	}
 }
 
@@ -220,13 +220,13 @@ func TestEdgeStaleAndBehind(t *testing.T) {
 		{"2", "fp1:222222222222", true, 0}, // the meaning changed since
 	} {
 		e := stale(t, c.rev, c.fp)
-		if e.Stale() != c.stale || len(e.Behind()) != c.behind {
-			t.Errorf("rev %s, %s: stale %v, behind %d", c.rev, c.fp, e.Stale(), len(e.Behind()))
+		if e.Stale() != c.stale || len(e.behind()) != c.behind {
+			t.Errorf("rev %s, %s: stale %v, behind %d", c.rev, c.fp, e.Stale(), len(e.behind()))
 		}
 	}
 	bare := load(t, file("bel_7k3m9q"), file("task_9w4hzd", "relies_on: [bel_7k3m9q, bel_nope00]"))
 	for _, e := range bare.Edges {
-		if e.Stale() || e.Behind() != nil {
+		if e.Stale() || e.behind() != nil {
 			t.Errorf("an unpinned link, or one to nothing, is never stale: %s", e.To)
 		}
 	}

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// ---- InForce, Orphaned, Doubted, Doubts ----
+// ---- InForce, Orphaned, Doubted, reliesOnDoubted ----
 
 func ev(id, observed string, lines ...string) string {
 	return file(id, append([]string{"observed_at: " + observed, "from: []"}, lines...)...)
@@ -109,7 +109,9 @@ func doubtGraph(t *testing.T, direction, via string, extra ...string) *Graph {
 	return load(t, append(records, extra...)...)
 }
 
-func doubts(t *testing.T, g *Graph) bool { return edge(t, g, "dec_d1d1d1", "relies_on").Doubts() }
+func doubts(t *testing.T, g *Graph) bool {
+	return edge(t, g, "dec_d1d1d1", "relies_on").reliesOnDoubted()
+}
 
 // A belief is doubted by evidence undermining or undercutting a supporting
 // link, but not a disputing one.
@@ -133,7 +135,7 @@ func TestDoubted(t *testing.T) {
 			t.Errorf("%s: Doubted = %v, want %v", c.name, got, c.want)
 		}
 		if got := doubts(t, g); got != c.want {
-			t.Errorf("%s: Doubts = %v, want %v", c.name, got, c.want)
+			t.Errorf("%s: doubts = %v, want %v", c.name, got, c.want)
 		}
 	}
 }
@@ -158,7 +160,7 @@ func TestDoubtsOnlyForACommitmentInForce(t *testing.T) {
 		file("dec_d1d1d1", "status: rejected", "relies_on: [bel_b1b1b1]"),
 		file("task_d2d2d2", "status: accepted", "blocked_by: [bel_b1b1b1]"),
 	)
-	if doubts(t, g) || edge(t, g, "task_d2d2d2", "blocked_by").Doubts() {
+	if doubts(t, g) || edge(t, g, "task_d2d2d2", "blocked_by").reliesOnDoubted() {
 		t.Error("a closed source, or a link that doesn't propagate, isn't doubted")
 	}
 }
@@ -197,7 +199,7 @@ func TestRecheckClearsADoubtUntilNewerEvidenceArrives(t *testing.T) {
 	} {
 		g := doubtGraph(t, "supports", c.via, c.extra...)
 		if got := doubts(t, g); got != c.want {
-			t.Errorf("%s: Doubts = %v, want %v", c.name, got, c.want)
+			t.Errorf("%s: doubts = %v, want %v", c.name, got, c.want)
 		}
 	}
 }
@@ -216,7 +218,7 @@ func TestObservedAt(t *testing.T) {
 		{"soon", ""},
 	} {
 		g := load(t, ev("ev_e1e1e1", c.in))
-		got, ok := g.Node("ev_e1e1e1").ObservedAt()
+		got, ok := g.Node("ev_e1e1e1").observedAt()
 		switch {
 		case c.want == "" && ok:
 			t.Errorf("%q: read as %v, want unreadable", c.in, got)
