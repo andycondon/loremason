@@ -152,6 +152,9 @@ func (v Value) Map() (Map, bool) {
 	return Map{node: v.node, Path: v.Path}, true
 }
 
+// IsList reports whether the value is a list written as one.
+func (v Value) IsList() bool { return v.node != nil && v.node.Kind == yaml.SequenceNode }
+
 // Items returns a list's items. A value that isn't a list is its own only
 // item, since a field such as relies_on may hold one link or a list of them.
 func (v Value) Items() []Value {

@@ -18,6 +18,7 @@ type Pos struct {
 type Diagnostic struct {
 	Pos
 	Warning bool
+	Fixable bool // an error that `mason sync` repairs, so it doesn't keep sync from the file
 	Msg     string
 }
 
@@ -35,6 +36,11 @@ type List []Diagnostic
 // Errorf adds an error.
 func (l *List) Errorf(at Pos, format string, args ...any) {
 	*l = append(*l, Diagnostic{Pos: at, Msg: fmt.Sprintf(format, args...)})
+}
+
+// Fixablef adds an error that `mason sync` repairs.
+func (l *List) Fixablef(at Pos, format string, args ...any) {
+	*l = append(*l, Diagnostic{Pos: at, Fixable: true, Msg: fmt.Sprintf(format, args...)})
 }
 
 // Warnf adds a warning.

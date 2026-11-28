@@ -50,6 +50,7 @@ type fileEdit struct {
 	revisions []graph.Revision          // the whole list, when it changes
 	fp        *fingerprint.FP           // a fixed record's fp field, when sync writes it
 	pins      map[*graph.Edge]graph.Pin // links to write pinned, by the edge read from the file
+	unlist    []string                  // single-link fields written as a list, to write as one value
 }
 
 // Empty reports whether the plan changes nothing.
@@ -98,6 +99,7 @@ func Sync(g *graph.Graph, broken Broken, today string) *Plan {
 			p.Skipped = append(p.Skipped, f.Path)
 			continue
 		}
+		p.unlist(f)
 		if f.Node.Revisable() {
 			revs[f.Node] = p.recordRevision(f, today)
 		}
@@ -111,6 +113,24 @@ func Sync(g *graph.Graph, broken Broken, today string) *Plan {
 		}
 	}
 	return p
+}
+
+// unlist plans the rewrite of a single-link field, such as generated_by,
+// that holds a list of one item, to the item, and drops one that holds none.
+// Longer lists are left for the person to resolve.
+func (p *Plan) unlist(f *graph.File) {
+	for _, name := range slices.Sorted(maps.Keys(f.Type.Edges)) {
+		v, ok := f.Node.Fields.Get(name)
+		if !ok || !v.IsList() || !f.Type.SingleLink(name) || len(v.Items()) > 1 {
+			continue
+		}
+		p.edit(f).unlist = append(p.edit(f).unlist, name)
+		if len(v.Items()) == 0 {
+			p.say(f, "drop the empty `%s` list", name)
+		} else {
+			p.say(f, "rewrite `%s` from a one-item list to a single value", name)
+		}
+	}
 }
 
 // recordRevision does steps 1 and 2 for one record, and returns its
@@ -321,6 +341,14 @@ func (e *fileEdit) apply(path string) ([]byte, error) {
 	}
 	if e.fp != nil {
 		h.Set("fp", record.Render("fp", record.Quoted(e.fp.String())))
+	}
+	for _, field := range e.unlist {
+		v, _ := n.Fields.Get(field)
+		if items := v.Items(); len(items) == 0 {
+			h.Remove(field)
+		} else {
+			h.Set(field, v.Rewrite(items[0].Out()))
+		}
 	}
 	for _, field := range e.pinnedFields() {
 		v, _ := n.Fields.Get(field)

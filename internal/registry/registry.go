@@ -145,6 +145,14 @@ func (t *Type) field(name string) *jsonschema.Schema {
 	return s
 }
 
+// SingleLink reports whether name is an edge of the type whose field takes one
+// link, not a list of them, such as generated_by.
+func (t *Type) SingleLink(name string) bool {
+	s := t.field(name)
+	_, isEdge := t.Edges[name]
+	return isEdge && s != nil && s.Types != nil && !slices.Contains(s.Types.ToStrings(), "array")
+}
+
 // Default returns the default the schema declares for a header field, such
 // as todo for a task's progress, or "" when it declares none.
 func (t *Type) Default(field string) string {
