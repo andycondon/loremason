@@ -68,6 +68,9 @@ type Type struct {
 	Body            string           `yaml:"body"`             // the body `mason new` writes
 
 	Schema *jsonschema.Schema `yaml:"-"`
+	// Settleable is set when a link can settle the type's records: some edge
+	// that settles names it as a target (a question).
+	Settleable bool `yaml:"-"`
 }
 
 // Sealed says when a record's current revision is sealed by state. Status
@@ -453,6 +456,18 @@ func parse() (*Registry, error) {
 		}
 		if err := t.checkFixed(); err != nil {
 			return nil, err
+		}
+	}
+	for _, t := range r.Types {
+		for _, e := range t.Edges {
+			if len(e.Settles) == 0 {
+				continue
+			}
+			for _, to := range e.To {
+				if target := r.Types[to]; target != nil {
+					target.Settleable = true
+				}
+			}
 		}
 	}
 	for _, name := range r.Names() {

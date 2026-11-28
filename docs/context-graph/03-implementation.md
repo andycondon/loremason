@@ -308,6 +308,7 @@ erDiagram
     text status
     text progress "computed"
     bool settled "computed"
+    bool open "computed"
     int revision
     text fingerprint "current, computed"
     text path
@@ -362,7 +363,7 @@ erDiagram
 
 **The rules are computed once, in Go, and stored.** Whether a link needs a re-check, and why, is one value, its concerns: any of stale (its pin no longer matches the target's current revision and fingerprint), reopens, orphaned and doubted, all worked out in one place by the same code `sync` and `validate` use. They are written to the one column `edges.concerns`. A link has concerns only when it propagates, its source is a commitment still in force, and its target exists. The queries only select on that column, so a rule has one home and `stale` and `where` can never disagree with `sync` or each other.
 
-The same goes for where work stands: a task's progress (with its default), whether a node is settled (dropped, or settled by an incoming `answers` link), whether each `answers` link settles or is pending, and each initiative's members are worked out in Go and stored, and `mason where` only selects.
+The same goes for where work stands: a task's progress (with its default), whether a node is settled (dropped, or settled by an incoming `answers` link), whether a question is still open (not settled, or settled with an answer that is still pending), whether each `answers` link settles or is pending, and each initiative's members are worked out in Go and stored, and `mason where` only selects.
 
 A link **reopens** its source when it propagates, its source is a commitment still in force, and its target's status is one its type marks as fallen. Which statuses count as fallen is data, declared in `types.yaml` beside each type's statuses: for a belief, `incorrect` and `insufficient`. Which statuses close a record is data too (for commitments, `rejected`, `deprecated` and `superseded`; for a belief, `withdrawn`), so a commitment already turned down or replaced isn't listed again. A belief that is withdrawn reopens nothing, but a commitment in force that relies on one is reported separately ("rests on bel_x, which is withdrawn"). Generally, a propagating link from a record in force to a closed record is reported as needing a re-check, like a stale link ("rests on X, which is <status>"), and it is one of the link's concerns, so `mason stale` and `mason where` list it.
 

@@ -260,20 +260,19 @@ func (x *Index) blocked(ini string) ([]Blocked, error) {
 	return out, nil
 }
 
-// openQuestions returns the initiative's questions that nothing settles, and
-// those that something settles while another answer still waits, with their
-// pending answers.
+// openQuestions returns the initiative's open records (questions): those that
+// nothing settles, and those that something settles while another answer
+// still waits, with their pending answers.
 func (x *Index) openQuestions(ini string) ([]Question, error) {
 	qs, err := x.summaries(`SELECT `+summaryCols+` FROM nodes n JOIN members m ON m.id = n.id
-		WHERE m.initiative = ? AND n.type = 'question' AND (n.settled = 0 OR EXISTS (
-			SELECT 1 FROM edges e WHERE e.dst = n.id AND e.name = 'answers' AND e.pending = 1)) ORDER BY n.id`, ini)
+		WHERE m.initiative = ? AND n.open = 1 ORDER BY n.id`, ini)
 	if err != nil {
 		return nil, err
 	}
 	var out []Question
 	for _, q := range qs {
 		pending, err := x.summaries(`SELECT DISTINCT `+summaryCols+` FROM edges e JOIN nodes n ON n.id = e.src
-			WHERE e.dst = ? AND e.name = 'answers' AND e.pending = 1 ORDER BY n.id`, q.ID)
+			WHERE e.dst = ? AND e.pending = 1 ORDER BY n.id`, q.ID)
 		if err != nil {
 			return nil, err
 		}

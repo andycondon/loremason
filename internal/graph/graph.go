@@ -255,13 +255,8 @@ func (n *Node) StateSeals() []string {
 			reasons = append(reasons, fmt.Sprintf("its %s %s is %s", h.Type().Name, h.ID, h.Status()))
 		}
 	}
-	if s.Settled {
-		for _, e := range n.Incoming {
-			if e.Settles() {
-				reasons = append(reasons, "settled")
-				break
-			}
-		}
+	if s.Settled && n.SettledByAnswer() {
+		reasons = append(reasons, "settled")
 	}
 	return reasons
 }
@@ -547,15 +542,35 @@ func (n *Node) Dropped() bool {
 	return dropped
 }
 
+// SettledByAnswer reports whether a link to the node settles it, such as an
+// accepted decision answering a question. A dropped node isn't settled by an
+// answer, though Settled counts it.
+func (n *Node) SettledByAnswer() bool {
+	for _, e := range n.Incoming {
+		if e.Settles() {
+			return true
+		}
+	}
+	return false
+}
+
 // Settled reports whether the node needs no more answering: it is dropped (it
-// has a dropped field), or a link to it settles it. It is asked of any node;
-// for a question, open means not settled.
-func (n *Node) Settled() bool {
-	if n.Dropped() {
+// has a dropped field), or a link to it settles it (SettledByAnswer). It is
+// asked of any node.
+func (n *Node) Settled() bool { return n.Dropped() || n.SettledByAnswer() }
+
+// Open reports whether the node still wants answering: its type can be
+// settled (a question), and it is not settled, or a link to it is an answer
+// still waiting (Pending, which a dropped node has none of).
+func (n *Node) Open() bool {
+	if n.IsSubrecord() || !n.Type().Settleable {
+		return false
+	}
+	if !n.Settled() {
 		return true
 	}
 	for _, e := range n.Incoming {
-		if e.Settles() {
+		if e.Pending() {
 			return true
 		}
 	}
