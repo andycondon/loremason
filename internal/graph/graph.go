@@ -419,8 +419,7 @@ func (e *Edge) Settles() bool { return slices.Contains(e.Def.Settles, e.From.Sta
 
 // Pending reports whether the link is an answer still waiting: its edge
 // lists the source's status as pending, such as a proposed decision
-// answering a question.
-// A dropped target waits for no answer.
+// answering a question. A dropped target waits for no answer.
 func (e *Edge) Pending() bool {
 	return slices.Contains(e.Def.Pending, e.From.Status()) && (e.Target == nil || !e.Target.Dropped())
 }

@@ -72,7 +72,7 @@ var dependentsCmd = &cli.Command{
 
 var staleCmd = &cli.Command{
 	Name:    "stale",
-	Summary: "list the records that changed since links were pinned to them",
+	Summary: "list the records that changed since links were pinned to them, and links to closed records",
 	Setup: func(*flag.FlagSet) cli.Action {
 		return query(func(x *index.Index, _ []string, w io.Writer) error {
 			groups, err := x.Stale()

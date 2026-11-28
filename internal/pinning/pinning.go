@@ -222,8 +222,8 @@ func allNonBreaking(revs []graph.Revision, after int) bool {
 // fingerprint, so nothing seals it yet. The edit comes after, and the next
 // sync records the new revision's fingerprint. A revision that is only
 // quoted can be revised too: the quote keeps naming it, and its fingerprint
-// is kept, which clears the drift warning. commit holds the file as it is now, or is empty when there's
-// no such commit.
+// is kept, which clears the drift warning. commit holds the file as it is
+// now, or is empty when there's no such commit.
 func Revise(n *graph.Node, breaking bool, broken Broken, today, commit string) (*Plan, error) {
 	f := n.File
 	switch {

@@ -41,7 +41,7 @@ func (c *checker) sealed(f *graph.File) {
 			c.ds.Warnf(cur.At.Pos, "revision %d isn't written down yet, and its status (%s) will seal it once it is; run `mason sync`", cur.Rev, andList(reasons))
 		}
 	case cur.FP.IsZero():
-		// Sealed by a pin before sync wrote the revision down: sync records it.
+		// Sealed before sync wrote the revision down: sync records it.
 		c.ds.Warnf(cur.At.Pos, "revision %d is sealed but isn't written down yet; run `mason sync`", cur.Rev)
 	case cur.FP != n.Fingerprint():
 		c.ds.Errorf(f.At(meaningLine(f)), "the meaning changed, but revision %d is sealed (%s): undo the change, run `mason revise %s --breaking` (or `--non-breaking`), then make it again", cur.Rev, andList(n.SealedBy(cur.Rev)), n.ID)
