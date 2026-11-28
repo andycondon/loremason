@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/andycondon/loremason/internal/fingerprint"
 	"github.com/andycondon/loremason/internal/graph"
 	"github.com/andycondon/loremason/internal/record"
 	"github.com/andycondon/loremason/internal/splice"
@@ -47,6 +48,7 @@ type Broken map[string]bool
 type fileEdit struct {
 	file      *graph.File
 	revisions []graph.Revision          // the whole list, when it changes
+	fp        *fingerprint.FP           // a fixed record's fp field, when sync writes it
 	pins      map[*graph.Edge]graph.Pin // links to write pinned, by the edge read from the file
 }
 
@@ -83,7 +85,9 @@ func (p *Plan) warn(f *graph.File, format string, args ...any) {
 //  4. move a pin forward when every later revision of its target is
 //     non-breaking. A link pinned in step 3 gets this too, so a second sync
 //     has nothing left to do. A pin that doesn't seal, such as a quote,
-//     stays at the revision it recorded.
+//     stays at the revision it recorded;
+//  5. record the fingerprint of each fixed record, such as evidence, that has
+//     none.
 //
 // Files with errors are skipped, and so are links to them.
 func Sync(g *graph.Graph, broken Broken, today string) *Plan {
@@ -96,6 +100,9 @@ func Sync(g *graph.Graph, broken Broken, today string) *Plan {
 		}
 		if f.Node.Revisable() {
 			revs[f.Node] = p.recordRevision(f, today)
+		}
+		if f.Type.Fixed {
+			p.recordFixed(f)
 		}
 	}
 	for _, e := range g.Edges {
@@ -128,6 +135,19 @@ func (p *Plan) recordRevision(f *graph.File, today string) []graph.Revision {
 	}
 	p.edit(f).revisions = rs
 	return rs
+}
+
+// recordFixed writes a fixed record's own fingerprint when it has none. One
+// that has gone out of step with its fingerprint is left alone: it can't be
+// changed, and validate says so.
+func (p *Plan) recordFixed(f *graph.File) {
+	n := f.Node
+	if f.Record == nil || !n.RecordedFingerprint().IsZero() {
+		return
+	}
+	fp := n.Fingerprint()
+	p.edit(f).fp = &fp
+	p.say(f, "record the fingerprint of %s", n.ID)
 }
 
 // pin does steps 3 and 4 for one link.
@@ -292,6 +312,9 @@ func (e *fileEdit) apply(path string) ([]byte, error) {
 		} else {
 			h.Set("revisions", record.Render("revisions", record.List(entries...)))
 		}
+	}
+	if e.fp != nil {
+		h.Set("fp", record.Render("fp", record.Quoted(e.fp.String())))
 	}
 	for _, field := range e.pinnedFields() {
 		v, _ := n.Fields.Get(field)

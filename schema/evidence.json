@@ -20,6 +20,9 @@
     "observed_at": {
       "$ref": "common.json#/$defs/time"
     },
+    "fp": {
+      "$ref": "common.json#/$defs/fingerprint"
+    },
     "from": {
       "$ref": "common.json#/$defs/links"
     },

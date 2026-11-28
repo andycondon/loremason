@@ -43,3 +43,34 @@ func TestCheckSealedRefusesABadKey(t *testing.T) {
 		}
 	}
 }
+
+func TestEvidenceIsFixed(t *testing.T) {
+	if !typ(t, "evidence").Fixed {
+		t.Error("evidence never changes, so it is fixed")
+	}
+}
+
+func TestCheckFixedRefusesWhatCannotKeepAFingerprint(t *testing.T) {
+	d := *typ(t, "finding")
+	if !d.Revisable {
+		t.Fatal("the test needs a revisable type")
+	}
+	d.Fixed = true
+	if err := d.checkFixed(); err == nil || !strings.Contains(err.Error(), "finding") || !strings.Contains(err.Error(), "revisable") {
+		t.Errorf("fixed on a revisable type: %v", err)
+	}
+
+	d = *typ(t, "initiative")
+	if d.Revisable || d.Schema.Properties["fp"] != nil {
+		t.Fatal("the test needs a plain type without fp")
+	}
+	d.Fixed = true
+	if err := d.checkFixed(); err == nil || !strings.Contains(err.Error(), "initiative") || !strings.Contains(err.Error(), "fp") {
+		t.Errorf("fixed on a schema without fp: %v", err)
+	}
+
+	e := *typ(t, "evidence")
+	if err := e.checkFixed(); err != nil {
+		t.Errorf("evidence: %v", err)
+	}
+}

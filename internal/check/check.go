@@ -50,6 +50,7 @@ func Graph(g *graph.Graph, loaded diag.List, reg *registry.Registry) *Result {
 		c.shape(f)
 		c.revisionNumbers(f)
 		c.sealed(f)
+		c.fixed(f)
 	}
 	for _, e := range g.Edges {
 		c.target(e)

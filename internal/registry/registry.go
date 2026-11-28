@@ -58,6 +58,7 @@ type Type struct {
 	Layer           string           `yaml:"layer"`            // Knowing, Committing or Scope
 	RevisionsInline bool             `yaml:"revisions_inline"` // old wording is kept in the file, not left to git
 	Meaning         []string         `yaml:"meaning"`          // fields a fingerprint covers; "body" for the body
+	Fixed           bool             `yaml:"fixed"`            // the record never changes once written; it keeps its own fp (evidence)
 	Sealed          Sealed           `yaml:"sealed"`           // when the current revision is sealed by state, not only by a pin
 	Closed          []string         `yaml:"closed"`           // statuses meaning the record is no longer in force; each is one of the schema's statuses
 	Fallen          []string         `yaml:"fallen"`           // statuses meaning the record no longer holds; each is one of the schema's statuses
@@ -248,6 +249,21 @@ func (t *Type) checkDocument() error {
 	return nil
 }
 
+// checkFixed reports a fixed type that is also revisable, since a record is
+// one or the other, and one whose schema has no fp field to keep the
+// fingerprint in.
+func (t *Type) checkFixed() error {
+	switch {
+	case !t.Fixed:
+		return nil
+	case t.Revisable:
+		return fmt.Errorf("types.yaml: %s is fixed, so it can't also be revisable; a record is either revisable or fixed", t.Name)
+	case t.Schema.Properties["fp"] == nil:
+		return fmt.Errorf("types.yaml: %s is fixed, so its schema must have an fp field", t.Name)
+	}
+	return nil
+}
+
 // Validate checks a record's fields, as plain values, against the type's schema.
 func (t *Type) Validate(fields map[string]any) error { return t.Schema.Validate(fields) }
 
@@ -373,6 +389,9 @@ func parse() (*Registry, error) {
 			return nil, err
 		}
 		if err := t.checkDocument(); err != nil {
+			return nil, err
+		}
+		if err := t.checkFixed(); err != nil {
 			return nil, err
 		}
 	}

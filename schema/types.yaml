@@ -9,6 +9,10 @@
 #                   any of them: an edge's `to` may name `document`. Loading checks that a document
 #                   is revisable with revisions left to git, has title and body in `meaning`, and has
 #                   generated_by (to activity) and attributed_to (to actor) edges and schema fields.
+# fixed             The record never changes once written, and keeps its own fingerprint in an `fp`
+#                   header field, which `mason sync` writes. Validate errors when it stops matching.
+#                   A record is either revisable or fixed, never both; loading refuses a fixed type
+#                   that is revisable or whose schema has no `fp`. Optional.
 # revisions_inline  Old wording kept in the file (short records) or left to git (long ones).
 # meaning           Fields a fingerprint covers. `body` stands for the body.
 # identity          Fields that suggest two records are the same thing (validate warns).
@@ -80,6 +84,7 @@ types:
   evidence:
     prefix: ev
     layer: knowing
+    fixed: true
     meaning: [body]
     edges:
       from: {to: [actor, artifact, document], propagates: false, pinned: true}

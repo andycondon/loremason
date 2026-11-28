@@ -82,8 +82,48 @@ func (c *checker) revisionRefs(e *graph.Edge) {
 			c.ds.Errorf(e.At.Pos, "`%s`: the pin's fingerprint isn't the one recorded for revision %d of %s; write the link as just `%s` and run `mason sync` to pin it again", at, rev, rec.ID, e.To.Name)
 		}
 	}
+	if e.Pin != nil && !e.Seals() && !e.Pin.FP.IsZero() {
+		c.quoteDrift(e, rev)
+	}
 	if e.Pin != nil && !e.Def.ShouldPin(e.Target.Kind) {
 		c.ds.Errorf(e.At.Pos, "`%s` isn't pinned, since a change in %s doesn't call for a re-check here; write just `%s`", at, e.Target.ID, e.To.Name)
+	}
+}
+
+// quoteDrift warns when the text a quote took from its target has changed.
+// A quote is history, so there's no command to fix it: restore the text or
+// write new evidence. The quoted text is the target's current wording when
+// the pin names the current revision, or else what the revision recorded.
+// Nothing is compared when the fingerprint of the quoted text isn't known.
+func (c *checker) quoteDrift(e *graph.Edge, rev int) {
+	rec := e.Target.Record()
+	quoted := rec.Fingerprint()
+	if cur := rec.Current(); cur == nil || cur.Rev != rev {
+		r := rec.Revision(rev)
+		if r == nil {
+			return
+		}
+		quoted = r.FP
+	}
+	if quoted.IsZero() || quoted == e.Pin.FP {
+		return
+	}
+	c.ds.Warnf(e.At.Pos, "`%s`: the text quoted from %s@r%d has changed since it was quoted; restore the text, or write new evidence", e.Item.Path, rec.ID, rev)
+}
+
+// fixed checks that a fixed record, such as evidence, still has the
+// fingerprint it wrote down.
+func (c *checker) fixed(f *graph.File) {
+	n := f.Node
+	if !f.Type.Fixed || f.Record == nil || f.Misplaced() {
+		return
+	}
+	rec := n.RecordedFingerprint()
+	switch {
+	case rec.IsZero():
+		c.ds.Warnf(f.At(1), "the fingerprint of %s isn't written down yet; run `mason sync`", n.ID)
+	case rec != n.Fingerprint():
+		c.ds.Errorf(f.At(n.Fields.KeyLine("fp")), "%s never changes, but its text no longer matches its fingerprint; undo the change, or write new evidence that undermines this one", n.ID)
 	}
 }
 
