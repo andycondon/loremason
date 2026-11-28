@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// Decisions, questions and steps are sealed as types.yaml says.
 func TestSealedKeysOfTheShippedTypes(t *testing.T) {
 	if s := typ(t, "decision").Sealed; !slices.Contains(s.Status, "accepted") || s.Via != "" {
 		t.Errorf("decision: %+v", s)
@@ -18,6 +19,7 @@ func TestSealedKeysOfTheShippedTypes(t *testing.T) {
 	}
 }
 
+// A sealed key with an unknown status or via edge is refused.
 func TestCheckSealedRefusesABadKey(t *testing.T) {
 	r := Load()
 	for _, c := range []struct {

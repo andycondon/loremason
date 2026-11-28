@@ -138,6 +138,7 @@ func TestTypeClosed(t *testing.T) {
 	}
 }
 
+// A within or target_status that the type or its targets don't allow is refused.
 func TestRegistryRefusesBadConstraints(t *testing.T) {
 	r := Load()
 	task := *r.Types["task"]

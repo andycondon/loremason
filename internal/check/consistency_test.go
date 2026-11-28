@@ -37,6 +37,8 @@ func wantWarning(t *testing.T, name, got, sub string) {
 	}
 }
 
+// A belief in force with a disputing support link warns; an incorrect one
+// doesn't.
 func TestHeldBeliefThatIsDisputedWarns(t *testing.T) {
 	belief := func(status string) map[string]string {
 		return map[string]string{
@@ -49,6 +51,7 @@ func TestHeldBeliefThatIsDisputedWarns(t *testing.T) {
 	wantWarning(t, "incorrect", warnings(t, belief("incorrect")), "")
 }
 
+// The within, target_status and one_in_force constraints each warn when broken.
 func TestEdgeConstraintsWarn(t *testing.T) {
 	q := func(id string) string { return rec(id, "Q", "question: What?", "options: [{id: o1, title: One}]") }
 	dec := func(id, status string, lines ...string) string {

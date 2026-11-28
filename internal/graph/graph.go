@@ -63,9 +63,11 @@ type Edge struct {
 	To     Ref
 	Target *Node // what To resolves to; nil when it doesn't
 	Pin    *Pin  // set when the link records the target's revision
-	Via    *Edge // the pin's via, the link to the evidence for its last re-check; nil when there's none
-	At     Loc
-	Item   record.Value // the link as written: a reference, or a {to: …} map
+	// Via is the link in the pin's via, to the evidence for its last re-check;
+	// nil when the pin has none.
+	Via  *Edge
+	At   Loc
+	Item record.Value // the link as written: a reference, or a {to: …} map
 }
 
 // Pinnable reports whether sync should pin the link: the edge should pin
@@ -178,11 +180,11 @@ func (n *Node) Revision(rev int) *Revision {
 func (e *Edge) Seals() bool { return e.Pin != nil && e.Def.Propagates }
 
 // SealedBy says why a revision is sealed: the IDs of the records whose
-// propagating links pin it, then, for the current revision, the reasons the
-// type's sealed key gives ("accepted", "settled", "its plan plan_x is
-// accepted"). The reasons of state apply only once the revision's
-// fingerprint is recorded: a revision that `mason revise` just opened has
-// none, so it can be edited until `mason sync` records it. It's nil when
+// propagating links pin it, then, for the current revision of a record (not
+// a sub-record), the reasons the type's sealed key gives ("accepted",
+// "settled", "its plan plan_x is accepted"). Those apply only once the
+// revision's fingerprint is recorded: a revision `mason revise` just opened
+// has none, so it can be edited until `mason sync` records it. It's nil when
 // nothing seals the revision. A sealed revision's meaning can't change
 // without a new revision.
 func (n *Node) SealedBy(rev int) []string {
@@ -238,9 +240,9 @@ func (n *Node) StateSeals() []string {
 	return reasons
 }
 
-// SealedByStatus reports whether the record's own status, or its via
-// target's, is one its type's sealed key lists, as an accepted decision is.
-// It leaves out a question's settling.
+// SealedByStatus reports whether the record's status, or its via target's,
+// is one its type's sealed key lists, as an accepted decision's is. Unlike
+// StateSeals, it ignores settling and whether the fingerprint is recorded.
 func (n *Node) SealedByStatus() bool {
 	s := n.Type().Sealed
 	if s.Via == "" {
@@ -324,9 +326,8 @@ func (n *Node) InForce() bool {
 // force: it propagates, its source is in force, and its target isn't, such
 // as a withdrawn belief, a superseded task, or a step of a superseded plan.
 // A target that has fallen reopens its source instead (see Reopens), so it
-// isn't reported twice. Otherwise it is independent of Reopens: a withdrawn
-// belief doesn't reopen what relied on it, but whoever relied on it should
-// look again.
+// isn't reported here too. A withdrawn belief doesn't reopen what relied on
+// it, but whoever relied on it should look again.
 func (e *Edge) Orphaned() bool {
 	return e.Def.Propagates && e.Target != nil && e.From.InForce() && !e.Target.InForce() &&
 		!e.Target.Type().IsFallen(e.Target.Status())

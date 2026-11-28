@@ -25,13 +25,14 @@
 #                   A propagating link from a committing record to a record in one of
 #                   them reopens the committing record. Optional.
 # sealed            When the current revision is sealed by state, not only by a pin (a pinned
-#                   revision is sealed whatever this says). Optional, with up to three parts:
+#                   revision is sealed whatever this says). State seals only once `mason sync`
+#                   has recorded the revision's fingerprint. Optional, with up to three parts:
 #                   status: statuses (from the type's schema) at which it is sealed;
 #                   settled: true seals it once a link settles it (a question has no status);
 #                   via: an edge of the type; status then names statuses of the record
 #                   that edge leads to (a step is sealed by its plan's status).
-# closed            Statuses (from the type's schema) that mean the record is no longer in force,
-#                   for any type (a belief: withdrawn). A committing record in one of them isn't
+# closed            Statuses (from the type's schema) that mean the record is no longer in force
+#                   (a belief: withdrawn). A committing record in one of them isn't
 #                   reopened by a fallen target. A propagating link from a record in force to a
 #                   closed record is reported for a re-check ("rests on X, which is <status>").
 #                   Optional.
@@ -47,8 +48,8 @@
 # target_status     On an edge: statuses (from every target type's schema) the target should be in
 #                   (supersedes -> superseded). Validate warns when it isn't, but only when the
 #                   source is in force and sealed by its status (for a decision, accepted). Optional.
-# one_in_force      On an edge: at most one source in force (status not closed; for an edge that
-#                   settles, one that settles) per target. Validate warns on a second. Optional.
+# one_in_force      On an edge: at most one source in force (neither closed nor fallen; for an edge
+#                   that settles, one that settles) per target. Validate warns on a second. Optional.
 # subrecords        Header field holding a list of sub-records, each with its own short id.
 # template          Header lines `mason new` writes after id and title. {title}, {slug} and {today} are replaced.
 # body              Body `mason new` writes.

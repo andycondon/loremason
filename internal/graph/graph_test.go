@@ -131,6 +131,7 @@ func TestNodeRevisions(t *testing.T) {
 	}
 }
 
+// Sealed and SealedBy name the records whose propagating links pin a revision.
 func TestNodeSealedAndSealedBy(t *testing.T) {
 	pin := func(rev string) string { return "  - {to: bel_7k3m9q, rev: " + rev + ", fp: \"fp1:000000000000\"}" }
 	bel := load(t,

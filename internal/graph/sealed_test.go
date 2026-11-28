@@ -9,8 +9,11 @@ import (
 // fingerprint written down, which is when its status starts to seal it.
 var recorded = []string{"revisions:", "  - {rev: 1, date: 2026-11-22, fp: \"fp1:000000000000\"}"}
 
+// withRevs adds the recorded revisions to a record's header lines.
 func withRevs(lines ...string) []string { return append(slices.Clone(lines), recorded...) }
 
+// A record is sealed by its own status, a step by its plan's, and a question
+// by a link that settles it.
 func TestSealedByStatus(t *testing.T) {
 	g := load(t,
 		file("dec_9w4hzd", withRevs("status: accepted")...),

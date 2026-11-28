@@ -87,7 +87,7 @@ type Edge struct {
 	Settles    []string `yaml:"settles"`    // the source's statuses at which the link settles its target; each is one of the source type's statuses
 	Pending    []string `yaml:"pending"`    // the source's statuses at which the link is an answer still waiting; each is one of the source type's statuses
 	// Constraints the check reports as warnings.
-	Within       string   `yaml:"within"`        // another edge of the same type: the target's own link by that edge must lead to a target of that edge on the same record
+	Within       string   `yaml:"within"`        // another edge of the same type: the target's parent record must be a target of the source's link by that edge
 	TargetStatus []string `yaml:"target_status"` // the statuses the target should be in; each is one of every target type's statuses
 	OneInForce   bool     `yaml:"one_in_force"`  // at most one source in force (and, for an edge that settles, settling) per target
 }
@@ -216,7 +216,8 @@ func (t *Type) checkStatuses() error {
 }
 
 // checkSealed reports a sealed status that neither the type's schema nor, with
-// via, a target of its via edge allows, and a via that isn't one of the type's edges.
+// via, a target of its via edge allows, and a via that isn't an edge of the
+// type.
 func (r *Registry) checkSealed(t *Type) error {
 	s := t.Sealed
 	statuses := t.statuses()

@@ -60,6 +60,7 @@ func TestReviseMistakes(t *testing.T) {
 	}
 }
 
+// A dry run says which single-link lists sync would rewrite or drop.
 func TestSyncDryRunSaysItWouldUnlist(t *testing.T) {
 	one := "---\nid: ev_p4n2xa\ntitle: Seen\nobserved_at: 2026-11-22T10:00:00Z\nfrom: []\ngenerated_by: [actv_3h7npc]\ncreated: 2026-11-22\n---\n\nThe words.\n"
 	none := strings.Replace(strings.Replace(one, "ev_p4n2xa", "ev_w2q9kd", 1), "[actv_3h7npc]", "[]", 1)

@@ -47,15 +47,15 @@ type Dependent struct {
 	On    Summary // the record that link points at; the one asked about when Depth is 1
 }
 
-// StaleGroup is a record that has changed and the links still pinned to
-// what it was.
+// StaleGroup is a record that has changed, or is no longer in force, and the
+// links that need a re-check because of it.
 type StaleGroup struct {
 	Target   Summary
 	Revision int         // the target's current revision
 	Links    []StaleLink // Other is the record holding the link
 }
 
-// StaleLink is a link to a changed record that needs a re-check.
+// StaleLink is a link that needs a re-check because of its target.
 type StaleLink struct {
 	Link
 	Stale    bool // the link is pinned to a revision the target has moved past
@@ -362,7 +362,7 @@ func (x *Index) Dependents(id string) ([]Dependent, error) {
 
 // Stale returns the records that have changed since links were written
 // against them, or that are no longer in force under a link that relies on
-// them, one group per record by ID, with the links that are out of date.
+// them, one group per record by ID, with the links to re-check.
 func (x *Index) Stale() ([]StaleGroup, error) {
 	rows, err := x.db.Query(`SELECT t.id, t.type, t.title, t.status, COALESCE(t.revision, 0),
 		e.name, e.pinned_rev, e.pinned_fp, e.stale, e.orphaned, s.id, s.type, s.title, s.status

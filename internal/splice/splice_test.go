@@ -120,6 +120,8 @@ func TestNewFieldGoesAboveTheCommentOnCreated(t *testing.T) {
 	}
 }
 
+// Remove deletes a field's lines, leaves the rest alone, and ignores a field
+// that isn't there.
 func TestRemoveDeletesTheFieldsLines(t *testing.T) {
 	h, err := Edit([]byte(input))
 	if err != nil {

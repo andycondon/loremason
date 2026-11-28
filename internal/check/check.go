@@ -65,8 +65,8 @@ func Graph(g *graph.Graph, loaded diag.List, reg *registry.Registry) *Result {
 }
 
 // Broken returns the paths of the files that have errors, not just
-// warnings or errors that sync repairs. Tools that write leave these files
-// alone.
+// warnings or errors that `mason sync` repairs. Tools that write leave these
+// files alone.
 func (r *Result) Broken() map[string]bool {
 	broken := map[string]bool{}
 	for _, d := range r.Diagnostics {

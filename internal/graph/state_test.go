@@ -11,6 +11,8 @@ func ev(id, observed string, lines ...string) string {
 	return file(id, append([]string{"observed_at: " + observed, "from: []"}, lines...)...)
 }
 
+// InForce is false for closed and fallen statuses, and for a step whose plans
+// are all out of force.
 func TestInForce(t *testing.T) {
 	g := load(t,
 		file("bel_a1a1a1", "status: held"),
@@ -39,6 +41,8 @@ func TestInForce(t *testing.T) {
 	}
 }
 
+// Orphaned needs a propagating link from a record in force to one that isn't,
+// and leaves a fallen target to Reopens.
 func TestOrphaned(t *testing.T) {
 	g := load(t,
 		file("bel_a1a1a1", "status: held"),
@@ -106,6 +110,8 @@ func doubtGraph(t *testing.T, direction, via string, extra ...string) *Graph {
 
 func doubts(t *testing.T, g *Graph) bool { return edge(t, g, "dec_d1d1d1", "relies_on").Doubts() }
 
+// A belief is doubted by evidence undermining or undercutting a supporting
+// link, but not a disputing one.
 func TestDoubted(t *testing.T) {
 	undermine := ev("ev_e2e2e2", "2026-11-23T10:00:00Z", "undermines: [ev_e1e1e1]")
 	undercut := ev("ev_e2e2e2", "2026-11-23T10:00:00Z", "undercuts: [bel_b1b1b1/s1]")

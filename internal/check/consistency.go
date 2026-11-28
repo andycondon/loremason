@@ -65,10 +65,10 @@ func statusOf(n *graph.Node) string {
 }
 
 // oneInForce warns when more than one record in force has a link by an edge
-// marked one_in_force to the same target. In force means the status isn't
-// closed; for an edge that settles its target, the link must also settle it
-// (an accepted decision answering a question, not a proposed one). The
-// second and later links are the ones reported.
+// marked one_in_force to the same target. For an edge that settles its
+// target, the link must also settle it (an accepted decision answering a
+// question, not a proposed one). The second and later links are the ones
+// reported.
 func (c *checker) oneInForce() {
 	type key struct {
 		edge string

@@ -7,8 +7,6 @@ import (
 	"github.com/andycondon/loremason/internal/testws"
 )
 
-// Regression tests for what a review of the revision rules found.
-
 // Revising an accepted decision opens a revision nothing seals yet, so the
 // edit it was opened for is allowed. Once sync records it, the new revision
 // is sealed like any other.

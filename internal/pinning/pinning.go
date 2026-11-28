@@ -90,7 +90,8 @@ func (p *Plan) warn(f *graph.File, format string, args ...any) {
 //  5. record the fingerprint of each fixed record, such as evidence, that has
 //     none.
 //
-// Files with errors are skipped, and so are links to them.
+// Sync also rewrites a single-link field written as a list to the link (see
+// unlist). Files with errors are skipped, and so are links to them.
 func Sync(g *graph.Graph, broken Broken, today string) *Plan {
 	p := newPlan()
 	revs := map[*graph.Node][]graph.Revision{} // each record's revisions after steps 1 and 2
