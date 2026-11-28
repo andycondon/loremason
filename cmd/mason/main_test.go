@@ -48,7 +48,7 @@ const help = "mason creates and checks the records of a context graph, keeps the
 	"  find         list the records whose title or body has all of the words\n" +
 	"  show         print a record's text and its links in both directions\n" +
 	"  dependents   list the records that rely on a record, directly or through others\n" +
-	"  stale        list the records that changed since links were pinned to them\n" +
+	"  stale        list the links that need a re-check, grouped by the record that changed: stale pins, reopened or orphaned commitments, doubted beliefs\n" +
 	"  reopened     list the commitments resting on a belief that has fallen\n" +
 	"  where        show where an initiative stands\n" +
 	"\n" +

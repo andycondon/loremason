@@ -65,9 +65,9 @@ func TestBuildStoresWhatTheGraphDecides(t *testing.T) {
 		"task/task_9w4hzd.md":       record("task_9w4hzd", "Task", "status: accepted", `implements: [{to: req_5txk3a, rev: 1, fp: "fp1:000000000001"}]`),
 	})
 	open(t, w).Close()
-	got := rows(t, w, `SELECT stale || reopens || propagates FROM edges WHERE src = 'task_9w4hzd'`)
-	if len(got) != 1 || got[0] != "101" {
-		t.Errorf("stale, reopens, propagates = %v, want 101", got)
+	got := rows(t, w, `SELECT concerns || ' ' || propagates FROM edges WHERE src = 'task_9w4hzd'`)
+	if len(got) != 1 || got[0] != "1 1" {
+		t.Errorf("concerns, propagates = %v, want the Stale flag (1) and 1", got)
 	}
 	if got := rows(t, w, `SELECT revision || ' ' || substr(fingerprint, 1, 4) FROM nodes WHERE id = 'req_5txk3a'`); len(got) != 1 || got[0] != "2 fp1:" {
 		t.Errorf("revision and fingerprint = %v", got)
@@ -153,8 +153,8 @@ func TestBuildStoresProgressSettledLinksMembersAndInitiatives(t *testing.T) {
 		}
 	}
 	one("in_progress", `SELECT progress FROM nodes WHERE id = 'task_t1t1t1'`)
-	one("1", `SELECT settled FROM nodes WHERE id = 'q_c2c2c2'`)
-	one("0", `SELECT settled FROM nodes WHERE id = 'q_c1c1c1'`)
+	one("0", `SELECT open FROM nodes WHERE id = 'q_c2c2c2'`)
+	one("1", `SELECT open FROM nodes WHERE id = 'q_c1c1c1'`)
 	one("1", `SELECT settles FROM edges WHERE src = 'dec_d2d2d2' AND dst = 'q_c2c2c2'`)
 	one("0", `SELECT settles FROM edges WHERE src = 'dec_d5d5d5' AND dst = 'q_c1c1c1'`)
 	one("1", `SELECT pending FROM edges WHERE src = 'dec_d5d5d5' AND dst = 'q_c1c1c1'`)

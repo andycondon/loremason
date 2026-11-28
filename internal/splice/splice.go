@@ -79,6 +79,11 @@ func (h *Header) Set(field, rendered string) {
 	h.edits[field] = rendered
 }
 
+// Remove deletes a field's lines. A field that isn't there is left alone.
+func (h *Header) Remove(field string) {
+	h.edits[field] = ""
+}
+
 // Bytes returns the edited file.
 func (h *Header) Bytes() []byte {
 	type change struct {
@@ -90,6 +95,9 @@ func (h *Header) Bytes() []byte {
 		if s, ok := h.fields[field]; ok {
 			changes = append(changes, change{s.start, s.end, text})
 			continue
+		}
+		if text == "" {
+			continue // removing a field that isn't there
 		}
 		at := h.close
 		if s, ok := h.fields["created"]; ok {
@@ -115,6 +123,10 @@ func (h *Header) Bytes() []byte {
 	}
 	lines := slices.Clone(h.lines)
 	for _, c := range changes {
+		if c.text == "" {
+			lines = slices.Delete(lines, c.start, c.end)
+			continue
+		}
 		text := strings.ReplaceAll(c.text, "\n", eol)
 		lines = slices.Replace(lines, c.start, c.end, strings.SplitAfter(strings.TrimSuffix(text, eol), eol)...)
 		lines[c.start+strings.Count(strings.TrimSuffix(text, eol), eol)] += eol

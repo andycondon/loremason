@@ -20,20 +20,30 @@ func document(header string) string {
 	return "---\n" + header + "\nrevisions:\n  - {rev: 1, date: 2026-11-22, fp: \"fp1:000000000000\"}\ncreated: 2026-11-22\n---\n\nSome words.\n"
 }
 
-func evidenceFrom(id, to string) string {
-	return "---\nid: " + id + "\ntitle: A quote\nobserved_at: 2026-11-22T10:00:00Z\nfrom:\n  - {to: " + to + ", rev: 1, fp: \"fp1:000000000000\"}\ncreated: 2026-11-22\n---\n\nThe words.\n"
+// evidenceFrom is evidence that quotes a record as it stands at revision 1,
+// pinned with the fingerprint of the quoted text, and with its own
+// fingerprint recorded.
+func evidenceFrom(t *testing.T, w *testws.Workspace, id, to string) string {
+	t.Helper()
+	text := "---\nid: " + id + "\ntitle: A quote\nobserved_at: 2026-11-22T10:00:00Z\nfrom:\n  - {to: " + to + ", rev: 1, fp: \"" + w.Node(to).Fingerprint().String() + "\"}\ncreated: 2026-11-22\n---\n\nThe words.\n"
+	w.Write("evidence/"+id+".md", text)
+	text = strings.Replace(text, "created:", "fp: \""+w.Node(id).Fingerprint().String()+"\"\ncreated:", 1)
+	w.Write("evidence/"+id+".md", text)
+	return text
 }
 
 func TestEvidenceQuotesEachDocumentType(t *testing.T) {
 	records := map[string]string{}
-	n := 0
 	for path, header := range documents {
 		records[path] = document(header)
-		id := strings.TrimSuffix(path[strings.Index(path, "/")+1:], ".md")
-		records["evidence/ev_p4n2x"+string(rune('a'+n))+".md"] = evidenceFrom("ev_p4n2x"+string(rune('a'+n)), id)
-		n++
 	}
 	w := testws.New(t, records)
+	n := 0
+	for path := range documents {
+		id := strings.TrimSuffix(path[strings.Index(path, "/")+1:], ".md")
+		evidenceFrom(t, w, "ev_p4n2x"+string(rune('a'+n)), id)
+		n++
+	}
 	if _, got := run(t, w.Root); got != "" {
 		t.Errorf("a pinned quote of a document is rejected:\n%s", got)
 	}
@@ -66,15 +76,15 @@ func TestIdeationIsFree(t *testing.T) {
 func TestQuotedFindingIsFreeButPinnedDesignDocIsNot(t *testing.T) {
 	w := testws.New(t, map[string]string{
 		"finding/fnd_k3m9qx.md":   document(documents["finding/fnd_k3m9qx.md"]),
-		"evidence/ev_p4n2xa.md":   evidenceFrom("ev_p4n2xa", "fnd_k3m9qx"),
 		"design-doc/dd_c5r1tw.md": document(documents["design-doc/dd_c5r1tw.md"]),
 		"task/task_9w4hzd.md":     "---\nid: task_9w4hzd\ntitle: A task\nstatus: accepted\nderived_from:\n  - {to: dd_c5r1tw, rev: 1, fp: \"fp1:000000000000\"}\ncreated: 2026-11-22\n---\n",
 	})
+	evidenceFrom(t, w, "ev_p4n2xa", "fnd_k3m9qx")
 	_, got := run(t, w.Root)
 	if strings.Contains(got, "fnd_k3m9qx") || strings.Contains(got, "ev_p4n2xa") {
 		t.Errorf("the quoted finding or its quote was reported:\n%s", got)
 	}
-	if !strings.Contains(got, "the meaning changed, but revision 1 is pinned by task_9w4hzd") {
+	if !strings.Contains(got, "the meaning changed, but revision 1 is sealed (task_9w4hzd)") {
 		t.Errorf("the pinned design doc wasn't held to its revision:\n%s", got)
 	}
 }

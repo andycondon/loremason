@@ -9,6 +9,10 @@
 #                   any of them: an edge's `to` may name `document`. Loading checks that a document
 #                   is revisable with revisions left to git, has title and body in `meaning`, and has
 #                   generated_by (to activity) and attributed_to (to actor) edges and schema fields.
+# fixed             The record never changes once written, and keeps its own fingerprint in an `fp`
+#                   header field, which `mason sync` writes. Validate errors when it stops matching.
+#                   A record is either revisable or fixed, never both; loading refuses a fixed type
+#                   that is revisable or whose schema has no `fp`. Optional.
 # revisions_inline  Old wording kept in the file (short records) or left to git (long ones).
 # meaning           Fields a fingerprint covers. `body` stands for the body.
 # identity          Fields that suggest two records are the same thing (validate warns).
@@ -20,13 +24,34 @@
 # fallen            Statuses (from the type's schema) that mean the record no longer holds.
 #                   A propagating link from a committing record to a record in one of
 #                   them reopens the committing record. Optional.
-# closed            Statuses (from the type's schema) that mean the record is no longer in force.
-#                   A committing record in one of them isn't reopened by a fallen target. Optional.
+# sealed            When the current revision is sealed by state, not only by a pin (a pinned
+#                   revision is sealed whatever this says). State seals only once `mason sync`
+#                   has recorded the revision's fingerprint. Optional, with up to two parts:
+#                   status: statuses (from the type's schema) at which it is sealed;
+#                   settled: true seals it once a link settles it (a question has no status);
+#                   Status names statuses of the record that holds the status (see status_from).
+# status_from       An edge of the type: a record with no status of its own takes its status
+#                   from that edge's target (a step has its plan's). Its in-force state and
+#                   sealed key follow that status. Optional.
+# closed            Statuses (from the type's schema) that mean the record is no longer in force
+#                   (a belief: withdrawn). A committing record in one of them isn't
+#                   reopened by a fallen target. A propagating link from a record in force to a
+#                   closed record is reported for a re-check ("rests on X, which is <status>").
+#                   Optional.
 # settles           On an edge: statuses of the source (from its type's schema) at which the link
 #                   settles its target. A record with an incoming link that settles it is settled;
 #                   an open question is one that isn't. Optional.
 # pending           On an edge: statuses of the source (from its type's schema) at which the link is
 #                   an answer still waiting to settle its target. Optional.
+# within            On an edge: names another edge of the same type. The target's parent record must be a
+#                   target of the record's edge of that name: `within: answers` on decision.chooses means
+#                   the chosen option's question must be one the same decision answers. Validate warns.
+#                   Optional.
+# target_status     On an edge: statuses (from every target type's schema) the target should be in
+#                   (supersedes -> superseded). Validate warns when it isn't, but only when the
+#                   source is in force and sealed by its status (for a decision, accepted). Optional.
+# one_in_force      On an edge: at most one source in force (neither closed nor fallen; for an edge
+#                   that settles, one that settles) per target. Validate warns on a second. Optional.
 # subrecords        Header field holding a list of sub-records, each with its own short id.
 # template          Header lines `mason new` writes after id and title. {title}, {slug} and {today} are replaced.
 # body              Body `mason new` writes.
@@ -44,7 +69,6 @@ types:
     identity: [title]
     edges:
       acts_for: {to: [actor], propagates: false}
-      interested_in: {to: [any], propagates: false}
     template: |
       kind: person
 
@@ -75,6 +99,7 @@ types:
   evidence:
     prefix: ev
     layer: knowing
+    fixed: true
     meaning: [body]
     edges:
       from: {to: [actor, artifact, document], propagates: false, pinned: true}
@@ -85,7 +110,6 @@ types:
     template: |
       observed_at: {today}
       from: []
-      generated_by: []
     body: |
       The verbatim quote or observation. Never edited once written.
 
@@ -97,6 +121,7 @@ types:
     meaning: [claim]
     identity: [claim]
     fallen: [incorrect, insufficient]
+    closed: [withdrawn]
     edges:
       answers: {to: [question], propagates: false, settles: [held]}
     subrecords:
@@ -124,6 +149,7 @@ types:
   question:
     prefix: q
     layer: knowing
+    sealed: {settled: true}
     revisable: true
     revisions_inline: true
     meaning: [question]
@@ -199,17 +225,18 @@ types:
     prefix: dec
     layer: committing
     closed: [rejected, deprecated, superseded]
+    sealed: {status: [accepted, rejected, deprecated, superseded]}
     revisable: true
     revisions_inline: false
     meaning: [title, criteria, confirmation, body]
     edges:
       part_of: {to: [initiative], propagates: false}
-      answers: {to: [question], propagates: false, settles: [accepted], pending: [proposed, leaning]}
-      chooses: {to: [option], propagates: false}
+      answers: {to: [question], propagates: false, settles: [accepted], pending: [proposed, leaning], one_in_force: true}
+      chooses: {to: [option], propagates: false, within: answers}
       decided_by: {to: [actor], propagates: false}
       consults: {to: [actor], propagates: false}
       informs: {to: [actor], propagates: false}
-      supersedes: {to: [decision], propagates: false}
+      supersedes: {to: [decision], propagates: false, target_status: [superseded]}
       amends: {to: [decision], propagates: false}
       relies_on: {to: [belief], propagates: true}
     template: |
@@ -274,22 +301,23 @@ types:
       part_of: {to: [initiative], propagates: false}
       generated_by: {to: [activity], propagates: false}
       attributed_to: {to: [actor], propagates: false}
-      derived_from: {to: [task], propagates: true}
+      derived_from: {to: [task], propagates: true, one_in_force: true}
       relies_on: {to: [belief], propagates: true}
     template: |
       status: proposed
+      part_of: []
       derived_from: []
 
   step:
     prefix: step
     layer: committing
+    status_from: part_of
+    sealed: {status: [accepted, rejected, deprecated, superseded]}
     revisable: true
     revisions_inline: true
     meaning: [title, body]
     edges:
       part_of: {to: [plan], propagates: true}
       follows: {to: [step], propagates: false}
-    template: |
-      part_of: []
     body: |
       Exact files, the pattern to copy, and the one check that shows it worked.

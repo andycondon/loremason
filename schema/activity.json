@@ -41,7 +41,7 @@
       "$ref": "common.json#/$defs/links"
     },
     "corresponds_to": {
-      "$ref": "common.json#/$defs/links"
+      "$ref": "common.json#/$defs/single_link"
     },
     "mentions": {
       "$ref": "common.json#/$defs/links"

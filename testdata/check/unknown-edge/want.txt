@@ -1,2 +1,2 @@
 graph/belief/bel_7k3m9q.md:7: error: unknown field `implements`; fields the schema doesn't know go under `extra`
-graph/step/step_2c7rq1.md:5: error: unknown field `folows`; did you mean `follows`?
+graph/step/step_2c7rq1.md:4: error: unknown field `folows`; did you mean `follows`?

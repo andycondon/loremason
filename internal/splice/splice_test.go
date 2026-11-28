@@ -119,3 +119,24 @@ func TestNewFieldGoesAboveTheCommentOnCreated(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// Remove deletes a field's lines, leaves the rest alone, and ignores a field
+// that isn't there.
+func TestRemoveDeletesTheFieldsLines(t *testing.T) {
+	h, err := Edit([]byte(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Remove("relies_on")
+	h.Remove("links_last")
+	h.Remove("not_there")
+	out := string(h.Bytes())
+	if strings.Contains(out, "relies_on") || strings.Contains(out, "links_last") || strings.Contains(out, "not_there") {
+		t.Errorf("fields remain:\n%s", out)
+	}
+	for _, keep := range []string{"status: accepted   # agreed 2026-11-22", "created: 2026-11-22", "notes: >", "Indented line"} {
+		if !strings.Contains(out, keep) {
+			t.Errorf("lost %q:\n%s", keep, out)
+		}
+	}
+}

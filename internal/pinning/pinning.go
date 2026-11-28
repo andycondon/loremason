@@ -16,8 +16,10 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/andycondon/loremason/internal/fingerprint"
 	"github.com/andycondon/loremason/internal/graph"
 	"github.com/andycondon/loremason/internal/record"
+	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/internal/splice"
 )
 
@@ -47,7 +49,9 @@ type Broken map[string]bool
 type fileEdit struct {
 	file      *graph.File
 	revisions []graph.Revision          // the whole list, when it changes
+	fp        *fingerprint.FP           // a fixed record's fp field, when sync writes it
 	pins      map[*graph.Edge]graph.Pin // links to write pinned, by the edge read from the file
+	unlist    []string                  // single-link fields written as a list, to write as one value
 }
 
 // Empty reports whether the plan changes nothing.
@@ -83,9 +87,12 @@ func (p *Plan) warn(f *graph.File, format string, args ...any) {
 //  4. move a pin forward when every later revision of its target is
 //     non-breaking. A link pinned in step 3 gets this too, so a second sync
 //     has nothing left to do. A pin that doesn't seal, such as a quote,
-//     stays at the revision it recorded.
+//     stays at the revision it recorded;
+//  5. record the fingerprint of each fixed record, such as evidence, that has
+//     none.
 //
-// Files with errors are skipped, and so are links to them.
+// Sync also rewrites a single-link field written as a list to the link (see
+// unlist). Files with errors are skipped, and so are links to them.
 func Sync(g *graph.Graph, broken Broken, today string) *Plan {
 	p := newPlan()
 	revs := map[*graph.Node][]graph.Revision{} // each record's revisions after steps 1 and 2
@@ -94,8 +101,12 @@ func Sync(g *graph.Graph, broken Broken, today string) *Plan {
 			p.Skipped = append(p.Skipped, f.Path)
 			continue
 		}
+		p.unlist(f)
 		if f.Node.Revisable() {
 			revs[f.Node] = p.recordRevision(f, today)
+		}
+		if f.Type.Fixed {
+			p.recordFixed(f)
 		}
 	}
 	for _, e := range g.Edges {
@@ -104,6 +115,22 @@ func Sync(g *graph.Graph, broken Broken, today string) *Plan {
 		}
 	}
 	return p
+}
+
+// unlist plans the rewrite of a single-link field, such as generated_by,
+// that holds a list of one item, to the item, and drops one that holds none.
+// Longer lists, and an item that isn't a plain ID, are left for the person
+// to resolve.
+func (p *Plan) unlist(f *graph.File) {
+	for _, name := range f.ListedSingleLinks() {
+		v, _ := f.Node.Fields.Get(name)
+		p.edit(f).unlist = append(p.edit(f).unlist, name)
+		if len(v.Items()) == 0 {
+			p.say(f, "drop the empty `%s` list", name)
+		} else {
+			p.say(f, "rewrite `%s` from a one-item list to a single value", name)
+		}
+	}
 }
 
 // recordRevision does steps 1 and 2 for one record, and returns its
@@ -122,12 +149,29 @@ func (p *Plan) recordRevision(f *graph.File, today string) []graph.Revision {
 		p.say(f, "record the fingerprint of revision %d", cur.Rev)
 	case cur.FP != fp && !n.Sealed(cur.Rev):
 		cur.FP = fp
-		p.say(f, "refresh the fingerprint of revision %d, which no propagating link pins", cur.Rev)
+		p.say(f, "refresh the fingerprint of revision %d, which nothing seals", cur.Rev)
 	default:
 		return rs
 	}
 	p.edit(f).revisions = rs
 	return rs
+}
+
+// recordFixed writes a fixed record's own fingerprint when it has none. One
+// that has gone out of step with its fingerprint is left alone: it can't be
+// changed, and validate says so.
+func (p *Plan) recordFixed(f *graph.File) {
+	n := f.Node
+	if f.Record == nil || !n.RecordedFingerprint().IsZero() {
+		return
+	}
+	if n.HasTemplateBody() {
+		p.warn(f, "%s still has the template body; write it, then run mason sync", n.ID)
+		return
+	}
+	fp := n.Fingerprint()
+	p.edit(f).fp = &fp
+	p.say(f, "record the fingerprint of %s", n.ID)
 }
 
 // pin does steps 3 and 4 for one link.
@@ -157,9 +201,10 @@ func (p *Plan) pin(e *graph.Edge, target []graph.Revision) {
 		return
 	}
 	if e.Seals() && e.Pin.Rev < cur.Rev && allNonBreaking(target, e.Pin.Rev) {
-		// The re-check a via recorded was against an older revision, so it's
-		// dropped; the revisions' own change values say why the pin moved.
-		p.edit(f).pins[e] = graph.Pin{Rev: cur.Rev, FP: cur.FP}
+		// A via is kept: it is the evidence for an earlier re-check, and a
+		// non-breaking change says nothing against it. The revisions' own
+		// change values say why the pin moved.
+		p.edit(f).pins[e] = graph.Pin{Rev: cur.Rev, FP: cur.FP, Via: e.Pin.Via}
 		p.say(f, "re-pin `%s` to %s@r%d: every revision since r%d is non-breaking", at, e.Target.ID, cur.Rev, e.Pin.Rev)
 	}
 }
@@ -174,10 +219,12 @@ func allNonBreaking(revs []graph.Revision, after int) bool {
 }
 
 // Revise plans `mason revise`. It keeps the current revision's wording (or,
-// for long records, the commit holding it) and opens a new revision. The
-// edit comes after, and the next sync records the new revision's
-// fingerprint. commit holds the file as it is now, or is empty when there's
-// no such commit.
+// for long records, the commit holding it) and opens a new revision with no
+// fingerprint, so nothing seals it yet. The edit comes after, and the next
+// sync records the new revision's fingerprint. A revision that is only
+// quoted can be revised too: the quote keeps naming it, and its fingerprint
+// is kept, which clears the drift warning. commit holds the file as it is
+// now, or is empty when there's no such commit.
 func Revise(n *graph.Node, breaking bool, broken Broken, today, commit string) (*Plan, error) {
 	f := n.File
 	switch {
@@ -190,8 +237,8 @@ func Revise(n *graph.Node, breaking bool, broken Broken, today, commit string) (
 	cur := &rs[len(rs)-1]
 	fp := n.Fingerprint()
 	switch {
-	case !n.Sealed(cur.Rev):
-		return nil, fmt.Errorf("nothing seals revision %d of %s yet (no link that propagates pins it), so it can be edited as it is; no new revision is needed", cur.Rev, n.ID)
+	case !n.Sealed(cur.Rev) && !n.Quoted(cur.Rev):
+		return nil, fmt.Errorf("nothing seals revision %d of %s yet (no propagating link pins it and its status doesn't), so it can be edited as it is; no new revision is needed", cur.Rev, n.ID)
 	case !cur.FP.IsZero() && cur.FP != fp:
 		return nil, fmt.Errorf("the meaning of %s already changed after revision %d was pinned; undo the change first, so the old wording can be kept", n.ID, cur.Rev)
 	}
@@ -210,7 +257,7 @@ func Revise(n *graph.Node, breaking bool, broken Broken, today, commit string) (
 	default:
 		p.warn(f, "no commit holds revision %d's text, since the file has changes not yet committed (or isn't in git), so its old wording won't be recoverable; commit before revising to keep it", cur.Rev)
 	}
-	rs = append(rs, graph.Revision{Rev: cur.Rev + 1, Date: today, FP: fp, Breaking: breaking})
+	rs = append(rs, graph.Revision{Rev: cur.Rev + 1, Date: today, Breaking: breaking})
 	p.edit(f).revisions = rs
 	kind := "non-breaking"
 	if breaking {
@@ -228,7 +275,7 @@ func Recheck(e *graph.Edge, evidence *graph.Node) (*Plan, error) {
 	switch {
 	case e.Pin == nil || e.Target == nil:
 		return nil, fmt.Errorf("`%s` in %s isn't a pinned link", e.Item.Path, e.From.File.Path)
-	case evidence.Kind.Name != "evidence":
+	case !graph.ViaEdge.Allows(evidence.Kind):
 		return nil, fmt.Errorf("%s is of type %s; the reason for a re-check is evidence", evidence.ID, evidence.Kind.Name)
 	}
 	cur := e.Target.Current()
@@ -293,9 +340,20 @@ func (e *fileEdit) apply(path string) ([]byte, error) {
 			h.Set("revisions", record.Render("revisions", record.List(entries...)))
 		}
 	}
+	if e.fp != nil {
+		h.Set(registry.FixedFPField, record.Render(registry.FixedFPField, record.Quoted(e.fp.String())))
+	}
+	for _, field := range e.unlist {
+		v, _ := n.Fields.Get(field)
+		if items := v.Items(); len(items) == 0 {
+			h.Remove(field)
+		} else {
+			h.Set(field, v.Rewrite(items[0].Out()))
+		}
+	}
 	for _, field := range e.pinnedFields() {
 		v, _ := n.Fields.Get(field)
-		h.Set(field, v.Rewrite(e.links(v)))
+		h.Set(field, v.Rewrite(e.links(field, v)))
 	}
 	return h.Bytes(), nil
 }
@@ -312,9 +370,9 @@ func (e *fileEdit) pinnedFields() []string {
 	return fields
 }
 
-// links writes a link field as a list, pinning the links in the plan and
-// leaving the rest as they were.
-func (e *fileEdit) links(field record.Value) record.Out {
+// links writes a link field as a list, or as one value when the field takes
+// one link, pinning the links in the plan and leaving the rest as they were.
+func (e *fileEdit) links(name string, field record.Value) record.Out {
 	byPath := map[string]*graph.Edge{}
 	for edge := range e.pins {
 		byPath[edge.Item.Path.String()] = edge
@@ -327,6 +385,9 @@ func (e *fileEdit) links(field record.Value) record.Out {
 			continue
 		}
 		items = append(items, e.pins[edge].Out(edge.To.Name).WithCommentsOf(item))
+	}
+	if len(items) == 1 && e.file.Type.SingleLink(name) {
+		return items[0]
 	}
 	return record.List(items...)
 }

@@ -70,7 +70,21 @@ func (c *checker) schemaError(f *graph.File, e *jsonschema.ValidationError) {
 		}
 		return
 	}
+	if msg, ok := c.unlist(f, fl, e.ErrorKind); ok {
+		c.ds.Fixablef(fl.pos, "%s", msg)
+		return
+	}
 	c.ds.Errorf(fl.pos, "%s", explain(fl, e.ErrorKind))
+}
+
+// unlist explains a one-item or empty list written where a single link goes,
+// which `mason sync` rewrites to the single value.
+func (c *checker) unlist(f *graph.File, fl failure, k jsonschema.ErrorKind) (string, bool) {
+	t, ok := k.(*kind.Type)
+	if !ok || t.Got != "array" || len(fl.at) != 1 || !slices.Contains(f.ListedSingleLinks(), fl.at[0]) {
+		return "", false
+	}
+	return fmt.Sprintf("`%s` is a list, but it takes one link, not a list; `mason sync` rewrites it", fl.at), true
 }
 
 // unknownField explains a field the schema doesn't have.

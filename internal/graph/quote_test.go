@@ -18,18 +18,18 @@ func TestQuotePinDoesNotSeal(t *testing.T) {
 	if quote.Pin == nil || quote.Seals() {
 		t.Errorf("a quote is pinned but doesn't seal: pin %v, seals %v", quote.Pin, quote.Seals())
 	}
-	if quote.Stale() {
+	if quote.Concerns().Has(Stale) {
 		t.Error("a quote of an older revision isn't stale")
 	}
-	if fnd := g.Node("fnd_k3m9qx"); fnd.Sealed(1) || fnd.PinnedBy(1) != nil {
+	if fnd := g.Node("fnd_k3m9qx"); fnd.Sealed(1) || fnd.SealedBy(1) != nil {
 		t.Error("a quoted finding's revision isn't sealed or pinned by the quote")
 	}
 
 	built := edge(t, g, "task_9w4hzd", "derived_from")
-	if !built.Seals() || !built.Stale() {
-		t.Errorf("a pin on a propagating edge seals, and is stale behind: seals %v, stale %v", built.Seals(), built.Stale())
+	if !built.Seals() || !built.Concerns().Has(Stale) {
+		t.Errorf("a pin on a propagating edge seals, and is stale behind: seals %v, stale %v", built.Seals(), built.Concerns().Has(Stale))
 	}
-	if dd := g.Node("dd_c5r1tw"); !dd.Sealed(1) || len(dd.PinnedBy(1)) != 1 {
+	if dd := g.Node("dd_c5r1tw"); !dd.Sealed(1) || len(dd.SealedBy(1)) != 1 {
 		t.Error("a design doc's pinned revision is sealed")
 	}
 }

@@ -14,16 +14,25 @@ type Pos struct {
 	Line int
 }
 
+// Severity is how much a diagnostic matters.
+type Severity uint8
+
+const (
+	Error   Severity = iota // keeps tools that write away from the file
+	Fixable                 // an error that `mason sync` repairs, so it doesn't keep sync from the file
+	Warning
+)
+
 // Diagnostic is one thing wrong with a file.
 type Diagnostic struct {
 	Pos
-	Warning bool
-	Msg     string
+	Severity Severity
+	Msg      string
 }
 
 func (d Diagnostic) String() string {
 	level := "error"
-	if d.Warning {
+	if d.Severity == Warning {
 		level = "warning"
 	}
 	return fmt.Sprintf("%s:%d: %s: %s", d.Path, d.Line, level, d.Msg)
@@ -37,9 +46,14 @@ func (l *List) Errorf(at Pos, format string, args ...any) {
 	*l = append(*l, Diagnostic{Pos: at, Msg: fmt.Sprintf(format, args...)})
 }
 
+// Fixablef adds an error that `mason sync` repairs.
+func (l *List) Fixablef(at Pos, format string, args ...any) {
+	*l = append(*l, Diagnostic{Pos: at, Severity: Fixable, Msg: fmt.Sprintf(format, args...)})
+}
+
 // Warnf adds a warning.
 func (l *List) Warnf(at Pos, format string, args ...any) {
-	*l = append(*l, Diagnostic{Pos: at, Warning: true, Msg: fmt.Sprintf(format, args...)})
+	*l = append(*l, Diagnostic{Pos: at, Severity: Warning, Msg: fmt.Sprintf(format, args...)})
 }
 
 // Sort orders diagnostics by file, then line, then message, so output is the
@@ -53,7 +67,7 @@ func (l List) Sort() {
 // Count returns the number of errors and warnings.
 func (l List) Count() (errs, warnings int) {
 	for _, d := range l {
-		if d.Warning {
+		if d.Severity == Warning {
 			warnings++
 		} else {
 			errs++

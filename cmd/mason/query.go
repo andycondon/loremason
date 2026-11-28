@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/andycondon/loremason/internal/cli"
+	"github.com/andycondon/loremason/internal/graph"
 	"github.com/andycondon/loremason/internal/index"
 	"github.com/andycondon/loremason/internal/registry"
 )
@@ -72,19 +73,42 @@ var dependentsCmd = &cli.Command{
 
 var staleCmd = &cli.Command{
 	Name:    "stale",
-	Summary: "list the records that changed since links were pinned to them",
+	Summary: "list the links that need a re-check, grouped by the record that changed: stale pins, reopened or orphaned commitments, doubted beliefs",
 	Setup: func(*flag.FlagSet) cli.Action {
 		return query(func(x *index.Index, _ []string, w io.Writer) error {
-			groups, err := x.Stale()
-			for _, g := range groups {
-				fmt.Fprintf(w, "%s  r%d\n", line(g.Target), g.Revision)
-				for _, l := range g.Links {
-					fmt.Fprintf(w, "  %s  %s\n", l.Field, linkLine(l))
-				}
-			}
+			changes, err := x.Stale()
+			printRechecks(w, changes, "")
 			return err
 		})
 	},
+}
+
+// printRechecks prints each changed record, then its links, each with why it
+// needs a re-check, indented by indent.
+func printRechecks(w io.Writer, changes []index.Change, indent string) {
+	for _, c := range changes {
+		fmt.Fprintf(w, "%s%s  r%d\n", indent, line(c.Target), c.Revision)
+		for _, l := range c.Links {
+			fmt.Fprintf(w, "%s  %s  %s  (%s)\n", indent, l.Field, linkLine(l.Link), concernReasons(l.Concerns, c.Target))
+		}
+	}
+}
+
+// concernReasons says why a link needs a re-check, naming the target where
+// that helps. It is the one place both `stale` and `where` word it.
+func concernReasons(c graph.Concern, target index.Summary) string {
+	var why []string
+	for _, f := range c.Each() {
+		switch f {
+		case graph.Orphaned:
+			why = append(why, fmt.Sprintf("rests on %s, which is %s", target.ID, target.Status))
+		case graph.Doubted:
+			why = append(why, fmt.Sprintf("%s's support is undercut or undermined", target.ID))
+		default:
+			why = append(why, f.String())
+		}
+	}
+	return strings.Join(why, ", ")
 }
 
 var reopenedCmd = &cli.Command{

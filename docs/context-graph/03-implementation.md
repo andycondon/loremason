@@ -158,12 +158,14 @@ task:
 ```
 
 - **Meaning fields** are the ones a fingerprint covers (section 5).
-- **`document: true`** marks a type as a document: prose we wrote, quotable as evidence. It's set on `finding`, `design_doc`, `prd` and `plan`. A document type must have the shape: revisable, with `title` and `body` among its meaning fields, `generated_by` (to `activity`) and `attributed_to` (to `actor`) edges, and both as fields in its schema. The registry checks this when it loads, so the next document type needs one line, and a type with the wrong shape is refused. It's the same idea as `commitment`: a shared shape, never stored as a type. An edge's `to` may name `document` beside types and `any`, meaning every document type. Evidence's `from` is `{to: [actor, artifact, document], propagates: false, pinned: true}`.
+- **`document: true`** marks a type as a document: prose we wrote, quotable as evidence. It's set on `finding`, `design_doc`, `prd` and `plan`. A document type must have the shape: revisable (`revisions_inline: false`, so old text stays in git), with `title` and `body` among its meaning fields, `generated_by` (to `activity`) and `attributed_to` (to `actor`) edges, and both as fields in its schema. The registry checks this when it loads, so the next document type needs one line, and a type with the wrong shape is refused. It's the same idea as `commitment`: a shared shape, never stored as a type. An edge's `to` may name `document` beside types and `any`, meaning every document type. Evidence's `from` is `{to: [actor, artifact, document], propagates: false, pinned: true}`.
 - **Identity fields** let `validate` warn that a new record looks like an existing one and suggest using that instead. This mainly helps sources: two `artifact` records with the same URL are probably the same thing, and two `activity` records with the same `session` (section 6) are the same session.
 - **`propagates`** says whether a change in the target means this record needs a re-check. Part 1, section 3.2 lists those edges. Writing it down per edge type is how the "per-edge propagation" in part 1, section 8 starts.
 - **Statuses with a meaning** are data too, each list checked against the type's schema:
   - `fallen` lists a type's statuses that mean the record no longer holds;
-  - `closed` lists the statuses that mean a commitment is no longer in force (section 6);
+  - `closed` lists the statuses that mean a record is no longer in force, for any type (for a belief, `withdrawn`; section 6);
+  - `sealed` lists the statuses at which the record's current revision is sealed (section 5): for a decision, `accepted`, `rejected`, `deprecated` and `superseded`. A question has no status, so for it the key is "settled"; for a step, which has no status of its own, it is its plan's status. `status_from` names the edge a status-less record takes its status from (a step's `part_of`); the record's in-force state and `sealed` key follow it;
+  - on an edge, `target_status` lists the statuses the target should be in (`supersedes` to `superseded`). It applies only when the source is in force and sealed by its status (for a decision, `accepted`), so a draft that isn't yet in force isn't warned about;
   - on an `answers` edge, `settles` lists the source's statuses in which it settles the question (a decision at `accepted`, a belief at `held`), and `pending` lists those in which it is an answer still waiting (a decision at `proposed` or `leaning`).
 
 **Where work stands is separate from how settled it is.** A task's `status` says how settled the commitment is. Its `progress` says where the work is: `todo` (the default, so a task without the field is `todo`), `in_progress`, `blocked` or `done`. A blocked task can name what it waits on in `blocked_by`, a list of links to any record. A question has no status: it is open until an answer settles it, or until it is marked `dropped:` with the reason. Answering a question never edits it. Neither progress nor dropping is part of a record's meaning, so neither makes a link stale.
@@ -193,13 +195,13 @@ A link appears in one of two forms:
 
 A pinned link can carry one more field: `via: ev_…`. It names the evidence recording the last re-check that concluded "still holds" (section 5), so the reason for a re-pin is one click away.
 
-Some edges never propagate. `part_of` to an initiative, `involves`, `interested_in`, `answers` and `mentions` are always bare. Evidence `from` a document (a finding, design doc, PRD or plan) is pinned, so the quote can be traced to the revision it was taken from, but it doesn't propagate and it doesn't seal that revision (section 5): revising a document doesn't make its old quotes wrong.
+Some edges never propagate. `part_of` to an initiative, `involves`, `answers` and `mentions` are always bare. Evidence `from` a document (a finding, design doc, PRD or plan) is pinned, so the quote can be traced to the revision it was taken from, but it doesn't propagate and it doesn't seal that revision (section 5): revising a document doesn't make its old quotes wrong.
 
 ## 5. Revisions, fingerprints and re-checks
 
 ### Revisions in the file
 
-A revisable record (beliefs, questions, findings and every commitment) keeps a `revisions` list in its header. The last entry is the current revision:
+A revisable record (beliefs, questions, findings, steps and every commitment) keeps a `revisions` list in its header. The last entry is the current revision:
 
 ```yaml
 revisions:
@@ -218,30 +220,39 @@ revisions:
 - **For long documents, the old text stays in git.** That covers findings, design docs, PRDs, tasks, plans and decisions. Their entries hold a `commit` instead of the old text, so a file doesn't fill up with old drafts. Staleness never needs the old text, only the fingerprints, which are always in the file.
 - **A record with no `revisions` list is at revision 1.** That's how a new record starts, so `@r1` can be named straight away. `mason sync` writes the entry, with its date and fingerprint.
 
-### Drafting stays cheap: a revision is sealed when something propagating pins it
+### Drafting stays cheap: a revision is sealed when something relies on it
 
-Until another record pins a revision with a link that propagates, it can be edited freely. `mason sync` keeps its recorded fingerprint up to date, and no new revision is made.
+A revision can be edited freely until it is sealed. `mason sync` keeps its recorded fingerprint up to date, and no new revision is made. Two things seal a record's current revision:
 
-**A pin seals a revision only when its link propagates.** The first such pin seals it. After that, a change of substance needs a new revision. **The revision comes first, then the edit:**
+| Type | What seals it |
+|---|---|
+| belief, finding, design doc, PRD, requirement, task, plan | The first propagating pin on it (a link that propagates and names this revision) |
+| decision | A propagating pin, or its status reaching `accepted` (and after: `rejected`, `deprecated`, `superseded`) |
+| question | A propagating pin, or being settled |
+| step | A propagating pin, or its plan's status reaching `accepted` |
+
+A status seals a revision only once `mason sync` has recorded its fingerprint, so a revision `mason revise` has just opened can still be edited until the next sync. Until then `validate` warns that the status will seal it once it is written down.
+
+Which statuses seal is data, the `sealed` key in `types.yaml`. The status rule makes "in force" mean "unchangeable in place": settling a decision is a visible act, and after it a change of meaning is a new revision. Once a revision is sealed, a change of substance needs a new revision. **The revision comes first, then the edit:**
 
 1. `mason revise <id> --breaking` (or `--non-breaking`) keeps the current wording inline, or for long records the commit that holds it, and opens the next revision. It needs one of the two flags, so an agent never meets a prompt.
 2. Edit the record.
-3. `mason sync` records the new revision's fingerprint, since no propagating link pins it yet.
+3. `mason sync` records the new revision's fingerprint, since nothing seals it yet.
 
 Doing it in that order means the old wording is always still in the file when it's kept, with no need for git. If someone changes a sealed record's substance without a revision, `validate` fails and says to undo the change, run `mason revise`, then make it again. `revise` refuses to run in that state, so the changed wording can't be kept by mistake as the old one.
 
-**Quotes don't seal.** The one pinned link that doesn't propagate is evidence `from` a document. Its pin records the revision and fingerprint at the moment of quoting, and that's all it does:
+**Quotes pin but don't seal.** The one pinned link that doesn't propagate is evidence `from` a document. Its pin records the revision and fingerprint at the moment of quoting. It doesn't force a revision, but it lets you make one: sealed means you must revise, quoted means you may.
 
 - It doesn't seal the revision, so the document stays free to edit. `mason sync` keeps refreshing the unsealed revision's fingerprint as before.
 - It's never stale, and `sync` never moves it forward.
-- Its fingerprint isn't checked against the revision's, since the revision may have moved on.
+- `validate` warns when the quote's recorded fingerprint no longer matches the quoted revision's text, since the document was edited after the quote was taken. The warning says to run `mason revise <id>` before editing (undo the change first), so the quoted revision is kept. Doing so keeps that revision's wording and fingerprint, the quote keeps naming it, and the warning clears. If the quoted revision is already past, the warning says to restore the text or write new evidence.
 - The quote stays traceable. The evidence holds the verbatim text, and the pin's revision plus git history (the document as it was when the evidence was written) show where it came from.
 
 The seal exists so that a change reaches the work built on it. A quote doesn't need that, because it doesn't propagate and already holds its text. Findings keep evolving after someone quotes them, so sealing on a quote would get in the way of ideation.
 
-This is what keeps the structure out of the way while ideas are forming. A design doc, finding or plan can go through many drafts in a day. Revisions only start once other work is built on it through a link that propagates.
+This is what keeps the structure out of the way while ideas are forming. A design doc, finding or plan can go through many drafts in a day. Revisions only start once other work is built on it through a link that propagates, or its status says it is in force.
 
-Status changes and new support links are never substance. They're edited in place, and git keeps their history.
+Status changes and new support links are never substance. They're edited in place, and git keeps their history. (A status change can still seal, as the table shows.) One flip isn't caught: setting an accepted decision back to `proposed`, editing it, and accepting it again. Git history shows it.
 
 ### Fingerprints
 
@@ -273,7 +284,7 @@ When a pinned link no longer matches its target, the record holding it is stale.
 | **Still holds** | The pin is updated to the target's current revision and fingerprint, with `via` pointing at a new evidence record that says why (`about` the record, `generated_by` the agent's session). The record itself gets no new revision, so nothing below it is touched. That's early cutoff. |
 | **Needs to change** | The record gets a new revision through `mason revise`, and its pins are updated. Whatever pins *it* now becomes stale, one step further down. |
 
-**Non-breaking revisions re-pin quietly.** If every revision between a pin and its target's current one is `non_breaking`, `mason sync` moves the pin forward with no re-check and no evidence. The revision's own `change` value is the record of why, so a `via` from an earlier re-check is dropped.
+**Non-breaking revisions re-pin quietly.** If every revision between a pin and its target's current one is `non_breaking`, `mason sync` moves the pin forward with no re-check and no evidence. The revision's own `change` value is the record of why, so the pin keeps its `via`: it still names the evidence from the last re-check.
 
 Pins, `via` links and re-check evidence all live in record files, never only in the index. So a rebuild from the files always gives the same answer to "what is stale?".
 
@@ -296,7 +307,7 @@ erDiagram
     text title
     text status
     text progress "computed"
-    bool settled "computed"
+    bool open "computed"
     int revision
     text fingerprint "current, computed"
     text path
@@ -310,8 +321,7 @@ erDiagram
     int pinned_rev
     text pinned_fp
     bool propagates
-    bool stale "computed"
-    bool reopens "computed"
+    int concerns "computed"
     bool settles "computed"
     bool pending "computed"
     text role
@@ -350,11 +360,15 @@ erDiagram
 - **`initiatives`** holds each initiative's slug, purpose and goals, for `mason where` and the generated README.
 - A **`meta`** table records what the index was built from: the loremason version, the fingerprint method, the index's schema version, a hash of the record types (`types.yaml` and the JSON schemas), and the files' signature.
 
-**The rules are computed once, in Go, and stored.** Whether a link is stale (its pin no longer matches the target's current revision and fingerprint) and whether it reopens a commitment are worked out by the same code `sync` and `validate` use, and written to `edges.stale` and `edges.reopens`. The queries only select on those columns, so a rule has one home and `stale` can never disagree with `sync`.
+**The rules are computed once, in Go, and stored.** Whether a link needs a re-check, and why, is one value, its concerns: any of stale (its pin no longer matches the target's current revision and fingerprint), reopens, orphaned and doubted, all worked out in one place by the same code `sync` and `validate` use. They are written to the one column `edges.concerns`. A link has concerns only when it propagates, its source is a commitment still in force, and its target exists. The queries only select on that column, so a rule has one home and `stale` and `where` can never disagree with `sync` or each other.
 
-The same goes for where work stands: a task's progress (with its default), whether a node is settled (dropped, or settled by an incoming `answers` link), whether each `answers` link settles or is pending, and each initiative's members are worked out in Go and stored, and `mason where` only selects.
+The same goes for where work stands: a task's progress (with its default), whether a node is settled (dropped, or settled by an incoming `answers` link), whether a question is still open (not settled, or settled with an answer that is still pending), whether each `answers` link settles or is pending, and each initiative's members are worked out in Go and stored, and `mason where` only selects.
 
-A link **reopens** its source when it propagates, its source is a commitment still in force, and its target's status is one its type marks as fallen. Which statuses count as fallen is data, declared in `types.yaml` beside each type's statuses: for a belief, `incorrect` and `insufficient`. Which statuses close a commitment is data too (for commitments, `rejected`, `deprecated` and `superseded`), so a commitment already turned down or replaced isn't listed again. A belief that is withdrawn reopens nothing.
+A link **reopens** its source when it propagates, its source is a commitment still in force, and its target's status is one its type marks as fallen. Which statuses count as fallen is data, declared in `types.yaml` beside each type's statuses: for a belief, `incorrect` and `insufficient`. Which statuses close a record is data too (for commitments, `rejected`, `deprecated` and `superseded`; for a belief, `withdrawn`), so a commitment already turned down or replaced isn't listed again. A belief that is withdrawn reopens nothing, but a commitment in force that relies on one is reported separately ("rests on bel_x, which is withdrawn"). Generally, a propagating link from a record in force to a closed record is reported as needing a re-check, like a stale link ("rests on X, which is <status>"), and it is one of the link's concerns, so `mason stale` and `mason where` list it.
+
+A belief is doubted when evidence undermines evidence one of its `supports` links cites, or undercuts one of those links. The commitments relying on a doubted belief show in `where`'s re-check list. The quiet re-check writes evidence and sets `via` on the `relies_on` pin. Once that evidence is observed on or after every undermining or undercutting evidence (compared as instants of `observed_at`: a date alone is midnight UTC, a time with no offset is UTC, and a tie clears the doubt), the doubt clears; a newer undermine brings it back. Only `supports` links count. Evidence whose `observed_at` is missing or unreadable clears nothing. Until a `mason recheck` command exists, `via` is set by hand.
+
+`validate` warns about records that disagree with each other: a `held` belief with a support link whose direction is `disputes` (it prompts setting the belief to `incorrect`); a decision whose `chooses` names an option of a question it doesn't `answers`; two decisions in force that settle one question; a decision that `supersedes` another that isn't `superseded`; and a task with more than one plan in force. The edge-shaped ones are data in `types.yaml` (`within`, `target_status`, `one_in_force`, documented in its header) and checked generically; the belief ones are written in the check and the index. `target_status` applies only when the source is in force and sealed by its status (for a decision, accepted). A question is open until an answer settles it (an accepted decision, or a held belief); while a decision answering it is `proposed` or `leaning`, it stays listed with the answer waiting, whatever else answers it; a dropped question isn't listed. Evidence's fingerprint is recorded by the first `mason sync` after it is written (not while the body is still the template), and `validate` fails if it changes. A plan is `part_of` its initiative, like every commitment (the plan template has a `part_of` field).
 
 Following links is done in Go, not in SQL. `mason dependents` loads the links that propagate once and walks them breadth-first, remembering each record it has seen, so a record is listed once at its shortest depth and a cycle or a densely linked graph costs one visit per record. (A recursive SQL query, `WITH RECURSIVE`, visits every path, and the number of paths grows explosively.) Walks like this are used to follow and explain, such as listing everything built on a record. They're never used to mark a whole chain stale.
 
@@ -367,7 +381,7 @@ Following links is done in Go, not in SQL. `mason dependents` loads the links th
 | `mason find <words>` | Which records match these words? Takes one or more words, unquoted if you like. Shows each record's ID, type, status and title. |
 | `mason show <id>` | One record's text, with its links out and the links pointing at it, each showing the record at the other end by ID, type, status and title. |
 | `mason dependents <id>` | What is built on this, directly and further down? Follows links that propagate, with each record's depth; a record that only mentions this one isn't listed. |
-| `mason stale` | Which links need a re-check, grouped by the record that changed? |
+| `mason stale` | Which links need a re-check (stale pin, reopened, orphaned or doubted), and why, grouped by the record that changed? `mason reopened` lists only the reopened ones. |
 | `mason reopened` | Which commitments rely on a belief that has fallen? |
 | `mason where <initiative>` | The "where are we" view of an initiative, named by slug, ID or alias: tasks in progress, blocked tasks with what they wait on, open questions with their pending answers, and the links from the initiative's records (and their sub-records) that need a re-check, grouped by the record that changed. |
 
@@ -375,7 +389,7 @@ Queries print plain text, one stable line per result, which people and agents bo
 
 Writing commands are kept separate and few. `mason new <type>` creates a record with a fresh ID, `mason revise <id>` makes a new revision, and `mason sync` fills pins, refreshes unsealed fingerprints, re-pins across non-breaking revisions and regenerates views. `validate` only reads, and fails on any error.
 
-`mason sync` works in a fixed order, because a propagating pin seals the revision it names: first it writes revision 1 where it's missing, then it records fingerprints of revisions no propagating link pins yet, then it pins bare links, then it re-pins across non-breaking revisions. It leaves a file with errors alone and says so, because re-writing a link list it can't read could lose what a person wrote. `mason sync --dry-run` says what it would do. Rewritten fields always take one form: links as a block list of `{to, rev, fp, via}` maps, revisions as a block list of maps. Every other line keeps its bytes, comments and spacing.
+`mason sync` works in a fixed order, because a propagating pin (or a status that seals) fixes the revision it names: first it writes revision 1 where it's missing, then it records fingerprints of revisions that aren't sealed yet, then it pins bare links, then it re-pins across non-breaking revisions. It leaves a file with errors alone and says so, because re-writing a link list it can't read could lose what a person wrote. `mason sync --dry-run` says what it would do. Rewritten fields always take one form: links as a block list of `{to, rev, fp, via}` maps, revisions as a block list of maps. Every other line keeps its bytes, comments and spacing.
 
 **Sessions attach what they write to an activity.** Knowledge belongs to no initiative (part 1, section 3.4), so a finding's trail to its initiative goes through the activity of the session that wrote it. `mason new` attaches that activity itself for findings and evidence, so nobody has to remember to. The session is named by environment variables:
 - `LOREMASON_SESSION` is any key the harness gives the session, such as an agent's session ID set by a session-start hook.
@@ -437,11 +451,11 @@ The IDs follow part 1, section 5.
 
 ```
 $ mason stale
-validate doesn't handle Latin-1 input  (belief, r1 → r2, breaking)
-  └ Report unreadable files clearly  (task, accepted)
+bel_7k3m9q  belief  held  validate doesn't handle Latin-1 input  r2
+  relies_on  task_9w4hzd  task  accepted  Report unreadable files clearly  pinned r1 fp1:536221e3130c  (stale)
 ```
 
-Only the task appears. The plan and steps aren't stale: their pins point at the task, and the task hasn't changed.
+The output groups links by the record that changed, one line per link with the revision it still pins. Only the task appears. The plan and steps aren't stale: their pins point at the task, and the task hasn't changed.
 
 **4. The re-check stops early.** An agent re-reads the task against the new claim. Reporting unreadable files clearly is still the right outcome. The agent writes evidence `ev_m3q8vb` ("still holds: the outcome doesn't depend on which encodings fail") and moves the task's pin to `{to: bel_7k3m9q, rev: 2, fp: "fp1:91bd04e6c2a8", via: ev_m3q8vb}`. The task gets no new revision, so the plan is never touched.
 
@@ -478,9 +492,9 @@ None of these changes the file format. Each can be added without rewriting recor
 | **meaning fields** | The fields a fingerprint covers. A change elsewhere is formatting or metadata. |
 | **identity fields** | Fields that suggest two records are the same thing, such as an artifact's URL. |
 | **bare link / pinned link** | A link as written, or with the target's revision and fingerprint recorded. |
-| **sealed** | A revision that a link that propagates has pinned. A quote's pin (evidence `from` a document) doesn't seal. From then on, a change of substance needs a new revision. |
+| **sealed** | A revision that a link that propagates has pinned, or whose record's status says it is in force (a decision once `accepted`, a question once settled, a step once its plan is `accepted`). A quote's pin (evidence `from` a document) doesn't seal. From then on, a change of substance needs a new revision. |
 | **canonical form** | The exact text a fingerprint is computed from, fixed so that the same meaning always gives the same fingerprint. |
-| **`via`** | On a pinned link: the evidence recording the re-check that last re-pinned it. |
+| **`via`** | On a pinned link: the evidence from the last re-check that concluded "still holds". A quiet non-breaking re-pin keeps it. |
 | **generated page** | A page built from records, committed, and never edited by hand. |
 | **alias** | Another name for a record, such as its ID before migration. |
 

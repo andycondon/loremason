@@ -70,18 +70,13 @@ func CleanTitle(s string) (string, error) {
 }
 
 // render writes a new record: id, title, the type's template, created, and
-// the type's body. A generated_by link replaces the template's empty one, or
-// is added after the template when it has none.
+// the type's body. A generated_by link is added after the template, as one
+// value, since a record comes from one activity.
 func render(t *registry.Type, rid, title, today string, opts CreateOptions) string {
 	fill := strings.NewReplacer("{title}", record.Quote(title), "{slug}", record.Quote(slug(title, rid)), "{today}", today)
 	header := fill.Replace(t.Template)
 	if opts.GeneratedBy != "" {
-		link := "generated_by: [" + opts.GeneratedBy + "]\n"
-		if strings.Contains(header, "generated_by: []\n") {
-			header = strings.Replace(header, "generated_by: []\n", link, 1)
-		} else {
-			header += link
-		}
+		header += "generated_by: " + opts.GeneratedBy + "\n"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "---\nid: %s\ntitle: %s\n%screated: %s\n---\n", rid, record.Quote(title), header, today)

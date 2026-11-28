@@ -70,9 +70,9 @@ func TestCreateWritesGeneratedBy(t *testing.T) {
 	reg := registry.Load()
 	for typ, want := range map[string]string{
 		// evidence's template has an empty list to fill
-		"evidence": "from: []\ngenerated_by: [actv_k3m9qx]\ncreated:",
+		"evidence": "from: []\ngenerated_by: actv_k3m9qx\ncreated:",
 		// a finding's template has none, so the line is added
-		"finding": "title: Caching helps\ngenerated_by: [actv_k3m9qx]\ncreated:",
+		"finding": "title: Caching helps\ngenerated_by: actv_k3m9qx\ncreated:",
 	} {
 		ty, _ := reg.Find(typ)
 		root := t.TempDir()

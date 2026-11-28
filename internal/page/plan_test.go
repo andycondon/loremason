@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/andycondon/loremason/internal/diag"
 	"github.com/andycondon/loremason/internal/index"
 	"github.com/andycondon/loremason/internal/registry"
 )
@@ -43,7 +44,7 @@ func TestPlanCatchesAHandEditAndApplyFixesIt(t *testing.T) {
 	write(t, w, "initiatives/alpha/README.md", strings.Replace(page, "Be fast.", "Be slow.", 1))
 
 	p, ds := plan(t, w)
-	if len(ds) != 1 || ds[0].Path != "initiatives/alpha/README.md" || ds[0].Warning {
+	if len(ds) != 1 || ds[0].Path != "initiatives/alpha/README.md" || ds[0].Severity == diag.Warning {
 		t.Fatalf("diagnostics: %v", ds)
 	}
 	for _, want := range []string{"is out of date", "line 7 reads `Be slow.`", "should read `Be fast.`", "run `mason sync`"} {
@@ -91,7 +92,7 @@ func TestPlanLeavesAHandWrittenPageAlone(t *testing.T) {
 	}
 	found := false
 	for _, d := range ds {
-		if d.Path == "initiatives/alpha/README.md" && !d.Warning && strings.Contains(d.Msg, "hand-written") {
+		if d.Path == "initiatives/alpha/README.md" && d.Severity != diag.Warning && strings.Contains(d.Msg, "hand-written") {
 			found = true
 		}
 	}
@@ -313,7 +314,7 @@ func TestPlanReportsAPageThatIsNotAFile(t *testing.T) {
 	for _, page := range []string{"initiatives/alpha/README.md", "initiatives/beta/README.md"} {
 		found := false
 		for _, d := range ds {
-			if d.Path == page && !d.Warning && strings.Contains(d.Msg, "not a regular file") {
+			if d.Path == page && d.Severity != diag.Warning && strings.Contains(d.Msg, "not a regular file") {
 				found = true
 			}
 		}

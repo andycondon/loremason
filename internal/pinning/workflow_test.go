@@ -3,6 +3,7 @@ package pinning
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -42,7 +43,7 @@ func TestDraftsStayCheap(t *testing.T) {
 	w := testws.New(t, map[string]string{"design-doc/dd_c5r1tw.md": "---\nid: dd_c5r1tw\ntitle: Reading files safely\nstatus: proposed\ncreated: 2026-11-22\n---\n\nFirst draft.\n"})
 	sync(t, w)
 	w.Edit("design-doc/dd_c5r1tw.md", "First draft.", "Second draft, much better.")
-	if got := actions(sync(t, w)); !strings.Contains(got, "refresh the fingerprint of revision 1, which no propagating link pins") {
+	if got := actions(sync(t, w)); !strings.Contains(got, "refresh the fingerprint of revision 1, which nothing seals") {
 		t.Errorf("got %s", got)
 	}
 	if n := w.Node("dd_c5r1tw"); len(n.Revisions) != 1 || n.Current().FP != n.Fingerprint() {
@@ -153,5 +154,81 @@ func TestReviseRefuses(t *testing.T) {
 		if _, err := tryRevise(t, w, id, true); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v", id, err)
 		}
+	}
+}
+
+// A via names the evidence for an earlier re-check; a quiet re-pin across
+// non-breaking revisions keeps it.
+func TestNonBreakingRepinKeepsTheVia(t *testing.T) {
+	w := testws.New(t, map[string]string{
+		"requirement/req_5txk3a.md": "---\nid: req_5txk3a\ntitle: Unreadable files\nstatement: validate reports unreadable files\nstatus: accepted\ncreated: 2026-11-22\n---\n",
+		"task/task_9w4hzd.md":       "---\nid: task_9w4hzd\ntitle: Report them\nstatus: accepted\nimplements: req_5txk3a\ncreated: 2026-11-22\n---\n",
+		"evidence/ev_m3q8vb.md":     "---\nid: ev_m3q8vb\ntitle: It still holds\nobserved_at: 2026-11-29\nabout: task_9w4hzd\ncreated: 2026-11-29\n---\n",
+	})
+	sync(t, w)
+	pin := regexp.MustCompile(`\{to: req_5txk3a, rev: 1, fp: "[^"]+"\}`)
+	task := w.Read("task/task_9w4hzd.md")
+	if !pin.MatchString(task) {
+		t.Fatalf("the link isn't pinned:\n%s", task)
+	}
+	w.Write("task/task_9w4hzd.md", pin.ReplaceAllStringFunc(task, func(s string) string { return strings.TrimSuffix(s, "}") + ", via: ev_m3q8vb}" }))
+	sync(t, w)
+
+	revise(t, w, "req_5txk3a", false)
+	w.Edit("requirement/req_5txk3a.md", "reports unreadable files", "reports unreadable files clearly")
+	if got := actions(sync(t, w)); !strings.Contains(got, "re-pin `implements[0]` to req_5txk3a@r2") {
+		t.Fatalf("got %s", got)
+	}
+	if got := w.Read("task/task_9w4hzd.md"); !strings.Contains(got, "rev: 2") || !strings.Contains(got, "via: ev_m3q8vb}") {
+		t.Errorf("the re-pin lost the via:\n%s", got)
+	}
+	if stale := w.Stale(); len(stale) != 0 {
+		t.Errorf("stale: %v", stale)
+	}
+}
+
+// A re-check's via clears a doubt, and a quiet non-breaking re-pin keeps it
+// doing so: the link isn't doubted again afterwards.
+func TestNonBreakingRepinKeepsTheViaAgainstADoubt(t *testing.T) {
+	w := testws.New(t, map[string]string{
+		"evidence/ev_e1e1e1.md": "---\nid: ev_e1e1e1\ntitle: First\nobserved_at: 2026-11-22\nabout: bel_7k3m9q\ncreated: 2026-11-22\n---\n",
+		"evidence/ev_e2e2e2.md": "---\nid: ev_e2e2e2\ntitle: Against it\nobserved_at: 2026-11-23\nundermines: [ev_e1e1e1]\ncreated: 2026-11-23\n---\n",
+		"evidence/ev_m3q8vb.md": "---\nid: ev_m3q8vb\ntitle: It still holds\nobserved_at: 2026-11-29\nabout: task_9w4hzd\ncreated: 2026-11-29\n---\n",
+		"belief/bel_7k3m9q.md":  strings.Replace(testws.Belief, "created:", "support: [{id: s1, evidence: ev_e1e1e1, direction: supports}]\ncreated:", 1),
+		"task/task_9w4hzd.md":   "---\nid: task_9w4hzd\ntitle: Report them\nstatus: accepted\nrelies_on: [bel_7k3m9q]\ncreated: 2026-11-22\n---\n",
+	})
+	sync(t, w)
+	concerns := func() graph.Concern {
+		for _, e := range w.Load().Edges {
+			if e.From.ID == "task_9w4hzd" && e.Name == "relies_on" {
+				return e.Concerns()
+			}
+		}
+		t.Fatal("no relies_on edge")
+		return 0
+	}
+	if !concerns().Has(graph.Doubted) {
+		t.Fatal("the link isn't doubted before the re-check")
+	}
+	pin := regexp.MustCompile(`\{to: bel_7k3m9q, rev: 1, fp: "[^"]+"\}`)
+	task := w.Read("task/task_9w4hzd.md")
+	if !pin.MatchString(task) {
+		t.Fatalf("the link isn't pinned:\n%s", task)
+	}
+	w.Write("task/task_9w4hzd.md", pin.ReplaceAllStringFunc(task, func(s string) string { return strings.TrimSuffix(s, "}") + ", via: ev_m3q8vb}" }))
+	if concerns().Has(graph.Doubted) {
+		t.Fatal("the via doesn't clear the doubt")
+	}
+
+	revise(t, w, "bel_7k3m9q", false)
+	w.Edit("belief/bel_7k3m9q.md", "non-UTF-8 input", "non-UTF-8 input, such as Latin-1")
+	if got := actions(sync(t, w)); !strings.Contains(got, "re-pin `relies_on[0]` to bel_7k3m9q@r2") {
+		t.Fatalf("got %s", got)
+	}
+	if got := w.Read("task/task_9w4hzd.md"); !strings.Contains(got, "via: ev_m3q8vb}") {
+		t.Errorf("the re-pin lost the via:\n%s", got)
+	}
+	if c := concerns(); c != 0 {
+		t.Errorf("concerns after the re-pin: %q", c)
 	}
 }

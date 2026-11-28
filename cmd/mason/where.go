@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/andycondon/loremason/internal/cli"
 	"github.com/andycondon/loremason/internal/index"
@@ -54,19 +53,7 @@ func printView(w io.Writer, v *index.View) {
 		}
 	})
 	section(w, "needs a re-check", len(v.Recheck), func() {
-		for _, c := range v.Recheck {
-			fmt.Fprintf(w, "  %s  r%d\n", line(c.Target), c.Revision)
-			for _, l := range c.Links {
-				var why []string
-				if l.Stale {
-					why = append(why, "stale")
-				}
-				if l.Reopens {
-					why = append(why, "reopens")
-				}
-				fmt.Fprintf(w, "    %s  %s  (%s)\n", l.Field, linkLine(l.Link), strings.Join(why, ", "))
-			}
-		}
+		printRechecks(w, v.Recheck, "  ")
 	})
 }
 

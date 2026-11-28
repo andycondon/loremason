@@ -73,6 +73,10 @@
       },
       "additionalProperties": false
     },
+    "single_link": {
+      "description": "a single ID such as actv_7k3m9q",
+      "$ref": "common.json#/$defs/ref"
+    },
     "links": {
       "description": "an ID such as bel_7k3m9q or bel_7k3m9q@r2, or a pinned link {to, rev, fp}, or a list of these",
       "type": [

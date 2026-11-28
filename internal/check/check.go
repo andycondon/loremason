@@ -50,22 +50,27 @@ func Graph(g *graph.Graph, loaded diag.List, reg *registry.Registry) *Result {
 		c.shape(f)
 		c.revisionNumbers(f)
 		c.sealed(f)
+		c.fixed(f)
+		c.disputedBelief(f)
 	}
 	for _, e := range g.Edges {
 		c.target(e)
 		c.revisionRefs(e)
+		c.constraints(e)
 	}
+	c.oneInForce()
 	c.duplicates()
 	c.ds.Sort()
 	return &Result{Graph: g, Records: len(g.Files), Diagnostics: c.ds}
 }
 
 // Broken returns the paths of the files that have errors, not just
-// warnings. Tools that write leave these files alone.
+// warnings or errors that `mason sync` repairs. Tools that write leave these
+// files alone.
 func (r *Result) Broken() map[string]bool {
 	broken := map[string]bool{}
 	for _, d := range r.Diagnostics {
-		if !d.Warning {
+		if d.Severity == diag.Error {
 			broken[d.Path] = true
 		}
 	}

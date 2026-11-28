@@ -11,5 +11,9 @@ options:
   - id: o2
     title: Detect and convert
     against: [bel_c9d4se]
+revisions:
+  - rev: 1
+    date: 2026-11-22
+    fp: "fp1:82125a0364f8"
 created: 2026-11-22
 ---

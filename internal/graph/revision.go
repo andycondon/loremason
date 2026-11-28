@@ -1,8 +1,11 @@
 package graph
 
 import (
+	"strings"
+
 	"github.com/andycondon/loremason/internal/fingerprint"
 	"github.com/andycondon/loremason/internal/record"
+	"github.com/andycondon/loremason/internal/registry"
 )
 
 // Revision is one entry in a record's revisions list. readRevisions and Out
@@ -168,4 +171,22 @@ func withoutRevisions(v any) any {
 		return out
 	}
 	return v
+}
+
+// RecordedFingerprint returns the fingerprint a fixed record wrote down in
+// its own fp field, or zero when it hasn't (sync writes it).
+func (n *Node) RecordedFingerprint() fingerprint.FP {
+	fp, _ := fingerprint.Parse(n.Fields.Text(registry.FixedFPField))
+	return fp
+}
+
+// HasTemplateBody reports whether the record's body is still the one `mason
+// new` wrote for its type, ignoring differences in whitespace. A record that
+// hasn't been written yet shouldn't have its fingerprint recorded.
+func (n *Node) HasTemplateBody() bool {
+	t := n.File.Type
+	if n.File.Record == nil || strings.TrimSpace(t.Body) == "" {
+		return false
+	}
+	return fingerprint.NormalizeBody(n.File.Record.Body) == fingerprint.NormalizeBody(t.Body)
 }

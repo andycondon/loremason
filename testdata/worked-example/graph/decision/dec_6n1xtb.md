@@ -11,5 +11,9 @@ criteria:
   - No file is silently misread
 confirmation: A fixture in each encoding
 relies_on: [bel_7k3m9q]
+revisions:
+  - rev: 1
+    date: 2026-11-22
+    fp: "fp1:1e6d2a957f96"
 created: 2026-11-22
 ---

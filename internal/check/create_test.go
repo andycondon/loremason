@@ -38,7 +38,16 @@ func TestNewRecordsPassEveryCheck(t *testing.T) {
 			}
 		}
 	}
-	if _, got := run(t, w.Root); got != "" {
-		t.Errorf("new records aren't valid:\n%s", got)
+	// Evidence has no fingerprint yet: its body is written after `mason new`,
+	// so `mason sync` records it. That is the one thing left to say.
+	_, got := run(t, w.Root)
+	var rest []string
+	for _, line := range strings.Split(strings.TrimSpace(got), "\n") {
+		if !strings.HasPrefix(line, "graph/evidence/") || !strings.HasSuffix(line, "isn't written down yet; run `mason sync`") {
+			rest = append(rest, line)
+		}
+	}
+	if left := strings.TrimSpace(strings.Join(rest, "\n")); left != "" {
+		t.Errorf("new records aren't valid:\n%s", left)
 	}
 }

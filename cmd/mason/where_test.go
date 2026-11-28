@@ -157,3 +157,41 @@ func TestValidateFailsOnAStalePageUntilSync(t *testing.T) {
 		t.Errorf("after the second sync: exit %d", code)
 	}
 }
+
+func TestWhereAndStaleShowALinkRestingOnAWithdrawnBelief(t *testing.T) {
+	newWorkspace(t, map[string]string{
+		"initiative/" + ini + ".md": rec(ini, "Search", "slug: search", "status: active"),
+		"belief/bel_b1b1b1.md":      rec("bel_b1b1b1", "Gone", "claim: it is so", "status: withdrawn", "asserted_by: agent"),
+		"task/task_a1a1a1.md":       rec("task_a1a1a1", "Build", "status: accepted", "part_of: "+ini, "relies_on: [bel_b1b1b1]"),
+	})
+	want := "rests on bel_b1b1b1, which is withdrawn"
+	for _, cmd := range [][]string{{"where", "search"}, {"stale"}} {
+		if _, out, _ := mason(cmd...); !strings.Contains(out, want) {
+			t.Errorf("%v:\n%s", cmd, out)
+		}
+	}
+	if _, out, _ := mason("reopened"); out != "" {
+		t.Errorf("reopened:\n%s", out)
+	}
+}
+
+// A stale pin from a record that is no longer in force is no concern: neither
+// where nor stale lists it, while the same pin from an accepted record is.
+func TestWhereAndStaleOmitAStalePinFromARejectedDecision(t *testing.T) {
+	pin := `relies_on: [{to: bel_b1b1b1, rev: 1, fp: "fp1:000000000000"}]`
+	newWorkspace(t, map[string]string{
+		"initiative/" + ini + ".md": rec(ini, "Search", "slug: search", "status: active"),
+		"belief/bel_b1b1b1.md":      rec("bel_b1b1b1", "Held", "claim: it is so", "status: held", "asserted_by: agent"),
+		"decision/dec_d1d1d1.md":    rec("dec_d1d1d1", "Accepted choice", "status: accepted", "part_of: "+ini, pin),
+		"decision/dec_d2d2d2.md":    rec("dec_d2d2d2", "Rejected choice", "status: rejected", "part_of: "+ini, pin),
+	})
+	for _, cmd := range [][]string{{"where", "search"}, {"stale"}} {
+		_, out, _ := mason(cmd...)
+		if !strings.Contains(out, "dec_d1d1d1  decision  accepted  Accepted choice  pinned r1 fp1:000000000000  (stale)") {
+			t.Errorf("%v lists no stale link from the accepted decision:\n%s", cmd, out)
+		}
+		if strings.Contains(out, "dec_d2d2d2") {
+			t.Errorf("%v lists the rejected decision's stale pin:\n%s", cmd, out)
+		}
+	}
+}

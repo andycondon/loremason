@@ -74,7 +74,7 @@ func TestBeliefChangeStopsAtTheTaskThatStillHolds(t *testing.T) {
 	g := w.Load()
 	var link *graph.Edge
 	for _, e := range g.Edges {
-		if e.Stale() {
+		if e.Concerns().Has(graph.Stale) {
 			link = e
 		}
 	}
@@ -102,8 +102,12 @@ func TestBeliefChangeStopsAtTheTaskThatStillHolds(t *testing.T) {
 	if errs, _ := checked(t, w).Diagnostics.Count(); errs != 0 {
 		t.Error(problems(t, w))
 	}
-	if p := sync(t, w); !p.Empty() {
+	// The one thing left is the new evidence's own fingerprint.
+	if p := sync(t, w); actions(p) != "graph/evidence/ev_m3q8vb.md: record the fingerprint of ev_m3q8vb" {
 		t.Errorf("step 4: sync after the re-check: %s", actions(p))
+	}
+	if p := sync(t, w); !p.Empty() {
+		t.Errorf("step 4: a second sync: %s", actions(p))
 	}
 }
 

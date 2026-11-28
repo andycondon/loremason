@@ -4,8 +4,10 @@ package graph
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/andycondon/loremason/internal/diag"
 	"github.com/andycondon/loremason/internal/record"
@@ -51,9 +53,13 @@ type Node struct {
 	Revisions []Revision
 	// Incoming are the edges that point at this node.
 	Incoming []*Edge
+	// Outgoing are the edges whose link this node holds.
+	Outgoing []*Edge
 }
 
-// Edge is one link, from the node whose field holds it.
+// Edge is one link, from the node whose field holds it. A pin on it is a
+// concern only when the link propagates, from a committing record still in
+// force (see Concerns): a pin from a record not in force isn't stale either.
 type Edge struct {
 	From   *Node
 	Name   string // the field, such as relies_on, or via for a pin's evidence
@@ -61,8 +67,11 @@ type Edge struct {
 	To     Ref
 	Target *Node // what To resolves to; nil when it doesn't
 	Pin    *Pin  // set when the link records the target's revision
-	At     Loc
-	Item   record.Value // the link as written: a reference, or a {to: …} map
+	// Via is the link in the pin's via, to the evidence for its last re-check;
+	// nil when the pin has none.
+	Via  *Edge
+	At   Loc
+	Item record.Value // the link as written: a reference, or a {to: …} map
 }
 
 // Pinnable reports whether sync should pin the link: the edge should pin
@@ -106,7 +115,7 @@ func (g *Graph) Resolve(r Ref) *Node {
 	}
 	if parent := g.Parent(r); parent != nil {
 		_, local, _ := splitSubrecord(r.Name)
-		return parent.Child(local)
+		return parent.child(local)
 	}
 	return nil
 }
@@ -150,6 +159,17 @@ func (n *Node) IsSubrecord() bool { return n.Parent != nil }
 // Revisable reports whether the node is a record that keeps revisions.
 func (n *Node) Revisable() bool { return n.Kind.Revisable && !n.IsSubrecord() }
 
+// Links returns the node's outgoing edges with this name.
+func (n *Node) Links(name string) []*Edge {
+	var out []*Edge
+	for _, e := range n.Outgoing {
+		if e.Name == name {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // Current returns the current revision. A revisable record always has one
 // (perhaps implicit); for any other node it's nil.
 func (n *Node) Current() *Revision {
@@ -174,26 +194,153 @@ func (n *Node) Revision(rev int) *Revision {
 // a revision without freezing it.
 func (e *Edge) Seals() bool { return e.Pin != nil && e.Def.Propagates }
 
-// Sealed reports whether a propagating link pins the revision. A sealed revision's meaning can't change without a new revision.
-func (n *Node) Sealed(rev int) bool {
+// Quotes reports whether the link quotes its target: it is pinned, but its
+// edge doesn't propagate, so it records a revision without freezing it.
+func (e *Edge) Quotes() bool { return e.Pin != nil && !e.Def.Propagates }
+
+// A Seal is one reason a revision can't change its meaning in place. Exactly
+// one of By, Holder and Answered says which: a propagating link pinned the
+// revision (By); the status of the record, or of the one it takes its status
+// from, is one the type seals at (Status, held by Holder); or an answer
+// settled the question (Answered).
+type Seal struct {
+	By       *Edge
+	Status   string
+	Holder   *Node // whose status it is; the sealed record itself, or the one it takes its status from
+	Answered bool
+	of       *Node // the record sealed, to say whether Holder is another
+}
+
+// String is the reason as people read it: the ID of the record whose link
+// pins the revision, the status ("accepted"), "its plan plan_x is accepted",
+// or "settled".
+func (s Seal) String() string {
+	switch {
+	case s.By != nil:
+		return s.By.From.Record().ID
+	case s.Answered:
+		return "settled"
+	case s.Inherited():
+		return fmt.Sprintf("its %s %s is %s", s.Holder.Type().Name, s.Holder.ID, s.Status)
+	}
+	return s.Status
+}
+
+// Inherited reports whether the seal is the status of another record the
+// sealed one takes its status from, such as a step's plan.
+func (s Seal) Inherited() bool {
+	return s.By == nil && !s.Answered && s.Holder != nil && s.Holder != s.of
+}
+
+// Seals splits what seals a revision into the seals in force and those still
+// pending. A link that pins the revision seals at once. The record's own
+// state (its status, or its answer) seals only the current revision, and only
+// once its fingerprint is recorded: a revision `mason revise` just opened has
+// none, so it can be edited until `mason sync` records it. Until then the
+// state's seals are pending. A sub-record's revision is its record's, and it
+// has no state seals of its own.
+func (n *Node) Seals(rev int) (active, pending []Seal) {
+	var seen []string
 	for _, e := range n.Incoming {
-		if e.Seals() && e.Pin.Rev == rev {
+		if id := e.From.Record().ID; e.Seals() && e.Pin.Rev == rev && !slices.Contains(seen, id) {
+			seen = append(seen, id)
+			active = append(active, Seal{By: e})
+		}
+	}
+	cur := n.Current()
+	if cur == nil || cur.Rev != rev || n.IsSubrecord() {
+		return active, nil
+	}
+	if cur.Implicit || cur.FP.IsZero() {
+		return active, n.stateSeals()
+	}
+	return append(active, n.stateSeals()...), nil
+}
+
+// stateSeals are the seals the type's sealed key gives the node as it is now,
+// whether or not its revision's fingerprint has been recorded.
+func (n *Node) stateSeals() []Seal {
+	s := n.Type().Sealed
+	var seals []Seal
+	if h := n.statusHolder(); h != nil && slices.Contains(s.Status, h.Status()) {
+		seals = append(seals, Seal{Status: h.Status(), Holder: h, of: n.Record()})
+	}
+	if s.Settled && n.settledByAnswer() {
+		seals = append(seals, Seal{Answered: true})
+	}
+	return seals
+}
+
+// SealedBy says why a revision is sealed, as Seals gives the active seals:
+// the IDs of the records whose propagating links pin it, then the reasons the
+// state gives for the current revision ("accepted", "settled", "its plan
+// plan_x is accepted"). It's nil when nothing seals the revision. A sealed
+// revision's meaning can't change without a new revision.
+func (n *Node) SealedBy(rev int) []string {
+	active, _ := n.Seals(rev)
+	return sealStrings(active)
+}
+
+func sealStrings(seals []Seal) []string {
+	var out []string
+	for _, s := range seals {
+		out = append(out, s.String())
+	}
+	return out
+}
+
+// Quoted reports whether a link that doesn't seal, a quote, pins the
+// revision. A quote doesn't seal a revision, but it lets it be revised, so
+// the quoted wording is kept.
+func (n *Node) Quoted(rev int) bool {
+	for _, e := range n.Incoming {
+		if e.Quotes() && e.Pin.Rev == rev {
 			return true
 		}
 	}
 	return false
 }
 
-// PinnedBy lists the IDs of the records whose links seal the revision.
-func (n *Node) PinnedBy(rev int) []string {
-	var ids []string
-	for _, e := range n.Incoming {
-		if e.Seals() && e.Pin.Rev == rev && !slices.Contains(ids, e.From.Record().ID) {
-			ids = append(ids, e.From.Record().ID)
+// statusHolder returns the node whose status decides the record's state: the
+// record itself, or, for a record with no status of its own whose type has a
+// status_from edge, the record that edge leads to (the first it resolves,
+// followed further if that has none either). It is nil when the edges lead
+// round a cycle.
+func (n *Node) statusHolder() *Node {
+	rec := n.Record()
+	seen := map[*Node]bool{}
+	for !seen[rec] {
+		seen[rec] = true
+		from := rec.Type().StatusFrom
+		if rec.Status() != "" || from == "" {
+			return rec
 		}
+		next := rec
+		for _, e := range rec.Links(from) {
+			if e.Target != nil {
+				next = e.Target.Record()
+				break
+			}
+		}
+		if next == rec {
+			return rec
+		}
+		rec = next
 	}
-	return ids
+	return nil
 }
+
+// SealedByStatus reports whether the status of the record, or of the one it
+// takes its status from, is one its type's sealed key lists, as an accepted
+// decision's is. Unlike the seals Seals gives, it ignores settling and whether the
+// fingerprint is recorded.
+func (n *Node) SealedByStatus() bool {
+	h := n.statusHolder()
+	return h != nil && slices.Contains(n.Type().Sealed.Status, h.Status())
+}
+
+// Sealed reports whether anything seals the revision: see SealedBy.
+func (n *Node) Sealed(rev int) bool { return len(n.SealedBy(rev)) > 0 }
 
 // Type returns the record type of the node's record.
 func (n *Node) Type() *registry.Type { return n.Record().File.Type }
@@ -212,26 +359,170 @@ func (n *Node) Record() *Node {
 	return n
 }
 
-// Stale reports whether a pinned link no longer matches its target: the
-// target is at another revision, or its meaning changed since it was pinned.
-// A pin that doesn't seal, such as a quote's, is never stale.
-func (e *Edge) Stale() bool {
-	if !e.Seals() || e.Target == nil || e.Target.Current() == nil {
-		return false
+// Concern is a reason a link needs a re-check, as bit flags: a link can have
+// several.
+type Concern uint8
+
+const (
+	// Stale: the pinned target is at another revision, or its meaning changed
+	// since it was pinned.
+	Stale Concern = 1 << iota
+	// Reopens: the target has fallen, so the commitment resting on it reopens.
+	Reopens
+	// Orphaned: the target is no longer in force without having fallen, such
+	// as a withdrawn belief or a superseded task.
+	Orphaned
+	// Doubted: the target is a belief whose support is undercut or whose
+	// evidence is undermined, and no re-check since says otherwise.
+	Doubted
+)
+
+// concerns is every concern, in the order String lists them.
+var concerns = []Concern{Stale, Reopens, Orphaned, Doubted}
+
+// Each returns the concerns c includes, one flag apiece, in the order String
+// lists them.
+func (c Concern) Each() []Concern {
+	var out []Concern
+	for _, f := range concerns {
+		if c.Has(f) {
+			out = append(out, f)
+		}
 	}
-	return e.Pin.Rev != e.Target.Current().Rev || e.Pin.FP != e.Target.Fingerprint()
+	return out
 }
 
-// Reopens reports whether the link reopens its source: it propagates, its
-// source is a record in the committing layer that is still in force (not
-// closed, as a rejected or superseded one is), and its target's status is one
-// that the target's type lists as fallen. A target that no longer holds for
-// another reason, such as a withdrawn belief, reopens nothing.
-func (e *Edge) Reopens() bool {
-	return e.Def.Propagates && e.Target != nil &&
-		e.From.Layer() == registry.Committing &&
-		!e.From.Type().IsClosed(e.From.Status()) &&
-		e.Target.Type().IsFallen(e.Target.Status())
+// Has reports whether c includes every concern in o.
+func (c Concern) Has(o Concern) bool { return c&o == o }
+
+// String names the concerns, a comma between several: "stale, reopens". It is
+// "" for none. Sentences for people are the command's to word, since they name
+// the target.
+func (c Concern) String() string {
+	var parts []string
+	for _, f := range c.Each() {
+		parts = append(parts, concernNames[f])
+	}
+	return strings.Join(parts, ", ")
+}
+
+var concernNames = map[Concern]string{Stale: "stale", Reopens: "reopens", Orphaned: "orphaned", Doubted: "doubted"}
+
+// Concerns says why the link needs a re-check, or 0 when it doesn't. Only a
+// link that propagates to a target, from a record in the committing layer that
+// is still in force (not closed or fallen, as a rejected or superseded one
+// is), is ever a concern: every source of a propagating edge is committing.
+func (e *Edge) Concerns() Concern {
+	if !e.Def.Propagates || e.Target == nil || e.From.Layer() != registry.Committing || !e.From.InForce() {
+		return 0
+	}
+	var c Concern
+	if e.Pin != nil && e.Target.Current() != nil &&
+		(e.Pin.Rev != e.Target.Current().Rev || e.Pin.FP != e.Target.Fingerprint()) {
+		c |= Stale
+	}
+	switch {
+	case e.Target.Type().IsFallen(e.Target.Status()):
+		c |= Reopens
+	case !e.Target.InForce():
+		c |= Orphaned
+	}
+	if e.doubts() {
+		c |= Doubted
+	}
+	return c
+}
+
+// InForce reports whether the node's record is still in force: its status
+// holder's status (see statusHolder) is neither one its type lists as closed
+// nor as fallen. A type with no such statuses is always in force.
+func (n *Node) InForce() bool {
+	h := n.statusHolder()
+	if h == nil {
+		return true
+	}
+	t := h.Type()
+	return !t.IsClosed(h.Status()) && !t.IsFallen(h.Status())
+}
+
+// doubtedBy returns the evidence that makes a belief doubted, sorted by ID:
+// evidence that `undercuts` one of the belief's support links, or that
+// `undermines` evidence a support link cites. Only a link that supports the
+// belief counts; evidence undercutting a link that disputes it says nothing
+// against the belief. A belief that has fallen or is closed is settled, not
+// doubted, so it has none. The rule is for beliefs; see 01-model.md, section
+// 3.2.
+func (n *Node) doubtedBy() []*Node {
+	if !n.HasSupport() || !n.InForce() {
+		return nil
+	}
+	var by []*Node
+	add := func(ev *Node) {
+		if !slices.Contains(by, ev) {
+			by = append(by, ev)
+		}
+	}
+	for _, link := range n.SupportLinks(Supports) {
+		for _, in := range link.Incoming {
+			if in.Name == EdgeUndercuts {
+				add(in.From)
+			}
+		}
+		for _, out := range link.Links(EdgeEvidence) {
+			if out.Target == nil {
+				continue
+			}
+			for _, in := range out.Target.Incoming {
+				if in.Name == EdgeUndermines {
+					add(in.From)
+				}
+			}
+		}
+	}
+	slices.SortFunc(by, func(a, b *Node) int { return strings.Compare(a.ID, b.ID) })
+	return by
+}
+
+// Doubted reports whether a belief that still stands has lost some of its
+// footing: see doubtedBy. It stays so until the link is removed, the belief's
+// status changes, or a link that relies on it is re-checked (see doubts).
+func (n *Node) Doubted() bool { return len(n.doubtedBy()) > 0 }
+
+// observedAt parses the node's observed_at (see registry.ParseTime). It is
+// false when there is none or it can't be parsed.
+func (n *Node) observedAt() (time.Time, bool) {
+	return registry.ParseTime(n.Fields.Text("observed_at"))
+}
+
+// observedNotAfter reports whether evidence was observed no later than
+// other, comparing the instants of their observed_at. Equal times count, so
+// a tie clears a doubt. Either one's observed_at missing or unparsable is
+// false: such evidence clears nothing.
+func (n *Node) observedNotAfter(other *Node) bool {
+	a, ok := n.observedAt()
+	b, ok2 := other.observedAt()
+	return ok && ok2 && !a.After(b)
+}
+
+// doubts is the doubted part of Concerns: the target is doubted, and no
+// re-check clears it. A re-check clears it when the link's pin names, in via,
+// evidence observed on or after all of the evidence that makes the belief
+// doubted (see observedAt). A newer undermining or undercutting doubts it
+// again.
+func (e *Edge) doubts() bool {
+	by := e.Target.doubtedBy()
+	if len(by) == 0 {
+		return false
+	}
+	if e.Via == nil || e.Via.Target == nil {
+		return true
+	}
+	for _, ev := range by {
+		if !ev.observedNotAfter(e.Via.Target) {
+			return true
+		}
+	}
+	return false
 }
 
 // Settles reports whether the link settles its target: its edge lists the
@@ -241,8 +532,10 @@ func (e *Edge) Settles() bool { return slices.Contains(e.Def.Settles, e.From.Sta
 
 // Pending reports whether the link is an answer still waiting: its edge
 // lists the source's status as pending, such as a proposed decision
-// answering a question.
-func (e *Edge) Pending() bool { return slices.Contains(e.Def.Pending, e.From.Status()) }
+// answering a question. A dropped target waits for no answer.
+func (e *Edge) Pending() bool {
+	return slices.Contains(e.Def.Pending, e.From.Status()) && (e.Target == nil || !e.Target.dropped())
+}
 
 // Attr returns a text field of a link written as a map, such as role on
 // involves, or "" when the link is a plain reference or has no such field.
@@ -267,15 +560,42 @@ func (n *Node) Progress() string {
 	return n.Type().Default("progress")
 }
 
+// dropped reports whether the node has a dropped field, the reason a question
+// was given up on.
+func (n *Node) dropped() bool {
+	_, dropped := n.Fields.Get("dropped")
+	return dropped
+}
+
+// settledByAnswer reports whether a link to the node settles it, such as an
+// accepted decision answering a question. A dropped node isn't settled by an
+// answer, though Settled counts it.
+func (n *Node) settledByAnswer() bool {
+	for _, e := range n.Incoming {
+		if e.Settles() {
+			return true
+		}
+	}
+	return false
+}
+
 // Settled reports whether the node needs no more answering: it is dropped (it
-// has a dropped field), or a link to it settles it. It is asked of any node;
-// for a question, open means not settled.
-func (n *Node) Settled() bool {
-	if _, dropped := n.Fields.Get("dropped"); dropped {
+// has a dropped field), or a link to it settles it (settledByAnswer). It is
+// asked of any node.
+func (n *Node) Settled() bool { return n.dropped() || n.settledByAnswer() }
+
+// Open reports whether the node still wants answering: its type can be
+// settled (a question), and it is not settled, or a link to it is an answer
+// still waiting (Pending, which a dropped node has none of).
+func (n *Node) Open() bool {
+	if n.IsSubrecord() || !n.Type().Settleable {
+		return false
+	}
+	if !n.Settled() {
 		return true
 	}
 	for _, e := range n.Incoming {
-		if e.Settles() {
+		if e.Pending() {
 			return true
 		}
 	}
@@ -336,8 +656,8 @@ func (g *Graph) Produced(ini *Node) []*Node {
 	return out
 }
 
-// Behind returns the target's revisions after the one the link pins.
-func (e *Edge) Behind() []Revision {
+// behind returns the target's revisions after the one the link pins.
+func (e *Edge) behind() []Revision {
 	if e.Pin == nil || e.Target == nil {
 		return nil
 	}
@@ -350,8 +670,8 @@ func (e *Edge) Behind() []Revision {
 	return revs
 }
 
-// Child returns a sub-record by its local id, or nil.
-func (n *Node) Child(local string) *Node {
+// child returns a sub-record by its local id, or nil.
+func (n *Node) child(local string) *Node {
 	for _, c := range n.Children {
 		if c.Local == local {
 			return c
@@ -371,6 +691,30 @@ func (n *Node) Locals() []string {
 
 // At returns the position of a line in the file.
 func (f *File) At(line int) diag.Pos { return diag.Pos{Path: f.Path, Line: line} }
+
+// ListedSingleLinks names the fields that take one link but hold a list that
+// is empty or has one plain ID in it, such as `generated_by: [actv_3h7npc]`.
+// These are the ones `mason sync` can rewrite to the single value (or drop);
+// a longer list, or an item that isn't a plain ID, is left for the person to
+// resolve. The check reports and sync rewrites by this one rule.
+func (f *File) ListedSingleLinks() []string {
+	var names []string
+	for _, name := range slices.Sorted(maps.Keys(f.Type.Edges)) {
+		v, ok := f.Node.Fields.Get(name)
+		if !ok || !v.IsList() || !f.Type.SingleLink(name) {
+			continue
+		}
+		switch items := v.Items(); len(items) {
+		case 0:
+			names = append(names, name)
+		case 1:
+			if _, plain := items[0].Text(); plain {
+				names = append(names, name)
+			}
+		}
+	}
+	return names
+}
 
 // Misplaced reports whether the ID's prefix names a type other than the
 // folder's. The file is then checked against neither type's schema.

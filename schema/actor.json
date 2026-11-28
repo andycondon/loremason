@@ -27,9 +27,6 @@
     "acts_for": {
       "$ref": "common.json#/$defs/links"
     },
-    "interested_in": {
-      "$ref": "common.json#/$defs/links"
-    },
     "mentions": {
       "$ref": "common.json#/$defs/links"
     },

@@ -44,6 +44,7 @@ func Load(root string, reg *registry.Registry) (*Graph, diag.List, error) {
 		}
 	}
 	for _, e := range l.g.Edges {
+		e.From.Outgoing = append(e.From.Outgoing, e)
 		if e.Target = l.g.Resolve(e.To); e.Target != nil {
 			e.Target.Incoming = append(e.Target.Incoming, e)
 		}
@@ -166,10 +167,10 @@ func (l *loader) addNodes(f *File) {
 			switch {
 			case local == "":
 				// the schema check says what's missing
-			case n.Child(local) != nil:
+			case n.child(local) != nil:
 				l.ds.Errorf(f.At(entry.KeyLine("id")), "two entries have the id `%s`", local)
 			default:
-				c := &Node{ID: SubrecordID(n.ID, local), Kind: f.Type.Subrecords[field], File: f, Fields: entry, Parent: n, Local: local}
+				c := &Node{ID: subrecordID(n.ID, local), Kind: f.Type.Subrecords[field], File: f, Fields: entry, Parent: n, Local: local}
 				n.Children = append(n.Children, c)
 				if l.g.nodes[c.ID] == nil { // a duplicate record's sub-records still resolve
 					l.g.nodes[c.ID] = c
@@ -215,20 +216,23 @@ func (l *loader) addEdges(from *Node) {
 			if !ok {
 				continue
 			}
-			l.g.Edges = append(l.g.Edges, &Edge{From: from, Name: name, Def: defs[name], To: to, Pin: p, At: at, Item: item})
+			edge := &Edge{From: from, Name: name, Def: defs[name], To: to, Pin: p, At: at, Item: item}
+			l.g.Edges = append(l.g.Edges, edge)
 			// A pin's via is a link of its own, to the evidence for the last
 			// re-check, so it's checked and indexed like any other.
 			if via, ok := m.Get("via"); isMap && p != nil && ok {
 				if to, at, ok := ref(from.File, via); ok {
-					l.g.Edges = append(l.g.Edges, &Edge{From: from, Name: "via", Def: viaDef, To: to, At: at, Item: via})
+					edge.Via = &Edge{From: from, Name: "via", Def: ViaEdge, To: to, At: at, Item: via}
+					l.g.Edges = append(l.g.Edges, edge.Via)
 				}
 			}
 		}
 	}
 }
 
-// viaDef is the edge from a pin to the evidence for its last re-check.
-var viaDef = registry.Edge{To: []string{"evidence"}}
+// ViaEdge is the edge from a pin to the evidence for its last re-check; it
+// says which records can be a via's target.
+var ViaEdge = registry.Edge{To: []string{"evidence"}}
 
 // ref reads a reference. ok is false when the value isn't one; the schema
 // check reports why.

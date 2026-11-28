@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andycondon/loremason/internal/graph"
 	"github.com/andycondon/loremason/internal/testws"
 )
 
@@ -15,7 +16,7 @@ import (
 
 // answers is everything the queries say about a workspace.
 type answers struct {
-	Stale      []StaleGroup
+	Stale      []Change
 	Reopened   []Reopening
 	Dependents []Dependent
 	Show       *Detail
@@ -60,7 +61,7 @@ created:`)
 
 	x := open(t, w)
 	before := ask(t, x, "bel_7k3m9q")
-	if len(before.Stale) != 1 || len(before.Reopened) < 2 || len(before.Dependents) == 0 || len(before.Show.In) == 0 || len(before.Found) == 0 {
+	if len(before.Stale) != 2 || len(before.Reopened) < 2 || len(before.Dependents) == 0 || len(before.Show.In) == 0 || len(before.Found) == 0 {
 		t.Fatalf("the scenario should have a stale pin, a fallen belief and dependents: %+v", before)
 	}
 	x.Close()
@@ -450,10 +451,17 @@ func TestStaleIsGroupedByTheChangedRecord(t *testing.T) {
 	}
 }
 
-func TestStaleOfACleanWorkspace(t *testing.T) {
+func TestStaleListsOnlyTheDoubtedBeliefInTheWorkedExample(t *testing.T) {
 	x := open(t, workedExample(t))
-	if got, err := x.Stale(); err != nil || len(got) != 0 {
-		t.Errorf("Stale = %+v, %v", got, err)
+	// The worked example has no stale pin; what it lists is the doubted belief.
+	got, err := x.Stale()
+	if err != nil || len(got) != 1 || got[0].Target.ID != "bel_7k3m9q" {
+		t.Fatalf("Stale = %+v, %v", got, err)
+	}
+	for _, l := range got[0].Links {
+		if l.Concerns != graph.Doubted {
+			t.Errorf("link %+v: concerns = %v, want only a doubt", l, l.Concerns)
+		}
 	}
 }
 

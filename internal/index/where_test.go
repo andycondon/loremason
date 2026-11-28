@@ -3,11 +3,13 @@ package index
 import (
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/andycondon/loremason/internal/check"
 	"github.com/andycondon/loremason/internal/fingerprint"
+	"github.com/andycondon/loremason/internal/graph"
 	"github.com/andycondon/loremason/internal/registry"
 	"github.com/andycondon/loremason/internal/testws"
 )
@@ -153,6 +155,7 @@ func questionsWS() map[string]string {
 		"decision/dec_d4d4d4.md":     decision("dec_d4d4d4", iniA, "leaning", "q_c4c4c4"),
 		"decision/dec_d5d5d5.md":     decision("dec_d5d5d5", iniA, "proposed", "q_c1c1c1"),
 		"decision/dec_d6d6d6.md":     decision("dec_d6d6d6", iniA, "rejected", "q_c4c4c4"),
+		"decision/dec_d8d8d8.md":     decision("dec_d8d8d8", iniA, "proposed", "q_c5c5c5"),
 		"belief/bel_b3b3b3.md":       strings.NewReplacer("bel_7k3m9q", "bel_b3b3b3", "status: held", "status: held\nanswers: [q_c3c3c3]").Replace(testws.Belief),
 	}
 }
@@ -214,7 +217,7 @@ created: 2026-11-22
 `,
 		"plan/plan_p2p2p2.md": record("plan_p2p2p2", "A plan", "status: accepted", "part_of: "+iniA),
 		"step/step_s2s2s2.md": record("step_s2s2s2", "The second step", "part_of: plan_p2p2p2"),
-		"step/step_s1s1s1.md": record("step_s1s1s1", "The first step", `part_of: [{to: plan_p2p2p2, rev: 1, fp: "fp1:0000000000a1"}]`),
+		"step/step_s1s1s1.md": record("step_s1s1s1", "The first step", `part_of: {to: plan_p2p2p2, rev: 1, fp: "fp1:0000000000a1"}`),
 		"task/task_t9t9t9.md": record("task_t9t9t9", "Outside", "status: accepted", pinned("bel_b1b1b1")),
 	})
 	valid(t, w)
@@ -252,7 +255,7 @@ func TestRechecksAreScopedToEachInitiativesOwnRecords(t *testing.T) {
 			t.Fatalf("%s: change = %+v", c.ini, ch)
 		}
 		l := ch.Links[0]
-		if l.Other.ID != c.task || l.Field != "relies_on" || !l.Stale || l.Reopens || l.Pin == nil || l.Pin.Rev != 1 {
+		if l.Other.ID != c.task || l.Field != "relies_on" || !l.Concerns.Has(graph.Stale) || l.Concerns.Has(graph.Reopens) || l.Pin == nil || l.Pin.Rev != 1 {
 			t.Errorf("%s: link = %+v", c.ini, l)
 		}
 		for _, other := range v.Recheck {
@@ -274,7 +277,7 @@ func TestRecheckShowsALinkThatReopens(t *testing.T) {
 	if len(v.Recheck) != 1 || len(v.Recheck[0].Links) != 1 {
 		t.Fatalf("recheck = %+v", v.Recheck)
 	}
-	if l := v.Recheck[0].Links[0]; !l.Reopens || l.Stale {
+	if l := v.Recheck[0].Links[0]; !l.Concerns.Has(graph.Reopens) || l.Concerns.Has(graph.Stale) {
 		t.Errorf("link = %+v, want reopens and not stale", l)
 	}
 }
@@ -567,5 +570,121 @@ func valid(t *testing.T, w *testws.Workspace) {
 	}
 	if errs, _ := res.Diagnostics.Count(); errs != 0 {
 		t.Fatalf("the records have errors: %v", res.Diagnostics)
+	}
+}
+
+// ---- Where: orphaned and doubted links, pending answers ----
+
+// recheckOf lists the re-check entries of an initiative as
+// "target <- source.field (flags)".
+func recheckOf(v *View) []string {
+	var got []string
+	for _, c := range v.Recheck {
+		for _, l := range c.Links {
+			var flags []string
+			for flag, on := range map[string]bool{"stale": l.Concerns.Has(graph.Stale), "reopens": l.Concerns.Has(graph.Reopens), "orphaned": l.Concerns.Has(graph.Orphaned), "doubted": l.Concerns.Has(graph.Doubted)} {
+				if on {
+					flags = append(flags, flag)
+				}
+			}
+			slices.Sort(flags)
+			got = append(got, c.Target.ID+" <- "+l.Other.ID+"."+l.Field+" ("+strings.Join(flags, ",")+")")
+		}
+	}
+	return got
+}
+
+func TestAcceptedTaskOnAWithdrawnBeliefNeedsARecheck(t *testing.T) {
+	w := newWS(t, map[string]string{
+		"initiative/" + iniA + ".md": initiative(iniA, "alpha"),
+		"belief/bel_b1b1b1.md":       belief("bel_b1b1b1", "withdrawn"),
+		"task/task_t1t1t1.md":        task("task_t1t1t1", "Relies", iniA, "relies_on: [bel_b1b1b1]"),
+		"task/task_t2t2t2.md":        record("task_t2t2t2", "Rejected", "status: rejected", "part_of: "+iniA, "relies_on: [bel_b1b1b1]"),
+	})
+	valid(t, w)
+	x := open(t, w)
+	got, want := recheckOf(where(t, x, "alpha")), []string{"bel_b1b1b1 <- task_t1t1t1.relies_on (orphaned)"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("recheck = %v, want %v (a rejected task is no longer in force)", got, want)
+	}
+	if r, err := x.Reopened(); err != nil || len(r) != 0 {
+		t.Errorf("Reopened = %+v, %v; a withdrawn belief reopens nothing", r, err)
+	}
+	stale, err := x.Stale()
+	if err != nil || len(stale) != 1 || len(stale[0].Links) != 1 || stale[0].Links[0].Other.ID != "task_t1t1t1" || !stale[0].Links[0].Concerns.Has(graph.Orphaned) {
+		t.Errorf("Stale = %+v, %v", stale, err)
+	}
+}
+
+func TestPlanDerivedFromASupersededTaskNeedsARecheck(t *testing.T) {
+	w := newWS(t, map[string]string{
+		"initiative/" + iniA + ".md": initiative(iniA, "alpha"),
+		"task/task_t1t1t1.md":        record("task_t1t1t1", "Old", "status: superseded", "part_of: "+iniA),
+		"plan/plan_p1p1p1.md":        record("plan_p1p1p1", "Live", "status: accepted", "part_of: "+iniA, "derived_from: [task_t1t1t1]"),
+		"plan/plan_p2p2p2.md":        record("plan_p2p2p2", "Dead", "status: rejected", "part_of: "+iniA, "derived_from: [task_t1t1t1]"),
+	})
+	got, want := recheckOf(where(t, open(t, w), "alpha")), []string{"task_t1t1t1 <- plan_p1p1p1.derived_from (orphaned)"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("recheck = %v, want %v", got, want)
+	}
+}
+
+// doubtWS has an accepted decision of the initiative relying on a held
+// belief with one support link, and evidence that can doubt it.
+func doubtWS(extra map[string]string) map[string]string {
+	records := map[string]string{
+		"initiative/" + iniA + ".md": initiative(iniA, "alpha"),
+		"belief/bel_b1b1b1.md": record("bel_b1b1b1", "Belief", "claim: it is so", "status: held", "asserted_by: agent",
+			"support: [{id: s1, evidence: ev_e1e1e1, direction: supports}]"),
+		"evidence/ev_e1e1e1.md":  record("ev_e1e1e1", "Old", "observed_at: 2026-11-22T10:00:00Z", "from: []"),
+		"decision/dec_d1d1d1.md": record("dec_d1d1d1", "Dec", "status: accepted", "part_of: "+iniA, "relies_on: [bel_b1b1b1]"),
+	}
+	for k, v := range extra {
+		records[k] = v
+	}
+	return records
+}
+
+func TestBeliefWithDoubtedSupportNeedsARecheck(t *testing.T) {
+	want := []string{"bel_b1b1b1 <- dec_d1d1d1.relies_on (doubted)"}
+	cases := map[string]map[string]string{
+		"undermined evidence": {"evidence/ev_e2e2e2.md": record("ev_e2e2e2", "New", "observed_at: 2026-11-23T10:00:00Z", "from: []", "undermines: [ev_e1e1e1]")},
+		"undercut link":       {"evidence/ev_e2e2e2.md": record("ev_e2e2e2", "New", "observed_at: 2026-11-23T10:00:00Z", "from: []", "undercuts: [bel_b1b1b1/s1]")},
+	}
+	for name, extra := range cases {
+		t.Run(name, func(t *testing.T) {
+			w := newWS(t, doubtWS(extra))
+			if got := recheckOf(where(t, open(t, w), "alpha")); !reflect.DeepEqual(got, want) {
+				t.Errorf("recheck = %v, want %v", got, want)
+			}
+			edit(t, w, "belief/bel_b1b1b1.md", "support: [{id: s1, evidence: ev_e1e1e1, direction: supports}]", "support: []")
+			if got := recheckOf(where(t, open(t, w), "alpha")); len(got) != 0 {
+				t.Errorf("after removing the link, recheck = %v", got)
+			}
+		})
+	}
+	t.Run("status change", func(t *testing.T) {
+		w := newWS(t, doubtWS(map[string]string{"evidence/ev_e2e2e2.md": record("ev_e2e2e2", "New", "observed_at: 2026-11-23T10:00:00Z", "from: []", "undermines: [ev_e1e1e1]")}))
+		edit(t, w, "belief/bel_b1b1b1.md", "status: held", "status: insufficient")
+		for _, s := range recheckOf(where(t, open(t, w), "alpha")) {
+			if strings.Contains(s, "doubted") {
+				t.Errorf("a fallen belief is settled, not doubted: %v", s)
+			}
+		}
+	})
+}
+
+func TestQuestionWithAHeldBeliefAndAPendingAnswerStaysOpen(t *testing.T) {
+	records := questionsWS()
+	records["decision/dec_d3d3d3.md"] = decision("dec_d3d3d3", iniA, "proposed", "q_c3c3c3")
+	w := newWS(t, records)
+	var got string
+	for _, q := range where(t, open(t, w), "alpha").Open {
+		if q.ID == "q_c3c3c3" {
+			got = ids(q.Pending)
+		}
+	}
+	if got != "dec_d3d3d3" {
+		t.Errorf("q3's pending answers = %q, want dec_d3d3d3 (the held belief settles it, but the decision still waits)", got)
 	}
 }

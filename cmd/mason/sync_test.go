@@ -59,3 +59,26 @@ func TestReviseMistakes(t *testing.T) {
 		t.Errorf("no such record: exit %d, %s", code, errOut)
 	}
 }
+
+// A dry run says which single-link lists sync would rewrite or drop.
+func TestSyncDryRunSaysItWouldUnlist(t *testing.T) {
+	one := "---\nid: ev_p4n2xa\ntitle: Seen\nobserved_at: 2026-11-22T10:00:00Z\nfrom: []\ngenerated_by: [actv_3h7npc]\ncreated: 2026-11-22\n---\n\nThe words.\n"
+	none := strings.Replace(strings.Replace(one, "ev_p4n2xa", "ev_w2q9kd", 1), "[actv_3h7npc]", "[]", 1)
+	w := newWorkspace(t, map[string]string{
+		"activity/actv_3h7npc.md": "---\nid: actv_3h7npc\ntitle: Session\nsession: a\nstarted_at: 2026-11-22\ncreated: 2026-11-22\n---\n",
+		"evidence/ev_p4n2xa.md":   one,
+		"evidence/ev_w2q9kd.md":   none,
+	})
+	code, out, _ := mason("sync", "--dry-run")
+	for _, want := range []string{
+		"ev_p4n2xa.md: would rewrite `generated_by` from a one-item list to a single value\n",
+		"ev_w2q9kd.md: would drop the empty `generated_by` list\n",
+	} {
+		if code != 0 || !strings.Contains(out, want) {
+			t.Errorf("exit %d, missing %q in:\n%s", code, want, out)
+		}
+	}
+	if w.Read("evidence/ev_p4n2xa.md") != one || w.Read("evidence/ev_w2q9kd.md") != none {
+		t.Error("a dry run changed a file")
+	}
+}
