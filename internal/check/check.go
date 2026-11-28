@@ -70,7 +70,7 @@ func Graph(g *graph.Graph, loaded diag.List, reg *registry.Registry) *Result {
 func (r *Result) Broken() map[string]bool {
 	broken := map[string]bool{}
 	for _, d := range r.Diagnostics {
-		if !d.Warning && !d.Fixable {
+		if d.Severity == diag.Error {
 			broken[d.Path] = true
 		}
 	}

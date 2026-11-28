@@ -49,7 +49,7 @@ func (c *checker) sealed(f *graph.File) {
 }
 
 // pendingReasons says what will seal a revision, in the words of the message:
-// "its status (accepted)", "its plan plan_x is accepted" for a step, or
+// "its status (accepted)", "its plan plan_x being accepted" for a step, or
 // "its answer" for a question, which has no status.
 func pendingReasons(seals []graph.Seal) []string {
 	var out []string
@@ -60,7 +60,7 @@ func pendingReasons(seals []graph.Seal) []string {
 		case s.String() == s.Status:
 			out = append(out, fmt.Sprintf("its status (%s)", s.Status))
 		default:
-			out = append(out, s.String()) // such as "its plan plan_x is accepted"
+			out = append(out, fmt.Sprintf("its %s %s being %s", s.Holder.Type().Name, s.Holder.ID, s.Status))
 		}
 	}
 	return out
