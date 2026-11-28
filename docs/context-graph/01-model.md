@@ -59,7 +59,7 @@ All of this must be **quiet**: most changes are handled by agents and never reac
 
 ## 3. The object model
 
-Four diagrams: the knowing layer, the committing layer, the bridge between them, and initiatives. The naming rules and ID scheme are summed up in section 6, and every term is defined in the appendix. Plain arrows are edges, pointing the way each is stored: from the newer record to what already existed (a sub-record added later, such as a new support link, counts as new), labeled with the exact edge name. Two arrow styles aren't edges: a hollow triangle means "is a subtype of", and a filled diamond means "stored inside". A `supports or disputes` label is a link's `direction` value.
+Four diagrams: the knowing layer, the committing layer, the bridge between them, and initiatives. The naming rules and ID scheme are summed up in section 6, and every term is defined in the appendix. Plain arrows are edges, pointing the way each is stored: from the newer record to what already existed (a sub-record added later, such as a new support link, counts as new), labeled with the exact edge name. Two arrow styles aren't edges: a hollow triangle means "is a subtype of", and a filled diamond means "stored inside". A `supports or disputes` label is a support link's `direction` value; an option's links to beliefs are `for` or `against`.
 
 ### 3.1 Knowing layer
 
@@ -91,8 +91,8 @@ classDiagram
     verbatim text
   }
   class source {
+    <<abstract>>
     id
-    kind
   }
   class actor {
     person, organization
@@ -111,7 +111,7 @@ classDiagram
     title, body, revisable
   }
   question "1" *-- "*" option : contains
-  option --> belief : supports or disputes
+  option --> belief : for / against
   belief --> question : answers
   belief "1" *-- "*" support_link : contains
   evidence <-- support_link : supports or disputes
@@ -129,11 +129,11 @@ classDiagram
 
 Walk-through:
 
-- A **source** is an **actor** (who acts), an **artifact** (what was made outside our records) or a **document** we wrote. An artifact is `attributed_to` the actor that made it.
+- A **source** is an **actor** (who acts), an **artifact** (what was made outside our records) or a **document** we wrote. `source` is an abstract shape, never stored as a type: the source's kind is its record type. An artifact is `attributed_to` the actor that made it.
 - **Evidence** comes `from` a source. It holds the verbatim text and when it was observed.
-- An **activity** is something that happened, such as an agent's session. Evidence is `generated_by` the activity that recorded it, and the activity is `associated_with` the actor responsible. So every piece of evidence answers both *who said it* (`from`) and *which run recorded it* (`generated_by`).
-- A **document** is prose we wrote: a title and a body, revisable with old revisions left in git, `generated_by` the activity that produced it and `attributed_to` the actor who wrote it. It is an abstract shape, like `commitment`, and is never stored as a type itself. When a belief is drawn from a document, the evidence quotes it (`from` the document, at a pinned revision that doesn't seal it, so the document stays free to edit), so the quote stays verbatim if the document is later corrected.
-- The document types are the **finding** (the knowing layer's document: a survey, an analysis, an observation) and, in the committing layer, the design doc, PRD and plan. A finding needs no edges or status until something relies on it, so ideation stays free. Only load-bearing beliefs are drawn out of a document; the rest stays prose. Decisions and tasks are not documents: a decision isn't quoted until a real case needs it, and a task says what to do.
+- An **activity** is something that happened, such as an agent's session. Evidence is `generated_by` the one activity that recorded it, and the activity is `associated_with` the actor responsible. So every piece of evidence answers both *who said it* (`from`) and *which run recorded it* (`generated_by`).
+- A **document** is prose we wrote: a title and a body, revisable with old revisions left in git, `generated_by` the one activity that created its first revision and `attributed_to` the actor who wrote it. It is an abstract shape, like `commitment`, and is never stored as a type itself. When a belief is drawn from a document, the evidence quotes it (`from` the document, at a pinned revision that doesn't seal it, so the document stays free to edit), so the quote stays verbatim if the document is later corrected.
+- The document types are the **finding** (the knowing layer's document: a survey, an analysis, an observation) and, in the committing layer, the design doc, PRD and plan. A finding needs no edges or status until a belief is drawn from it (nothing can rely on a finding directly), so ideation stays free. Only load-bearing beliefs are drawn out of a document; the rest stays prose. Decisions and tasks are not documents: a decision isn't quoted until a real case needs it, and a task says what to do.
 - A **belief** holds a claim, a status, and who asserted it. Its **support links** live inside its record. Each link points at one piece of evidence and says `supports` or `disputes`. Because each link has its own ID, an undercut can target exactly one link.
 - A **question** holds its **options** inside its record. Each option links to beliefs for and against it, shaped like a belief's support links. A belief can also answer a question directly (`answers`).
 
@@ -141,12 +141,11 @@ Edges not drawn, to keep the picture readable:
 
 | Edge | From → to | Meaning |
 |---|---|---|
-| `acts_for` | software agent → person | The agent works on that person's behalf. |
+| `acts_for` | actor → actor | Today, a software agent acting for a person. |
 | `undermines` | evidence → evidence | The newer observation shows the older one was unreliable. |
 | `questions` | question → any record | The question was raised about that record (decisions included). |
 | `about` | evidence → any record | What the evidence is about. |
 | `mentions` | any → any | A reference only. **Never** a dependency, so it never causes a re-check. |
-| `interested_in` | actor → any | The actor (today, a person) cares about it. The one edge stored from the older record, since it is a fact about the actor. |
 
 `support_link` and `option` are sub-record types: each lives inside its parent's record and has its own ID, so edges can point at it.
 
@@ -202,8 +201,9 @@ Walk-through:
 - The pipeline runs **PRD → design doc → tasks → plan → steps → implement → review**.
 - A **requirement** is `part_of` a PRD. A **design doc** `elaborates` the PRD or its requirements. A **task** `implements` requirements and is `derived_from` the design doc.
 - `derived_from` links a commitment to what it was built from: a task to the design doc, a plan to its task. Staleness flows down it, and also down `part_of`, `elaborates` and `implements`: revise a requirement and the design doc and tasks built directly on it are re-checked. Each re-check either re-pins (still holds) or makes a new revision, and only a new revision passes the check further down.
-- One task has one **plan**; a plan has many **steps**, each `part_of` the plan. A task is the unit that ships (outcome criteria, reviewed). A step is the unit a small model executes.
+- One task has one **plan** (`validate` warns when a task has more than one in force). A plan is `part_of` its initiative, like every commitment; it has many **steps**, each `part_of` the plan. A task is the unit that ships (outcome criteria, reviewed). A step is the unit a small model executes.
 - `status` is the maturity status. Every record shown under `commitment` carries one; steps don't.
+- Some fields live only in the schema (part 3): a task's `progress` (todo, in progress, blocked, done) and `blocked_by`, a question's `dropped` text (having it means the question was dropped), an activity's `session`, and the `role` on `involves`.
 
 Edges not drawn:
 
@@ -212,7 +212,7 @@ Edges not drawn:
 | `follows` | step → step | Step order. |
 | `supersedes` | decision → decision | Replaces the older decision. |
 | `amends` | decision → decision | Changes part of the older decision; the older one stays accepted. |
-| `revision_of` | revision → previous revision | A new revision of the same record. Implied by the ID (section 6), so not stored. |
+| `revision_of` | revision → previous revision | `X@rN` is a revision of `X@r(N-1)`; both are versions of record X. Implied by the ID (section 6), so not stored. |
 
 ### 3.3 The bridge
 
@@ -258,9 +258,11 @@ Walk-through:
 
 - **`relies_on` is the bridge.** A commitment names the beliefs it rests on, and only those. This is where invalidation crosses from knowing to committing.
 - A **decision** `answers` a question and `chooses` one of its options. A *leaning* is just a decision with status `leaning`. A decision is `decided_by` an actor, and can record who it `consults` (asked before deciding) and `informs` (told after). Today the decider is always a person; because the edge points at `actor`, an organization or a trusted software agent could decide later without changing the model. A new question can point at a decision with `questions`.
+- **`validate` warns about a decision that contradicts itself or its neighbours:** `chooses` names an option of a question the decision doesn't `answers`; two decisions in force settle one question; or a decision `supersedes` another that isn't `superseded`.
+- **A question is open until a person accepts an answer.** A question with a `proposed` or `leaning` decision answering it shows "answer waiting", whatever else (a held belief, say) answers it. Only an accepted decision closes it.
 - **Progress is recorded as runs.** Each run of a step is an `activity` that `corresponds_to` the step, with a status (`completed` / `failed`). What it produced (test output, the commit) is evidence `generated_by` that run. This is the second place the layers meet: what happened (knowing) points at what was planned (committing). The plan itself never changes.
 
-Why options sit on the question, not the decision: a decision rests on beliefs about why the chosen option works *and* why the others lost. If a belief behind a rejected option falls, the question gets a quiet re-check. With options as free text inside a decision, that dependency would be invisible.
+Why options sit on the question, not the decision: a decision rests on beliefs about why the chosen option works *and* why the others lost. On the question, the beliefs behind each option are visible. With options as free text inside a decision, that dependency would be invisible.
 
 ### 3.4 Initiatives
 
@@ -295,26 +297,26 @@ classDiagram
 
 Walk-through:
 
-- An **initiative** is one planning effort: a feature, a product's next phase, a learning effort. It records its title, purpose and goals, optionally the product it targets by default, and the actors `involved` in it, each with a role (decides, consulted, interested).
+- An **initiative** is one planning effort: a feature, a product's next phase, a learning effort. It records its title, purpose and goals, optionally the product it targets by default, and the actors `involved` in it, each with a role (decides, consulted, interested). An actor's interest in an initiative is `involves` with role `interested`.
 - **Work belongs to an initiative; knowledge doesn't.** Commitments, questions and activities are `part_of` one. Evidence, beliefs, sources and findings are reached through what relies on them or the activity that produced them. A finding or a piece of evidence is `generated_by` the session's activity, and that activity is `part_of` the initiative, so the trail from knowledge to initiative goes through the activity. That trail answers "what did this initiative learn", and a belief formed in one initiative can carry another without being copied. The activity is attached automatically when the record is created (part 3, section 6).
 - An initiative is a record, not just a saved search, because its goals and scope need a home. It is not folded into a PRD either: a learning effort has no product and no PRD. A product initiative usually has a PRD `part_of` it.
 - Its README is generated from the records linked to it, never edited by hand. "Where are we" is a query, `mason where`, not a page.
 
 ## 4. Principles
 
-**Evidence never changes.** Evidence is a dated, verbatim quote or observation, never a paraphrase. Corrections come as *new* evidence (an undermine), so the record of what was observed stays trustworthy. A reproduction is new evidence too, with its own record.
+**Evidence never changes.** Evidence is a dated, verbatim quote or observation, never a paraphrase. Its fingerprint is recorded when it is created, and `validate` fails if it changes. Corrections come as *new* evidence (an undermine), so the record of what was observed stays trustworthy. A reproduction is new evidence too, with its own record.
 
 **"Someone said X" is evidence that they hold X, not evidence that X.** Beliefs drawn from a person's words rest on that person's authority, and that should be visible. `asserted_by` shows whether a person confirmed a belief or an agent made it. People confirm only the load-bearing beliefs drawn from their own words, and those arrive as proposals, not flags.
 
-**Only a rebut makes a belief incorrect.** Undermines and undercuts remove support without saying the claim is false. They lead to a quiet re-check, and a belief becomes `insufficient` only if too little support remains. Incorrect and insufficient need different responses: revise, or gather more evidence.
+**Only a rebut makes a belief incorrect.** Undermines and undercuts remove support without saying the claim is false. They lead to a quiet re-check, and a belief becomes `insufficient` only if too little support remains. A query lists the beliefs whose support was undermined or undercut, so the re-check has a list to work from. Incorrect and insufficient need different responses: revise, or gather more evidence.
 
 **Commitments name their load-bearing beliefs, and only those can reopen them.** The author knows what's load-bearing at writing time; inferring it later over-links. Likewise, only load-bearing beliefs are pulled out of documents as records; the rest stay in the document. A hidden assumption found during implementation becomes evidence, and the next revision lists it. This is the strongest quietness tactic so far.
 
 **The system must be quiet.** Flag fatigue is real: a stream of "this might be stale" warnings is exhausting, and people learn to clear them unread. A citation isn't a dependency, so `mentions` never raises anything. A re-check that finds nothing changed re-pins and stops (early cutoff); since an agent re-deriving a record almost never produces identical text, "still holds" is a judgement, not a text comparison. Non-breaking revisions re-pin quietly. Leanings change without alarms.
 
-**Settle late, visibly.** Every commitment carries a maturity status. `leaning` records "tentatively agreed, expected to change", so early churn stays quiet. Settling becomes a visible move from `leaning` to `accepted`. Without `leaning`, a tentative yes has to be recorded as either `proposed` (too weak) or `accepted` (too strong).
+**Settle late, visibly.** Every commitment carries a maturity status. `leaning` records "tentatively agreed, expected to change", so early churn stays quiet. Settling becomes a visible move from `leaning` to `accepted`, and it also seals: once a decision is accepted its current revision can't be edited in place, so changing its meaning takes a new revision. The same holds for a question once it is settled and for a step once its plan is accepted (part 3, section 5). Without `leaning`, a tentative yes has to be recorded as either `proposed` (too weak) or `accepted` (too strong).
 
-**Invalidation travels up; staleness flows down.** When a belief falls, revise at the highest affected commitment, then re-check what's below it, one step at a time. Revisions are made only for changes of substance, so status changes never start a cascade. Revising fixes the same record; replacing it with a different one is `supersedes`.
+**Invalidation travels up; staleness flows down.** When a belief falls, revise at the highest affected commitment, then re-check what's below it, one step at a time. Revisions are made only for changes of substance, so status changes never start staleness (a belief's status does start invalidation). A propagating link from a commitment in force to a target that is closed (`rejected`, `deprecated` or `superseded`) is reported as needing a re-check, like a stale link. Revising fixes the same record; replacing it with a different one is `supersedes`.
 
 **Resumable from files, not sessions.** Work must survive an interruption at any pipeline stage without session restore. Each green step is committed, so git is the checkpoint. A plan's content stays unchanged once written; progress is recorded as runs and the evidence they produce. Resuming means reading the plan plus the latest run of each step, re-running the last passing check, and continuing.
 
@@ -355,9 +357,9 @@ Two independent sources support it, so it is *corroborated* (computed, not store
 
 **5a. An undermine arrives.** A later observation shows the file behind `ev_p4n2xa` was corrupted, so that observation proves nothing. New evidence `undermines` `ev_p4n2xa`. Link `s1` stops counting, but `s2` still carries the belief. An agent re-checks quietly, records "unaffected because `s2` holds", and nothing reaches a person.
 
-**5b. A rebut arrives instead.** A new session shows `validate` reading the same non-UTF-8 file cleanly. It is added as a `disputes` link. The belief is now `incorrect`, until it is revised or withdrawn. Invalidation travels up:
+**5b. A rebut arrives instead.** A new session shows `validate` reading the same non-UTF-8 file cleanly. It is added as a `disputes` link. `validate` now warns that a `held` belief has a disputing link, which prompts setting it to `incorrect`, until it is revised or withdrawn. Invalidation travels up:
 
-- The decision and the task both `relies_on` `bel_7k3m9q`, so both reopen. The decision is `accepted`, so it gets the full response: an agent drafts a revision at the highest affected level and brings it to the person who decided, as a proposed change, never a bare flag.
+- The decision and the task both `relies_on` `bel_7k3m9q`, so both reopen. The decision is `accepted`, so it gets the full response: an agent drafts a revision (accepting sealed its current revision, so a change of meaning takes a new one) at the highest affected level and brings it to the person who decided, as a proposed change, never a bare flag.
 - A document that only `mentions` the belief is untouched.
 - The plan is `derived_from` the task. Once the task is revised, the plan is re-checked. It needs to change, so it gets a new revision, and its steps are re-checked in turn. A step that still holds is re-pinned and stops there (early cutoff); only steps that change get a new revision.
 - Had the task's revision been non-breaking (say, a clearer outcome criterion), the plan would have been re-pinned quietly and nothing below it touched.
@@ -393,22 +395,22 @@ No single standard covers this model, so we mix several. Mixing is risky at the 
 
 | Prior work | What we took |
 |---|---|
-| W3C PROV | The spine: who (actors), how (activities) and what (entities; every record we store is one, and an `artifact` is the slice made outside our records). Same as PROV: `actor` (PROV's Agent, renamed only so "agent" can mean an AI agent), `person`, `organization`, `software_agent`, `activity`, `generated_by`, `associated_with`, `attributed_to`, `acts_for`, `derived_from`, `revision_of`. |
+| W3C PROV | The spine: who (actors), how (activities) and what (entities; every record except an activity is one, each revision is a version of its record, and an `artifact` is the slice made outside our records). A revision's fixed content is its meaning fields, not its status or support links, which change in place. Same as PROV: `actor` (PROV's Agent, renamed only so "agent" can mean an AI agent), `person`, `organization`, `software_agent`, `activity`, `associated_with`, `attributed_to`, `acts_for`, `revision_of`, and `generated_by` on evidence. Inspired by PROV: `derived_from` (wasDerivedFrom, but ours also records the revision last checked against, so the pin moves forward on a re-check, while PROV's derivation is fixed history) and `generated_by` on a revisable record (it names the activity that created the first revision; PROV's generation is of one fixed entity). |
 | BDI agents (Bratman; Rao and Georgeff) | The knowing / committing split. Commitments are valuable because they resist reconsideration. |
-| Truth maintenance (Doyle's TMS; de Kleer's ATMS) | Record which beliefs a commitment holds under, so a fallen belief points straight at what it touches. (An ATMS computes these; here the author declares them.) |
-| Defeaters (Pollock; SEI eliminative argumentation) | Rebut, undermine, undercut, and that only a rebut means "false". |
+| Truth maintenance (Doyle's TMS; de Kleer's ATMS) | Record which assumptions a commitment holds under, so any fallen one reopens it and points straight at what it touches. (An ATMS computes these; here the author declares them.) A belief holds while enough support remains. |
+| Defeaters (Pollock; SEI eliminative argumentation; ASPIC+) | Rebut and undercut (Pollock), and undermine (SEI eliminative argumentation and ASPIC+); only a rebut means "false". |
 | Build systems (Build Systems à la Carte; Bazel; Salsa) | Early cutoff: stop when re-derivation changes nothing. |
 | Dagster (data pipelines) | Staleness worked out per link and never marked down a whole chain; code can declare its output unchanged, which inspired re-pinning. |
 | SQLMesh (data transformations) | Breaking and non-breaking changes; when unknown, the cautious choice wins. |
 | Doorstop | Fingerprints of only the meaning-bearing fields, so formatting edits never raise staleness. |
 | Suspect links (IBM DOORS and similar tools) | A warning: flagging every change leads to bulk "clear all" and flag fatigue. |
 | Citation typing (CiTO; scite) | A reference is not a dependency: `relies_on` vs `mentions`. |
-| SEPIO | Support links with their own identity and a `supports` / `disputes` direction (a lighter version of SEPIO's evidence line). |
+| SEPIO | Support links with their own identity (a lighter version of SEPIO's evidence line). SEPIO's direction is support / refute; our `supports` / `disputes` follow GA4GH VA-Spec, the genomics variant-annotation standard built on SEPIO. |
 | ECO | Inspiration for `asserted_by` (who made the record). "Someone said X is evidence they hold X" is our own distinction, prompted by ECO's "author statement". |
 | IBIS and QOC | Questions as their own record, attachable to anything; options belong to the question. |
 | ADR and MADR | Maturity statuses (we added `leaning`, which they lack); `decided_by`, `consults`, `informs`; decisions record criteria. |
-| OSLC Requirements Management | Names for `part_of` (requirements), `elaborates`, `implements`. |
-| P-Plan | The plan stays unchanged; each run is recorded separately; `follows`, and `corresponds_to` from a run to its step. |
+| OSLC Requirements Management and Change Management | `elaborates` (Requirements Management); `part_of` corresponds to its `decomposes`; `implements` to its inverse `implementedBy` (and Change Management's `implementsRequirement`). |
+| P-Plan | Plan and runs recorded separately; `follows` (P-Plan calls it `isPrecededBy`); `corresponds_to` from a run to its step, single-valued as correspondsToStep. "The plan stays unchanged" is our own rule; P-Plan separates plan from trace. |
 
 ## 8. How the model will grow
 
@@ -431,9 +433,9 @@ These are deliberate extensions, not questions to answer before building. Each o
 
 **New edges or record types:**
 
-- **Initiative lifecycle and links.** Start: an initiative has a `status` field. Later: settle its values (likely `active`, `paused`, `done`, since no maturity status means "finished"), and add links between initiatives (`relates_to`, or a question `part_of` two).
+- **Initiative lifecycle and links.** Start: an initiative has a `status` field. Its values are settled (`active`, `paused`, `done`). Later: add links between initiatives (`relates_to`, or a question `part_of` two).
 - **Ownership.** Start: each initiative has one owner, so ownership is implicit. Later: `owned_by` from a commitment or question to any lasting actor, when there is more than one accountable party or an agent is trusted to settle things on its own.
-- **Nested runs:** step runs inside a session run (PROV can say this).
+- **Nested runs:** step runs inside a session run (PROV can only approximate this, with wasStartedBy; ProvONE has wasPartOf).
 - **Components** as records, linking design docs to code.
 
 **Templates and tooling:**
@@ -454,12 +456,12 @@ Everything is a *record*, and each record has a type, written in `snake_case`. A
 
 | Term | Layer | Plain meaning | Example |
 |---|---|---|---|
-| `source` | knowing | Where evidence comes from. Its `kind` is `actor`, `artifact` or `document`. | |
-| `actor` (source kind) | knowing | Something that bears responsibility for an activity, for a thing existing, or for another actor's activity. Kinds: `person`, `organization`, `software_agent` (a standing agent). Exactly the Agent of PROV (W3C's provenance standard) under another name, so that "agent" always means an AI agent. | A person; the reviewer agent |
+| `source` | knowing | Where evidence comes from: abstract, never stored as a type. A source is an `actor`, an `artifact` or a `document`; its kind is its record type. | |
+| `actor` (source kind) | knowing | Something that bears responsibility for an activity, for a thing existing, or for another actor's activity. Kinds: `person`, `organization`, `software_agent` (running software, such as an AI agent, identified across its sessions). Exactly the Agent of PROV (W3C's provenance standard) under another name, so that "agent" always means an AI agent. | A person; the running reviewer agent |
 | `artifact` (source kind) | knowing | Something made outside our records. Kinds: `page` (a web page, or a paper or PDF someone else wrote), `code` (at a commit), `conversation` (a conversation record), `issue` (a GitHub issue). A document we wrote ourselves is a `document`, not an artifact. | A web page; `validate` at a commit |
 | `activity` | knowing | Something that happened over time: an AI agent's session, or one run of a step. Has a start and end (`started_at`, `ended_at`) and a `status`. `associated_with` the actor responsible; evidence is `generated_by` it. Exactly PROV's Activity: the *how*, beside actors (*who*) and records (*what*). | The main session on 2026-11-22; one run of a step |
 | `document` (source kind) | knowing and committing | Abstract type: the shared shape of prose we wrote. A title and a body, revisable with old revisions left in git, `generated_by` an activity and `attributed_to` an actor. Evidence can come `from` one, at a pinned revision. The pin doesn't propagate and doesn't seal the revision. Never stored as a type itself; the document types are `finding`, `design_doc`, `prd` and `plan`. Decisions and tasks are not documents. | |
-| `finding` | knowing | A document we wrote ourselves: a survey, an analysis, an observation. Holds prose, tables and references whole. Can be revised. `generated_by` the activity that produced it. Beliefs drawn from it rest on evidence that quotes it. The knowing layer's document: it needs no edges or status until something relies on it. | A survey of data lineage tools |
+| `finding` | knowing | A document we wrote ourselves: a survey, an analysis, an observation. Holds prose, tables and references whole. Can be revised. `generated_by` the activity that produced it. Beliefs drawn from it rest on evidence that quotes it. The knowing layer's document: it needs no edges or status until a belief is drawn from it (nothing can rely on a finding directly). | A survey of data lineage tools |
 | `evidence` | knowing | A dated, verbatim observation from a source: an actor, an artifact or a document we wrote. Never changes. `observed_at` records when it was observed. | The exact error text `validate` printed |
 | `belief` | knowing | A claim we currently hold. Can be revised. `asserted_by` records who made it: `person` (a person made or confirmed it) or `agent` (an AI agent made it and nobody has confirmed it). A flag, not a link to an actor. | "validate doesn't handle non-UTF-8 input" |
 | `support_link` | knowing | A sub-record inside a belief's record (its `support` list): a link to one piece of evidence, marked `supports` or `disputes`. Has its own ID. | The link from a belief to the error text, marked `supports` |
@@ -480,7 +482,7 @@ Everything is a *record*, and each record has a type, written in `snake_case`. A
 | Term | Applies to | Meaning |
 |---|---|---|
 | `held` | belief | We hold it; its support carries it. |
-| `incorrect` | belief | Shown false by a rebut. Revise the claim or withdraw it; until then, it is what triggers invalidation. |
+| `incorrect` | belief | Shown false by a rebut. Revise the claim or withdraw it; until then, it is what triggers invalidation. A withdrawn belief reopens nothing; a commitment in force that relies on one is reported separately ("relies on a withdrawn belief"). |
 | `insufficient` | belief | Not shown false, but too little support remains. Gather more evidence. |
 | `withdrawn` | belief | No longer held. |
 | `proposed` | commitment | Suggested by a person or agent; no person has weighed in yet. If a belief beneath it falls, it is quietly reworked. |
@@ -508,11 +510,11 @@ Edges (the named links between records) are defined with the diagrams in section
 | **provenance** | The full history behind a record: what it came from, how it was made, who was responsible, and when, followed back step by step. Not a record type: it's what you get by following the links. A *source* is one link in that chain. |
 | **corroborated** | Supported by two or more independent sources. Computed from the support links, never stored. |
 | **load-bearing** | A belief a commitment would change over if it fell. Named by the commitment's author when writing it, as the commitment's `relies_on` links. |
-| **revision** | A new, unchangeable version of a belief, commitment, question or finding, made only when its substance changes (a claim, content, wording). Old revisions stay. Status changes and new support links are edited in place. Each revision says whether it is **breaking** (what was built on it needs a re-check) or **non-breaking** (it doesn't; links to it are re-pinned quietly). Unknown means breaking. |
-| **invalidation** | A belief falling (incorrect or insufficient) and reaching up to the commitments that rely on it. |
+| **revision** | A new version of a belief, commitment (a step too), question or finding, unchangeable once sealed (part 3, section 5), made only when its substance changes (a claim, content, wording). Old revisions stay. Status changes and new support links are edited in place. Each revision says whether it is **breaking** (what was built on it needs a re-check) or **non-breaking** (it doesn't; links to it are re-pinned quietly). Unknown means breaking. |
+| **invalidation** | A belief falling (incorrect or insufficient) and reaching up to the commitments that rely on it. (PROV uses "invalidation" for an entity ceasing to exist, a different meaning.) |
 | **staleness** | A link's pinned fingerprint no longer matches its target's current one. Worked out per link when asked, never stored, and never marked down a whole chain: a record further down becomes stale only if the record above it actually changes. |
 | **early cutoff** | If re-checking a record shows it still holds, stop there. Nothing below it is touched. |
-| **pinning** | A link records the revision of its target it was made against, plus a fingerprint of only the target's meaning-bearing fields. The fingerprint decides staleness, so formatting edits never raise it; the revision is for people and for `@rN` references. Only a pin on a link that propagates seals the revision it names. |
+| **pinning** | A link records the revision of its target it was made against, plus a fingerprint of only the target's meaning-bearing fields. The fingerprint decides staleness, so formatting edits never raise it; the revision is for people and for `@rN` references. A pin on a link that propagates seals the revision it names; a record's status can seal it too (part 3, section 5). |
 | **re-pin** | A re-check that concludes "still holds" updates the link's pin to the target's current revision and fingerprint, without making a new revision of the record. The re-check itself is recorded as evidence. |
 | **generated view** | A human-readable page built from the records (today, each initiative's README), never edited by hand. "Where are we" is the `mason where` query. |
 
@@ -521,16 +523,19 @@ Edges (the named links between records) are defined with the diagrams in section
 | Acronym | Stands for |
 |---|---|
 | ADR / MADR | Architecture decision record / Markdown Architectural Decision Records |
+| ASPIC+ | A framework for structured argumentation (Prakken and others) |
 | ATMS | Assumption-based truth maintenance system (TMS: truth maintenance system) |
 | BDI | Beliefs, desires, intentions (an agent architecture) |
 | CiTO | Citation Typing Ontology |
 | ECO | Evidence & Conclusion Ontology |
+| GA4GH VA-Spec | Global Alliance for Genomics and Health Variant Annotation Specification |
 | IBIS | Issue-based information systems |
 | ISO/IEC/IEEE | International Organization for Standardization / International Electrotechnical Commission / Institute of Electrical and Electronics Engineers (joint publishers of 29148) |
 | OSLC | Open Services for Lifecycle Collaboration |
 | P-Plan | A W3C PROV extension for plans |
 | PRD | Product requirements document |
 | PROV | W3C's provenance standard |
+| ProvONE | A PROV extension for scientific workflows |
 | QOC | Questions, options, criteria |
 | RO-Crate | Research Object Crate (a packaging format for research outputs and workflow runs) |
 | SEI | Software Engineering Institute (Carnegie Mellon) |

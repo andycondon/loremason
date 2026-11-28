@@ -168,8 +168,8 @@ Part 1's rules for invalidation and staleness come from fields much older than a
 
 | Field | Idea | Where it shows up |
 |---|---|---|
-| Truth maintenance systems (1979, 1986) | A conclusion falls only if all its reasons fall; record which assumptions each conclusion holds under | Only a change to a named load-bearing belief reopens a commitment |
-| Argumentation (defeaters) | Rebutting (the claim is false) differs from undermining the evidence or undercutting the reasoning | Only a rebut makes a belief `incorrect`; the others trigger a re-check |
+| Truth maintenance systems (1979, 1986) | A conclusion holds while enough of its reasons remain; record which assumptions each conclusion holds under, so any fallen one reopens it | A belief holds while enough support remains. A commitment records the beliefs it holds under, and only a change to a named load-bearing belief reopens it |
+| Argumentation (defeaters) | Rebutting (the claim is false) and undercutting the reasoning (Pollock) differ from undermining the evidence (SEI eliminative argumentation and ASPIC+, a framework for structured argumentation) | Only a rebut makes a belief `incorrect`; the others trigger a re-check |
 | Build systems | Rebuild when inputs change, but stop if a rebuilt result is unchanged ("early cutoff") | Staleness stops spreading when a re-check shows a record still holds |
 | Requirements traceability | A change at either end of a link marks it "suspect" until a person clears it | The warning: flag fatigue. The design must stay quiet |
 | W3C provenance standard (PROV) | Entities, activities and agents; derivation and revision | The backbone of the knowing layer |
