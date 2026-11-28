@@ -153,8 +153,8 @@ func TestBuildStoresProgressSettledLinksMembersAndInitiatives(t *testing.T) {
 		}
 	}
 	one("in_progress", `SELECT progress FROM nodes WHERE id = 'task_t1t1t1'`)
-	one("1", `SELECT settled FROM nodes WHERE id = 'q_c2c2c2'`)
-	one("0", `SELECT settled FROM nodes WHERE id = 'q_c1c1c1'`)
+	one("0", `SELECT open FROM nodes WHERE id = 'q_c2c2c2'`)
+	one("1", `SELECT open FROM nodes WHERE id = 'q_c1c1c1'`)
 	one("1", `SELECT settles FROM edges WHERE src = 'dec_d2d2d2' AND dst = 'q_c2c2c2'`)
 	one("0", `SELECT settles FROM edges WHERE src = 'dec_d5d5d5' AND dst = 'q_c1c1c1'`)
 	one("1", `SELECT pending FROM edges WHERE src = 'dec_d5d5d5' AND dst = 'q_c1c1c1'`)

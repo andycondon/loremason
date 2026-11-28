@@ -307,7 +307,6 @@ erDiagram
     text title
     text status
     text progress "computed"
-    bool settled "computed"
     bool open "computed"
     int revision
     text fingerprint "current, computed"

@@ -19,7 +19,6 @@ CREATE TABLE nodes (
 	title TEXT NOT NULL,
 	status TEXT NOT NULL,
 	progress TEXT NOT NULL,
-	settled INTEGER NOT NULL,
 	open INTEGER NOT NULL,
 	revision INTEGER,
 	fingerprint TEXT NOT NULL,
@@ -73,7 +72,7 @@ const Containment = "subrecord_of"
 // .gitignore covers it), and the file is then renamed into place, so a
 // reader never sees half an index. Builds running at once each have their
 // own file; the last to finish is the one left. Each record and sub-record
-// gets a row in nodes, with the progress, whether it is settled and whether it is open as the
+// gets a row in nodes, with the progress and whether it is open as the
 // graph works them out, and each record in nodes_fts for text search. Each
 // alias gets a row in aliases. Each link that reaches a record, and each
 // sub-record's containment in its record, gets a row in edges, with whether
@@ -162,7 +161,7 @@ type writer struct {
 func (w *writer) canonical(n *graph.Node) bool { return w.g.Node(n.ID) == n }
 
 func (w *writer) nodes() error {
-	node, err := w.tx.Prepare(`INSERT INTO nodes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	node, err := w.tx.Prepare(`INSERT INTO nodes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -197,7 +196,7 @@ func (w *writer) nodes() error {
 			if v := n.Fingerprint(); !v.IsZero() {
 				fp = v.String()
 			}
-			if _, err := node.Exec(n.ID, n.Kind.Name, title, n.Status(), n.Progress(), n.Settled(), n.Open(), rev, fp, n.File.Path, header, body); err != nil {
+			if _, err := node.Exec(n.ID, n.Kind.Name, title, n.Status(), n.Progress(), n.Open(), rev, fp, n.File.Path, header, body); err != nil {
 				return err
 			}
 			if !n.IsSubrecord() {
