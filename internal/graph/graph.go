@@ -174,8 +174,7 @@ func (n *Node) Revision(rev int) *Revision {
 // a revision without freezing it.
 func (e *Edge) Seals() bool { return e.Pin != nil && e.Def.Propagates }
 
-// Sealed reports whether something pins the revision in a way that seals it.
-// A sealed revision's meaning can't change without a new revision.
+// Sealed reports whether a propagating link pins the revision. A sealed revision's meaning can't change without a new revision.
 func (n *Node) Sealed(rev int) bool {
 	for _, e := range n.Incoming {
 		if e.Seals() && e.Pin.Rev == rev {
@@ -215,7 +214,7 @@ func (n *Node) Record() *Node {
 
 // Stale reports whether a pinned link no longer matches its target: the
 // target is at another revision, or its meaning changed since it was pinned.
-// A pin that doesn't seal is never stale.
+// A pin that doesn't seal, such as a quote's, is never stale.
 func (e *Edge) Stale() bool {
 	if !e.Seals() || e.Target == nil || e.Target.Current() == nil {
 		return false
@@ -311,8 +310,8 @@ func (g *Graph) Members(ini *Node) []*Node {
 
 // Produced returns the records made in the initiative's activities: those
 // with a generated_by link to an activity that is one of its members, sorted
-// by ID. They don't become members, because what a session finds doesn't
-// belong to the initiative. A record that is itself a member is left out.
+// by ID. They aren't members, because what a session finds doesn't belong to
+// the initiative. A record that is already a member is left out.
 func (g *Graph) Produced(ini *Node) []*Node {
 	members := g.Members(ini)
 	in := make(map[*Node]bool, len(members))

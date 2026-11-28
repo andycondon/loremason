@@ -56,8 +56,8 @@ func Create(root string, t *registry.Type, title string, today time.Time, opts C
 }
 
 // CleanTitle applies the schemas' rule for a title, one line of text, and
-// trims it. Commands call it before writing anything else, so a bad title
-// leaves no files behind.
+// trims it. Commands call it before writing anything, so a bad title leaves
+// no files behind.
 func CleanTitle(s string) (string, error) {
 	if !utf8.ValidString(s) {
 		return "", fmt.Errorf("%w, and this one isn't valid UTF-8", ErrTitle)

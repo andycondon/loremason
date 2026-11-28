@@ -47,7 +47,7 @@ type Kind struct {
 	// Sub-record kinds never are.
 	Revisable bool `yaml:"revisable"`
 	// Document marks a type whose records are prose we wrote, so evidence can
-	// quote them. Edge.To may name `document` for all such types at once.
+	// quote them. An edge's To may name `document` for all such types at once.
 	Document bool `yaml:"document"`
 }
 
@@ -186,9 +186,8 @@ func (t *Type) checkStatuses() error {
 	return nil
 }
 
-// checkDocument reports the first rule a document type breaks. Every
-// document has the same shape, so a reader can quote or attribute any of
-// them the same way.
+// checkDocument reports the first rule a document type breaks. Documents all
+// have the same shape, so any of them can be quoted or attributed the same way.
 func (t *Type) checkDocument() error {
 	if !t.Document {
 		return nil

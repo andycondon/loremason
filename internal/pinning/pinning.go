@@ -72,12 +72,12 @@ func (p *Plan) warn(f *graph.File, format string, args ...any) {
 	p.Warnings = append(p.Warnings, Action{f.Path, fmt.Sprintf(format, args...)})
 }
 
-// Sync plans what `mason sync` does, in an order that matters, because a pin
-// seals the revision it names:
+// Sync plans what `mason sync` does, in an order that matters, because a
+// propagating link's pin seals the revision it names:
 //
 //  1. write revision 1 for each revisable record that has no revisions yet;
-//  2. record the fingerprint of each current revision no propagating link pins, so
-//     drafts can change freely;
+//  2. record the fingerprint of each current revision that no propagating
+//     link pins, so drafts can change freely;
 //  3. pin each bare link that should be pinned, to the revision it names or
 //     else the current one;
 //  4. move a pin forward when every later revision of its target is

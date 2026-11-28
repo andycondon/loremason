@@ -77,7 +77,7 @@ func (c *checker) revisionRefs(e *graph.Edge) {
 		return
 	}
 	if e.Seals() && rev > 0 {
-		// A quote's pin isn't held to this: its target may change freely.
+		// A quote's target may change freely, so only a sealing pin is held to this.
 		if r := rec.Revision(rev); !r.FP.IsZero() && e.Pin.FP != r.FP {
 			c.ds.Errorf(e.At.Pos, "`%s`: the pin's fingerprint isn't the one recorded for revision %d of %s; write the link as just `%s` and run `mason sync` to pin it again", at, rev, rec.ID, e.To.Name)
 		}

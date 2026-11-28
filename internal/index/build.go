@@ -80,8 +80,8 @@ const Containment = "subrecord_of"
 // it is stale, reopens its source, settles its target or is a pending
 // answer, and its role. Each initiative gets a row in initiatives and a row
 // in members for each record in it, and a row in produced for each record
-// made in its activities. A second file with an ID the graph
-// already has is left out.
+// produced in its activities. A second file with an ID the graph already has
+// is left out.
 func Build(path string, g *graph.Graph, m Meta) (err error) {
 	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
@@ -268,7 +268,7 @@ func (w *writer) edges() error {
 }
 
 // initiatives writes each initiative's slug, purpose and goals, and the
-// records in it and made in its activities, as the graph works them out.
+// records in it and produced in its activities, as the graph works them out.
 func (w *writer) initiatives() error {
 	ini, err := w.tx.Prepare(`INSERT INTO initiatives VALUES (?, ?, ?, ?)`)
 	if err != nil {

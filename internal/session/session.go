@@ -36,14 +36,14 @@ type Session struct {
 	Initiative string // slug, ID or alias; "" when unset
 	Actor      string // who the activity is associated with; "" when unset
 
-	// Warn is where Ensure says what it ignored. Nil says nothing.
+	// Warn is where Ensure writes a note about what it ignored. Nil writes none.
 	Warn io.Writer
 }
 
 // FromEnv returns the session the environment names, or nil when
 // LOREMASON_SESSION is unset or blank. A key that spans lines, or an actor
-// that isn't a reference, is an error (the caller's usage error): either would be written into the
-// activity's header and break the file.
+// that isn't a reference, is an error, which callers treat as a usage error:
+// either would be written into the activity's header and break the file.
 func FromEnv() (*Session, error) {
 	key := strings.TrimSpace(os.Getenv(EnvSession))
 	if key == "" {
@@ -66,10 +66,10 @@ func FromEnv() (*Session, error) {
 func (s *Session) ActivityID() string { return id.Derive("actv", s.Key) }
 
 // Ensure makes sure the session's activity exists, and returns its path
-// relative to root. Commands that start together all get the one file: the
-// file is linked into place, which fails for every command but the first, and
-// the others use what is there. A file for another session under the same ID
-// is an error.
+// relative to root. Commands that start together all get one file: each tries
+// to link its own copy into place, only the first succeeds, and the others
+// use what is there. A file for another session under the same ID is an
+// error.
 func (s *Session) Ensure(root string, reg *registry.Registry, now time.Time) (string, error) {
 	typ, err := reg.Find("activity")
 	if err != nil {
@@ -109,10 +109,10 @@ func (s *Session) Ensure(root string, reg *registry.Registry, now time.Time) (st
 	return rel, err
 }
 
-// warnIfElsewhere says so when LOREMASON_INITIATIVE names an initiative
-// other than the one the activity belongs to. The activity's initiative wins
-// once it exists, so the variable is ignored. It opens the index only when
-// the variable is set.
+// warnIfElsewhere writes a note when LOREMASON_INITIATIVE names a different
+// initiative from the activity's. Once the activity exists its initiative
+// wins, so the variable is ignored. It opens the index only when the variable
+// is set.
 func (s *Session) warnIfElsewhere(root string, reg *registry.Registry, partOf string) error {
 	if s.Initiative == "" || s.Warn == nil {
 		return nil
@@ -172,10 +172,10 @@ func (s *Session) render(rid string, ini index.Initiative, now time.Time) string
 }
 
 // publish writes text to a new file at p, failing with fs.ErrExist when the
-// file is there. It writes a temporary file and links it, so no other command
-// ever reads a half-written file. It needs a file system with hard links
-// (os.Link): a link fails when the name is taken, which is what lets
-// commands that start together agree on one file.
+// file is already there. It writes a temporary file and then links it, so no
+// other command reads a half-written file. It needs a file system with hard
+// links: a link fails when the name is taken, which is how commands that
+// start together agree on one file.
 func publish(p, text string) error {
 	dir := filepath.Dir(p)
 	if err := os.MkdirAll(dir, 0o755); err != nil {

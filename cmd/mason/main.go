@@ -26,9 +26,9 @@ var app = &cli.App{
 	Footer: "The workspace is the nearest folder, here or above, with a .loremason folder.\n" +
 		"Set " + workspace.Env + " to use another.\n" +
 		"\n" +
-		"Set " + session.EnvSession + " to name a session, so that what `new` writes (a finding, evidence) is\n" +
-		"attached to the session's activity; " + session.EnvInitiative + " says which initiative it is for,\n" +
-		"and " + session.EnvActor + " who ran it.",
+		"Set " + session.EnvSession + " to name a session; `new` then attaches each finding and\n" +
+		"evidence it writes to the session's activity. " + session.EnvInitiative + " says which\n" +
+		"initiative the session is for, and " + session.EnvActor + " who ran it.",
 	Commands: []*cli.Command{validateCmd, newCmd, syncCmd, reviseCmd, findCmd, showCmd, dependentsCmd, staleCmd, reopenedCmd, whereCmd},
 }
 

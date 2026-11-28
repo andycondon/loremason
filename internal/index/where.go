@@ -60,7 +60,7 @@ type Overview struct {
 	DesignDocs []Entry
 	PRDs       []Entry
 	Tasks      []Entry
-	Findings   []Entry // findings made in the initiative's activities; not members, and with no status
+	Findings   []Entry // findings produced in the initiative's activities; not members, and with no status
 }
 
 // Person is someone an initiative involves, and their role in it.
@@ -356,8 +356,8 @@ func (x *Index) Overview(slug string) (*Overview, error) {
 	return o, nil
 }
 
-// findings returns the findings made in the initiative's activities, by title
-// (ignoring ASCII case) then ID.
+// findings returns the findings produced in the initiative's activities, by
+// title (ignoring ASCII case) then ID.
 func (x *Index) findings(ini string) ([]Entry, error) {
 	rows, err := x.db.Query(`SELECT `+summaryCols+`, n.path, n.progress FROM nodes n JOIN produced p ON p.id = n.id
 		WHERE p.initiative = ? AND n.type = 'finding' ORDER BY n.title COLLATE NOCASE, n.id`, ini)
@@ -417,8 +417,8 @@ func (x *Index) entries(ini, typ string) ([]Entry, error) {
 }
 
 // ResolveInitiative returns the initiative that name stands for, with its
-// slug, as Where takes it: a slug, an ID or an alias. The errors are
-// Where's.
+// slug. The name may be a slug, an ID or an alias, as in Where, and the
+// errors are Where's.
 func (x *Index) ResolveInitiative(name string) (Initiative, error) {
 	id, err := x.initiative(name)
 	if err != nil {

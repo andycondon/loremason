@@ -32,7 +32,8 @@ func Prefix(s string) (string, bool) {
 }
 
 // Derive returns the ID with the given prefix that key always gives, so the
-// same key names the same record without a lookup.
+// same key names the same record without a lookup. Different keys can share
+// an ID, but only by chance.
 func Derive(prefix, key string) string {
 	sum := sha256.Sum256([]byte(key))
 	b := sum[:6]

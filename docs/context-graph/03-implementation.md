@@ -390,12 +390,14 @@ Writing commands are kept separate and few. `mason new <type>` creates a record 
 **Sessions attach what they write to an activity.** Knowledge belongs to no initiative (part 1, section 3.4), so a finding's trail to its initiative goes through the activity of the session that wrote it. `mason new` attaches that activity itself for findings and evidence, so nobody has to remember to. The session is named by environment variables:
 - `LOREMASON_SESSION` is any key the harness gives the session, such as an agent's session ID set by a session-start hook.
 - `LOREMASON_INITIATIVE` names the initiative by slug, ID or alias, as `mason where` accepts.
-- `LOREMASON_ACTOR` is optional, and names who the activity is `associated_with`.
+- `LOREMASON_ACTOR` is optional, and names who the activity is `associated_with`. It must be a reference such as `who_4d9snc`.
 
-When `mason new` creates a finding or a piece of evidence, it attaches the session's activity, creating it on first use. These are the knowledge with no other path to its initiative. Design docs, PRDs and plans are commitments, already `part_of` the initiative. They have a `generated_by` link that can be filled in by hand, but `mason new` doesn't fill it. A new activity is `part_of` the initiative, has a `started_at`, is `associated_with` the actor when one is given, and holds the key in its `session` field.
+A `LOREMASON_ACTOR` that isn't a reference, or a `LOREMASON_SESSION` that spans lines, is a usage error, since either would break the activity's header.
+
+When `mason new` creates a finding or a piece of evidence, it attaches the session's activity, creating it on first use. These are the knowledge with no other path to its initiative. Design docs, PRDs and plans are commitments, already `part_of` the initiative. They have a `generated_by` link that can be filled in by hand, but `mason new` doesn't fill it. A new activity is `part_of` the initiative, has a `started_at`, is `associated_with` the actor when one is given (written as a block list), and holds the key in its `session` field. `started_at` is local time with its offset.
 - **One activity per session.** Its ID is derived from the session key, so concurrent commands find the same file and never create two. A command that finds the file already there uses it, and a file whose `session` doesn't match the key is an error. `validate` warns when two activities claim one session, since `session` is the activity's identity field.
-- **Without a session, nothing fails.** The record is created unattached and `mason` prints a one-line note saying so. `validate` doesn't warn about an unattached document, so a hand-written finding stays free.
-- **A session with no initiative** is a usage error when its activity doesn't exist yet, naming `LOREMASON_INITIATIVE`. Once the activity exists, the initiative is read from it.
+- **Without a session, nothing fails.** The record is created unattached and `mason new` prints a one-line note to stderr saying so. `validate` doesn't warn about an unattached document, so a hand-written finding stays free.
+- **A session with no initiative** is a usage error when its activity doesn't exist yet, naming `LOREMASON_INITIATIVE`. Once the activity exists, the initiative is read from it, and a `LOREMASON_INITIATIVE` that names another one is ignored, with a note to stderr.
 - **Ending a session** (`ended_at`, `status`) is left to the harness for now, for example a session-end hook. Nothing reads them yet.
 
 Nothing is kept outside the records, so parallel sessions in one checkout don't collide.
