@@ -480,7 +480,7 @@ func TestGraphMembers(t *testing.T) {
 		file("req_m2xqd9", "statement: S", "part_of: [prd_3vb6ne]"), // through the PRD
 		file("task_p4n2xa", "part_of: [ini_c5d7ab]"),
 		file("plan_k3m9qr", "part_of: [ini_c5d7ab]"),
-		file("step_t6w8yb", "part_of: [plan_k3m9qr]"), // through the plan
+		file("step_t6w8yb", "part_of: plan_k3m9qr"), // through the plan
 		file("q_2wq8dn", "question: Which?", "part_of: [ini_c5d7ab]", "options:\n  - {id: o1, title: One}"),
 		file("task_zzzzzz", "part_of: [ini_h8c1rt]"), // another initiative's
 		file("bel_7k3m9q"), // part of nothing
